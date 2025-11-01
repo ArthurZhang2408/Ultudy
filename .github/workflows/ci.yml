@@ -33,13 +33,26 @@ jobs:
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies and run migrations
-        working-directory: backend
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/study_app
+      - name: Wait for Postgres
         run: |
-          npm ci
-          npm run migrate
+          if ! command -v nc >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y netcat-openbsd
+          fi
+          for i in {1..30}; do
+            nc -zv localhost 5432 && echo "Postgres is up" && break
+            sleep 2
+          done
+
+      - name: Install deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Run migrations (explicit DSN)
+        working-directory: backend
+        run: |
+          npx node-pg-migrate -m db/migrations \
+            -d "postgresql://postgres:postgres@localhost:5432/study_app" up
 
       - name: Run tests
         working-directory: backend
