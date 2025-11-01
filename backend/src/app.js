@@ -4,9 +4,15 @@ import pool, { isDatabaseConfigured } from './db/index.js';
 
 export function createApp(options = {}) {
   const app = express();
-  const activePool = options.pool ?? pool;
-  const databaseConfigured =
-    options.isDatabaseConfigured ?? isDatabaseConfigured;
+  const hasCustomPool = Object.prototype.hasOwnProperty.call(options, 'pool');
+  const activePool = hasCustomPool ? options.pool : pool;
+  const hasCustomConfigured = Object.prototype.hasOwnProperty.call(
+    options,
+    'isDatabaseConfigured'
+  );
+  const databaseConfigured = hasCustomConfigured
+    ? options.isDatabaseConfigured
+    : isDatabaseConfigured;
 
   app.use(cors());
   app.use(express.json());

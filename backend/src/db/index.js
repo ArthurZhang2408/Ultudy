@@ -9,7 +9,8 @@ const {
   PGPORT,
   PGUSER,
   PGPASSWORD,
-  PGDATABASE
+  PGDATABASE,
+  NODE_ENV
 } = process.env;
 
 let poolConfig = null;
@@ -24,6 +25,16 @@ if (DATABASE_URL) {
     password: PGPASSWORD,
     database: PGDATABASE
   };
+} else if (NODE_ENV !== 'production') {
+  const defaultLocalConnection =
+    'postgresql://postgres:postgres@localhost:5432/study_app';
+
+  console.warn(
+    `Postgres configuration missing: defaulting to ${defaultLocalConnection}. ` +
+      'Override with DATABASE_URL or PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE.'
+  );
+
+  poolConfig = { connectionString: defaultLocalConnection };
 }
 
 const pool = poolConfig ? new Pool(poolConfig) : null;

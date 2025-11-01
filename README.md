@@ -34,7 +34,7 @@ npm run dev
 # check: curl http://localhost:3001/db/health
 ```
 
-The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health).
+The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.
 
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
