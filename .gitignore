@@ -1,0 +1,38 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+*.tsbuildinfo
+dist/
+.build/
+.next/
+out/
+
+# Env & local
+.env
+.env.*
+!.env.example
+
+# Python (workers/tools)
+__pycache__/
+*.pyc
+.venv/
+venv/
+poetry.lock
+
+# Mac / Editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Coverage / logs
+coverage/
+.nyc_output/
+logs/
+*.log
+
+# Docker
+docker-data/
