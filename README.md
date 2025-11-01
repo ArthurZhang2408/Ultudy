@@ -28,13 +28,13 @@ cp backend/.env.example backend/.env
 # (DATABASE_URL already matches compose)
 cd backend
 npm ci
-npm run check:pgvector  # optional: verifies IVFFLAT support
+npm run check:pgvector  # optional: verifies whether IVFFLAT/HNSW indexes support 3072 dimensions
 npm run migrate
 npm run dev
 # check: curl http://localhost:3001/db/health
 ```
 
-Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health).
+The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health).
 
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.

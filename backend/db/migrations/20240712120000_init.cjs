@@ -85,19 +85,31 @@ module.exports = {
     pgm.createIndex('chunks', ['page_start', 'page_end']);
     pgm.sql(`
       DO $$
+      DECLARE
+        ivfflat_created boolean := false;
       BEGIN
         PERFORM set_config('pgvector.max_ivfflat_dim', '4000', false);
 
         BEGIN
           EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)';
+          ivfflat_created := true;
         EXCEPTION
           WHEN SQLSTATE '54000' THEN
-            RAISE NOTICE 'IVFFLAT not supported for 3072 dimensions (54000: %). Falling back to HNSW.', SQLERRM;
-            EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING hnsw (embedding vector_cosine_ops)';
+            RAISE NOTICE 'IVFFLAT not supported for 3072 dimensions (54000: %). Attempting HNSW fallback.', SQLERRM;
           WHEN SQLSTATE '0A000' THEN
-            RAISE NOTICE 'IVFFLAT access method unavailable (%). Falling back to HNSW.', SQLERRM;
-            EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING hnsw (embedding vector_cosine_ops)';
+            RAISE NOTICE 'IVFFLAT access method unavailable (%). Attempting HNSW fallback.', SQLERRM;
         END;
+
+        IF NOT ivfflat_created THEN
+          BEGIN
+            EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING hnsw (embedding vector_cosine_ops)';
+          EXCEPTION
+            WHEN SQLSTATE '54000' THEN
+              RAISE NOTICE 'HNSW not supported for 3072 dimensions (54000: %). Skipping vector index creation.', SQLERRM;
+            WHEN SQLSTATE '0A000' THEN
+              RAISE NOTICE 'HNSW access method unavailable (%). Skipping vector index creation.', SQLERRM;
+          END;
+        END IF;
       END;
       $$;
     `);
