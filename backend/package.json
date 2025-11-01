@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node -e \"console.log('No tests yet')\"",
+    "check:pgvector": "node scripts/check-ivfflat-support.js",
     "migrate": "node-pg-migrate -m db/migrations -d $DATABASE_URL up",
     "migrate:down": "node-pg-migrate -m db/migrations -d $DATABASE_URL down"
   },

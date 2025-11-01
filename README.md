@@ -26,7 +26,11 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 docker compose up -d db
 cp backend/.env.example backend/.env
 # (DATABASE_URL already matches compose)
-cd backend && npm ci && npm run migrate && npm run dev
+cd backend
+npm ci
+npm run check:pgvector  # optional: verifies IVFFLAT support
+npm run migrate
+npm run dev
 # check: curl http://localhost:3001/db/health
 ```
 

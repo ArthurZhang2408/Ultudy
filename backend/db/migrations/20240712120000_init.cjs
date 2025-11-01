@@ -83,10 +83,24 @@ module.exports = {
 
     pgm.createIndex('chunks', 'document_id');
     pgm.createIndex('chunks', ['page_start', 'page_end']);
-    pgm.sql('SET pgvector.max_ivfflat_dim = 4000;');
-    pgm.sql(
-      'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);'
-    );
+    pgm.sql(`
+      DO $$
+      BEGIN
+        PERFORM set_config('pgvector.max_ivfflat_dim', '4000', false);
+
+        BEGIN
+          EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)';
+        EXCEPTION
+          WHEN SQLSTATE '54000' THEN
+            RAISE NOTICE 'IVFFLAT not supported for 3072 dimensions (54000: %). Falling back to HNSW.', SQLERRM;
+            EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING hnsw (embedding vector_cosine_ops)';
+          WHEN SQLSTATE '0A000' THEN
+            RAISE NOTICE 'IVFFLAT access method unavailable (%). Falling back to HNSW.', SQLERRM;
+            EXECUTE 'CREATE INDEX IF NOT EXISTS chunks_embedding_ivfflat ON chunks USING hnsw (embedding vector_cosine_ops)';
+        END;
+      END;
+      $$;
+    `);
   },
 
   down: (pgm) => {

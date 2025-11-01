@@ -44,6 +44,16 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Check pgvector index support
+        working-directory: backend
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGPORT: "5432"
+          PGDATABASE: study_app
+        run: npm run check:pgvector
+
       - name: Run migrations (PG env)
         working-directory: backend
         env:
