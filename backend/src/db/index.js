@@ -3,22 +3,31 @@ import { Pool } from 'pg';
 
 dotenv.config();
 
-const { DATABASE_URL } = process.env;
+const {
+  DATABASE_URL,
+  PGHOST,
+  PGPORT,
+  PGUSER,
+  PGPASSWORD,
+  PGDATABASE
+} = process.env;
 
-if (!DATABASE_URL) {
-  console.error(
-    'DATABASE_URL environment variable is not set. Database connections will be unavailable until it is configured.'
-  );
+let poolConfig = null;
+
+if (DATABASE_URL) {
+  poolConfig = { connectionString: DATABASE_URL };
+} else if (PGHOST && PGPORT && PGUSER && PGPASSWORD && PGDATABASE) {
+  poolConfig = {
+    host: PGHOST,
+    port: Number(PGPORT),
+    user: PGUSER,
+    password: PGPASSWORD,
+    database: PGDATABASE
+  };
 }
 
-const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : null;
+const pool = poolConfig ? new Pool(poolConfig) : null;
 
-export const getPool = () => {
-  if (!pool) {
-    throw new Error('DATABASE_URL is not configured.');
-  }
-
-  return pool;
-};
+export const isDatabaseConfigured = Boolean(poolConfig);
 
 export default pool;

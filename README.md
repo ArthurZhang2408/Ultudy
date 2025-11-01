@@ -21,25 +21,13 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 # coming soon
 ```
 
-### Local run (backend)
-```bash
-cd backend
-cp .env.example .env
-npm ci
-npm run dev
-```
-
-### Run database locally
+### Local database & backend
 ```bash
 docker compose up -d db
-```
-
-### Run migrations
-```bash
 cp backend/.env.example backend/.env
-# Update backend/.env if needed
-cd backend
-npm run migrate
+# (DATABASE_URL already matches compose)
+cd backend && npm ci && npm run migrate && npm run dev
+# check: curl http://localhost:3001/db/health
 ```
 
 Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health).
