@@ -29,6 +29,21 @@ npm ci
 npm run dev
 ```
 
+### Run database locally
+```bash
+docker compose up -d db
+```
+
+### Run migrations
+```bash
+cp backend/.env.example backend/.env
+# Update backend/.env if needed
+cd backend
+npm run migrate
+```
+
+Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health).
+
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
 All merges require human review.
