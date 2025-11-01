@@ -20,6 +20,15 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 ```bash
 # coming soon
 ```
+
+### Local run (backend)
+```bash
+cd backend
+cp .env.example .env
+npm ci
+npm run dev
+```
+
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
 All merges require human review.
