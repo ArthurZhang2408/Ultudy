@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -35,9 +35,11 @@ jobs:
 
       - name: Install dependencies and run migrations
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/study_app
         run: |
           npm ci
-          DATABASE_URL=postgres://postgres:postgres@localhost:5432/study_app npm run migrate
+          npm run migrate
 
       - name: Run tests
         working-directory: backend
