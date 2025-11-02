@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-50 text-slate-900;
+}
+
+a {
+  @apply text-blue-600 hover:text-blue-800;
+}
+
+input, select, button, textarea {
+  @apply rounded border border-slate-300 px-3 py-2;
+}
+
+button {
+  @apply bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed;
+}
+
+main {
+  @apply flex-1;
+}
