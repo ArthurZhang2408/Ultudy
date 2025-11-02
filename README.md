@@ -35,10 +35,28 @@ npm run dev
 ```
 
 ```bash
-# Upload a PDF (stored under backend/storage/<uuid>.pdf)
-curl -F file=@/path/to/file.pdf http://localhost:3001/upload/pdf
+# Upload a PDF (stored under backend/storage/<user_id>/<uuid>.pdf)
+curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" -F file=@/path/to/file.pdf http://localhost:3001/upload/pdf
 # Search across embedded chunks
-curl "http://localhost:3001/search?q=Fourier%20transform"
+curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" "http://localhost:3001/search?q=Fourier%20transform"
+```
+
+### Multi-tenant request scoping
+- Requests accept an `X-User-Id` header containing a UUID. The backend scopes uploads, search, and listings to that caller.
+- When the header is omitted, the dev user ID `00000000-0000-0000-0000-000000000001` is used automatically for local workflows.
+
+Examples:
+
+```bash
+# user 1
+U1=00000000-0000-0000-0000-000000000001
+curl -H "X-User-Id: $U1" -F file=@/path/to/file1.pdf http://localhost:3001/upload/pdf
+curl -H "X-User-Id: $U1" "http://localhost:3001/search?q=introduction&k=5"
+
+# user 2
+U2=00000000-0000-0000-0000-000000000002
+curl -H "X-User-Id: $U2" -F file=@/path/to/file2.pdf http://localhost:3001/upload/pdf
+curl -H "X-User-Id: $U2" "http://localhost:3001/search?q=introduction&k=5"
 ```
 
 The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.

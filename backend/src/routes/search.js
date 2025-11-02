@@ -1,5 +1,6 @@
 import express from 'express';
 import createSearchService from '../search/service.js';
+import { getUserId } from '../http/user.js';
 
 export default function createSearchRouter(options = {}) {
   const router = express.Router();
@@ -17,7 +18,8 @@ export default function createSearchRouter(options = {}) {
     }
 
     try {
-      const results = await searchService.search(String(q), k ? Number(k) : undefined);
+      const ownerId = getUserId(req);
+      const results = await searchService.search(String(q), k ? Number(k) : undefined, ownerId);
       res.json(results);
     } catch (error) {
       console.error('Search failed', error);

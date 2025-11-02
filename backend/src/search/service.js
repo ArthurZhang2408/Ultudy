@@ -2,6 +2,8 @@ import pool from '../db/index.js';
 import { getEmbeddingsProvider } from '../embeddings/provider.js';
 import { formatEmbeddingForInsert } from '../embeddings/utils.js';
 
+const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
+
 export function createSearchService(options = {}) {
   const activePool = options.pool ?? pool;
   const embeddingsProviderFactory = options.embeddingsProviderFactory ?? getEmbeddingsProvider;
@@ -10,7 +12,7 @@ export function createSearchService(options = {}) {
     throw new Error('Database pool is required for search');
   }
 
-  async function search(query, limit = 8) {
+  async function search(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
     if (!query || !query.trim()) {
       return [];
     }
@@ -20,15 +22,19 @@ export function createSearchService(options = {}) {
     const vectorParam = formatEmbeddingForInsert(embedding);
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 50) : 8;
 
+    const ownerFilter =
+      typeof ownerId === 'string' && ownerId ? ownerId.toLowerCase() : DEFAULT_OWNER_ID;
+
     const { rows } = await activePool.query(
       `
-        SELECT document_id, page_start, page_end, text, embedding <-> $1::vector AS distance
-        FROM chunks
-        WHERE embedding IS NOT NULL
-        ORDER BY embedding <-> $1::vector
-        LIMIT $2
+        SELECT c.document_id, c.page_start, c.page_end, c.text, c.embedding <-> $1::vector AS distance
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        WHERE c.embedding IS NOT NULL AND d.owner_id = $2
+        ORDER BY c.embedding <-> $1::vector
+        LIMIT $3
       `,
-      [vectorParam, safeLimit]
+      [vectorParam, ownerFilter, safeLimit]
     );
 
     return rows.map((row) => ({
