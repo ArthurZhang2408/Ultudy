@@ -9,7 +9,11 @@
     "test": "EMBEDDINGS_PROVIDER=mock node --test",
     "check:pgvector": "node scripts/check-ivfflat-support.js",
     "migrate": "node-pg-migrate -m db/migrations -d $DATABASE_URL up",
-    "migrate:down": "node-pg-migrate -m db/migrations -d $DATABASE_URL down"
+    "migrate:down": "node-pg-migrate -m db/migrations -d $DATABASE_URL down",
+    "migrate:pg": "PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres PGPORT=5432 PGDATABASE=study_app npx node-pg-migrate -m db/migrations up",
+    "migrate:down:pg": "PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres PGPORT=5432 PGDATABASE=study_app npx node-pg-migrate -m db/migrations down",
+    "dev:with-migrate": "PGHOST=localhost PGUSER=postgres PGPASSWORD=postgres PGPORT=5432 PGDATABASE=study_app npx node-pg-migrate -m db/migrations up && nodemon src/server.js"
+  
   },
   "dependencies": {
     "cors": "^2.8.5",
