@@ -3,6 +3,7 @@ import cors from 'cors';
 import pool, { isDatabaseConfigured } from './db/index.js';
 import createUploadRouter from './routes/upload.js';
 import createSearchRouter from './routes/search.js';
+import createDocumentsRouter from './routes/documents.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -70,6 +71,13 @@ export function createApp(options = {}) {
         pool: activePool,
         searchService: options.searchService,
         embeddingsProviderFactory: options.embeddingsProviderFactory
+      })
+    );
+
+    app.use(
+      '/documents',
+      createDocumentsRouter({
+        pool: activePool
       })
     );
   }

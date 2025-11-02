@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import createPdfIngestionService from '../ingestion/service.js';
+import { getUserId } from '../http/user.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -22,7 +23,8 @@ export default function createUploadRouter(options = {}) {
     }
 
     try {
-      const result = await ingestionService.ingest(req.file.buffer, req.file.originalname);
+      const ownerId = getUserId(req);
+      const result = await ingestionService.ingest(req.file.buffer, req.file.originalname, ownerId);
       res.json({ document_id: result.documentId, pages: result.pageCount, chunks: result.chunkCount });
     } catch (error) {
       console.error('Failed to ingest PDF', error);

@@ -10,6 +10,7 @@ import { formatEmbeddingForInsert } from '../embeddings/utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
+const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
 
 export function createPdfIngestionService(options = {}) {
   const activePool = options.pool ?? pool;
@@ -52,16 +53,19 @@ export function createPdfIngestionService(options = {}) {
     await client.query(query, params);
   }
 
-  async function ingest(fileBuffer, originalName) {
+  async function ingest(fileBuffer, originalName, ownerId) {
     if (!fileBuffer) {
       throw new Error('Missing file buffer for ingestion');
     }
 
     const documentId = randomUUID();
     const safeName = originalName ? originalName.replace(/\s+/g, ' ').trim() : 'Untitled Document';
-    const storagePath = path.join(storageDir, `${documentId}.pdf`);
+    const ownerSegment =
+      typeof ownerId === 'string' && ownerId ? ownerId.toLowerCase() : DEFAULT_OWNER_ID;
+    const ownerDir = path.join(storageDir, ownerSegment);
+    const storagePath = path.join(ownerDir, `${documentId}.pdf`);
 
-    await fs.mkdir(storageDir, { recursive: true });
+    await fs.mkdir(ownerDir, { recursive: true });
     await fs.writeFile(storagePath, fileBuffer);
 
     let pages;
@@ -85,8 +89,8 @@ export function createPdfIngestionService(options = {}) {
     try {
       await client.query('BEGIN');
       await client.query(
-        'INSERT INTO documents (id, title, pages) VALUES ($1, $2, $3)',
-        [documentId, safeName, pageCount]
+        'INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)',
+        [documentId, safeName, pageCount, ownerSegment]
       );
       await persistChunks(client, documentId, chunks, embeddings);
       await client.query('COMMIT');
