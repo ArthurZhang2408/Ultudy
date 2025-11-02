@@ -4,6 +4,14 @@ import { FormEvent, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { useUserId } from '../../lib/useUserId';
 
+type LessonSource = {
+  document_id: string;
+  chunk_id?: string;
+  score?: number;
+  page_start?: number;
+  page_end?: number;
+};
+
 type LessonResponse = {
   topic: string;
   summary: string;
@@ -13,19 +21,23 @@ type LessonResponse = {
     workedSteps: string;
   };
   checkins: string[];
-  sources: Array<{
-    document_id: string;
-    chunk_id: string;
-    score: number;
-  }>;
+  sources: LessonSource[];
 };
+
+type McqSource =
+  | string
+  | {
+      document_id: string;
+      page_start?: number;
+      page_end?: number;
+    };
 
 type McqItem = {
   question: string;
   choices: string[];
   correctIndex: number;
   rationale: string;
-  source?: string;
+  source?: McqSource;
 };
 
 type McqResponse = {
@@ -193,11 +205,29 @@ export default function StudyPage() {
                 <div>
                   <h4 className="font-semibold text-slate-800">Sources</h4>
                   <ul className="mt-2 space-y-1 text-xs text-slate-600">
-                    {lesson.sources.map((source) => (
-                      <li key={source.chunk_id} className="font-mono">
-                        {source.document_id} · {source.chunk_id} · score {source.score.toFixed(3)}
-                      </li>
-                    ))}
+                    {lesson.sources.map((source, index) => {
+                      const parts = [source.document_id];
+
+                      if (source.chunk_id) {
+                        parts.push(`chunk ${source.chunk_id}`);
+                      }
+
+                      if (typeof source.page_start === 'number' || typeof source.page_end === 'number') {
+                        const start = typeof source.page_start === 'number' ? source.page_start : '?';
+                        const end = typeof source.page_end === 'number' ? source.page_end : start;
+                        parts.push(`pages ${start}-${end}`);
+                      }
+
+                      if (typeof source.score === 'number') {
+                        parts.push(`score ${source.score.toFixed(3)}`);
+                      }
+
+                      return (
+                        <li key={source.chunk_id ?? `${source.document_id}-${index}`} className="font-mono">
+                          {parts.join(' · ')}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
@@ -273,7 +303,17 @@ export default function StudyPage() {
                     </p>
                     <p className="text-sm text-slate-600">{item.rationale}</p>
                     {item.source ? (
-                      <p className="text-xs text-slate-500">Source: {item.source}</p>
+                      <p className="text-xs text-slate-500">
+                        Source:{' '}
+                        {typeof item.source === 'string'
+                          ? item.source
+                          : `${item.source.document_id} (pages ${
+                              typeof item.source.page_start === 'number' ? item.source.page_start : '?'
+                            }-${
+                              typeof item.source.page_end === 'number' ? item.source.page_end :
+                              typeof item.source.page_start === 'number' ? item.source.page_start : '?'
+                            })`}
+                      </p>
                     ) : null}
                   </li>
                 ))}
