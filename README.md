@@ -34,7 +34,18 @@ npm run dev
 # check: curl http://localhost:3001/db/health
 ```
 
+```bash
+# Upload a PDF (stored under backend/storage/<uuid>.pdf)
+curl -F file=@/path/to/file.pdf http://localhost:3001/upload/pdf
+# Search across embedded chunks
+curl "http://localhost:3001/search?q=Fourier%20transform"
+```
+
 The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.
+
+### Embeddings provider configuration
+- `EMBEDDINGS_PROVIDER=mock` (default) generates deterministic pseudo-embeddings for local development and automated tests. No external services are required.
+- To switch to OpenAI embeddings locally, set `EMBEDDINGS_PROVIDER=openai` and supply an `OPENAI_API_KEY` in `backend/.env`, then restart the backend server. The code path is stubbed so CI never invokes the OpenAI API.
 
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.

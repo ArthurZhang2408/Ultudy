@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import pool, { isDatabaseConfigured } from './db/index.js';
+import createUploadRouter from './routes/upload.js';
+import createSearchRouter from './routes/search.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -47,6 +49,30 @@ export function createApp(options = {}) {
       res.status(500).json({ ok: false });
     }
   });
+
+  if (activePool) {
+    app.use(
+      '/upload',
+      createUploadRouter({
+        pool: activePool,
+        ingestionService: options.ingestionService,
+        storageDir: options.storageDir,
+        extractText: options.extractText,
+        chunker: options.chunker,
+        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        extractOptions: options.extractOptions
+      })
+    );
+
+    app.use(
+      '/search',
+      createSearchRouter({
+        pool: activePool,
+        searchService: options.searchService,
+        embeddingsProviderFactory: options.embeddingsProviderFactory
+      })
+    );
+  }
 
   return app;
 }
