@@ -4,6 +4,7 @@ import pool, { isDatabaseConfigured } from './db/index.js';
 import createUploadRouter from './routes/upload.js';
 import createSearchRouter from './routes/search.js';
 import createDocumentsRouter from './routes/documents.js';
+import createStudyRouter from './routes/study.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -78,6 +79,16 @@ export function createApp(options = {}) {
       '/documents',
       createDocumentsRouter({
         pool: activePool
+      })
+    );
+
+    app.use(
+      createStudyRouter({
+        pool: activePool,
+        searchService: options.searchService,
+        studyService: options.studyService,
+        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        llmProviderFactory: options.llmProviderFactory
       })
     );
   }

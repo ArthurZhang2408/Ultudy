@@ -12,7 +12,7 @@ export function createSearchService(options = {}) {
     throw new Error('Database pool is required for search');
   }
 
-  async function search(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
+  async function performVectorSearch(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
     if (!query || !query.trim()) {
       return [];
     }
@@ -41,12 +41,28 @@ export function createSearchService(options = {}) {
       document_id: row.document_id,
       page_start: row.page_start,
       page_end: row.page_end,
-      excerpt: row.text.length > 400 ? `${row.text.slice(0, 400)}…` : row.text,
-      score: Number.parseFloat(row.distance)
+      text: row.text,
+      distance: Number.parseFloat(row.distance)
     }));
   }
 
-  return { search };
+  async function search(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
+    const rows = await performVectorSearch(query, limit, ownerId);
+
+    return rows.map((row) => ({
+      document_id: row.document_id,
+      page_start: row.page_start,
+      page_end: row.page_end,
+      excerpt: row.text.length > 400 ? `${row.text.slice(0, 400)}…` : row.text,
+      score: row.distance
+    }));
+  }
+
+  async function searchChunks(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
+    return performVectorSearch(query, limit, ownerId);
+  }
+
+  return { search, searchChunks };
 }
 
 export default createSearchService;
