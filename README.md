@@ -61,9 +61,26 @@ curl -H "X-User-Id: $U2" "http://localhost:3001/search?q=introduction&k=5"
 
 The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.
 
+### Study endpoints
+Turn retrieved chunks into lessons or multiple-choice practice scoped to the requesting user. The mock LLM provider is enabled by default so responses are deterministic in development.
+
+```bash
+# Lesson (scoped to user)
+U=00000000-0000-0000-0000-000000000001
+curl -s -H "X-User-Id: $U" -H "Content-Type: application/json" \
+  -d '{"query":"Fourier transform basics","k":6}' \
+  http://localhost:3001/study/lesson | jq .
+
+# MCQs
+curl -s -H "X-User-Id: $U" -H "Content-Type: application/json" \
+  -d '{"topic":"signals","n":5,"difficulty":"med"}' \
+  http://localhost:3001/practice/mcq | jq .
+```
+
 ### Embeddings provider configuration
 - `EMBEDDINGS_PROVIDER=mock` (default) generates deterministic pseudo-embeddings for local development and automated tests. No external services are required.
 - To switch to OpenAI embeddings locally, set `EMBEDDINGS_PROVIDER=openai` and supply an `OPENAI_API_KEY` in `backend/.env`, then restart the backend server. The code path is stubbed so CI never invokes the OpenAI API.
+- `LLM_PROVIDER=mock` (default) keeps lesson and MCQ generation offline. Set `LLM_PROVIDER=openai` with a valid `OPENAI_API_KEY` to enable OpenAI-powered outputs outside CI.
 
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
