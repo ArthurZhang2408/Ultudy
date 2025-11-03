@@ -18,7 +18,12 @@ export function createApp(options = {}) {
     ? options.isDatabaseConfigured
     : isDatabaseConfigured;
 
-  app.use(cors());
+  const corsMiddleware = cors({
+    origin: true,
+    credentials: false
+  });
+  app.use(corsMiddleware);
+  app.options('*', corsMiddleware);
   app.use(express.json());
 
   if (!databaseConfigured) {

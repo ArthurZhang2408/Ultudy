@@ -77,6 +77,41 @@ curl -s -H "X-User-Id: $U" -H "Content-Type: application/json" \
   http://localhost:3001/practice/mcq | jq .
 ```
 
+### Frontend MVP
+
+The Milestone 5 frontend lives in [`frontend/`](./frontend) and provides upload, search, and study flows against the existing backend APIs.
+
+#### Prerequisites
+
+- Node.js 20+
+- Backend running locally at `http://localhost:3001`
+
+#### Setup & development server
+
+```bash
+cd frontend
+cp -n .env.local.example .env.local
+# (optional) adjust NEXT_PUBLIC_BACKEND_URL to match your backend origin
+npm ci
+npm run dev
+# visit http://localhost:3000
+```
+
+When the dev server loads:
+
+1. Enter a UUID in the header bar and press **Save**. This value is stored in `localStorage` and sent as the `X-User-Id` header on every request (defaults to the shared dev user ID).
+2. Use the navigation links to upload PDFs, run searches, and generate lessons or MCQs. Responses display inline as structured text.
+
+> **Upload size limit:** the frontend respects the backend's `multer` configuration. Large PDFs above the backend limit will fail with a 413 response.
+
+#### Building for production
+
+```bash
+cd frontend
+npm run typecheck
+npm run build
+```
+
 ### Embeddings provider configuration
 - `EMBEDDINGS_PROVIDER=mock` (default) generates deterministic pseudo-embeddings for local development and automated tests. No external services are required.
 - To switch to OpenAI embeddings locally, set `EMBEDDINGS_PROVIDER=openai` and supply an `OPENAI_API_KEY` in `backend/.env`, then restart the backend server. The code path is stubbed so CI never invokes the OpenAI API.
