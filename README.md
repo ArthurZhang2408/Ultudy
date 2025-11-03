@@ -5,8 +5,7 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 - **Practice** — MCQs with hints and rationales
 - **Review** — flashcards with spaced repetition (SM‑2)
 
-## Quick Links
-- 📜 Project spec & roadmap: [`task.md`](./task.md)
+- 🔐 Authentication setup: [`CLERK_SETUP.md`](./CLERK_SETUP.md)
 - 🧭 High-level milestones: [`milestone.md`](./milestone.md)
 
 ## MVP Tech

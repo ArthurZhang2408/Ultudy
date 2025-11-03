@@ -1,29 +1,72 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import UserIdBar from '../components/UserIdBar';
-import { UserIdProvider } from '../lib/useUserId';
+import Link from 'next/link';
+import {
+  ClerkProvider,
+  SignInButton,
+  SignUpButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from '@clerk/nextjs';
 
 export const metadata: Metadata = {
-  title: 'Ultudy — Frontend MVP',
-  description: 'Upload, search, and study your documents.'
+  title: 'Ultudy — AI Study Guide',
+  description: 'Upload, search, and study your documents with AI-powered learning tools.'
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-slate-50">
-        <UserIdProvider>
+    <ClerkProvider>
+      <html lang="en">
+        <body className="min-h-screen bg-slate-50">
           <div className="flex min-h-screen flex-col">
-            <header className="border-b border-slate-200 shadow-sm">
-              <UserIdBar />
+            <header className="border-b border-slate-200 bg-white shadow-sm">
+              <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
+                <div className="flex items-center gap-6">
+                  <Link href="/" className="text-xl font-bold text-slate-900">
+                    Ultudy
+                  </Link>
+                  <nav className="hidden gap-4 md:flex">
+                    <SignedIn>
+                      <Link href="/upload" className="text-sm text-slate-600 hover:text-slate-900">
+                        Upload
+                      </Link>
+                      <Link href="/search" className="text-sm text-slate-600 hover:text-slate-900">
+                        Search
+                      </Link>
+                      <Link href="/study" className="text-sm text-slate-600 hover:text-slate-900">
+                        Study
+                      </Link>
+                    </SignedIn>
+                  </nav>
+                </div>
+                <div className="flex items-center gap-3">
+                  <SignedOut>
+                    <SignInButton mode="modal">
+                      <button className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        Sign in
+                      </button>
+                    </SignInButton>
+                    <SignUpButton mode="modal">
+                      <button className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                        Sign up
+                      </button>
+                    </SignUpButton>
+                  </SignedOut>
+                  <SignedIn>
+                    <UserButton />
+                  </SignedIn>
+                </div>
+              </div>
             </header>
             <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
             <footer className="border-t border-slate-200 bg-white py-4 text-center text-sm text-slate-500">
-              Built for Milestone 5 Frontend MVP.
+              Powered by AI • Secured with Clerk
             </footer>
           </div>
-        </UserIdProvider>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

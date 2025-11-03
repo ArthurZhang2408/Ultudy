@@ -21,14 +21,22 @@ function parseErrorMessage(payload: unknown, status: number) {
   return `Request failed with status ${status}`;
 }
 
+/**
+ * API client that uses Clerk authentication tokens
+ * @param path - API endpoint path
+ * @param init - Fetch options
+ * @param token - Optional Clerk session token (JWT). If not provided, request is unauthenticated.
+ */
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {},
-  userId: string
+  token?: string | null
 ): Promise<T> {
   const headers = new Headers(init.headers || undefined);
-  if (userId) {
-    headers.set('X-User-Id', userId);
+
+  // Add Authorization header with Bearer token if available
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
 
   const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
