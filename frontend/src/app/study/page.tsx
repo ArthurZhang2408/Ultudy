@@ -12,6 +12,13 @@ type LessonSource = {
   page_end?: number;
 };
 
+type LessonCheckin =
+  | string
+  | {
+      question: string;
+      answer?: string;
+    };
+
 type LessonResponse = {
   topic: string;
   summary: string;
@@ -20,7 +27,7 @@ type LessonResponse = {
     setup: string;
     workedSteps: string;
   };
-  checkins: string[];
+  checkins: LessonCheckin[];
   sources: LessonSource[];
 };
 
@@ -194,10 +201,25 @@ export default function StudyPage() {
               {lesson.checkins?.length ? (
                 <div>
                   <h4 className="font-semibold text-slate-800">Check-ins</h4>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                    {lesson.checkins.map((checkin, index) => (
-                      <li key={`${checkin}-${index}`}>{checkin}</li>
-                    ))}
+                  <ul className="mt-2 space-y-2 pl-5 text-sm text-slate-700">
+                    {lesson.checkins.map((checkin, index) => {
+                      if (typeof checkin === 'string') {
+                        return (
+                          <li key={`${checkin}-${index}`} className="list-disc">
+                            {checkin}
+                          </li>
+                        );
+                      }
+
+                      return (
+                        <li key={`${checkin.question}-${index}`} className="list-disc space-y-1">
+                          <p className="font-medium text-slate-800">{checkin.question}</p>
+                          {checkin.answer ? (
+                            <p className="text-slate-600">{checkin.answer}</p>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
