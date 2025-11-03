@@ -1,6 +1,6 @@
 import express from 'express';
 import createSearchService from '../search/service.js';
-import { getUserId } from '../http/user.js';
+import { createTenantHelpers } from '../db/tenant.js';
 
 export default function createSearchRouter(options = {}) {
   const router = express.Router();
@@ -8,6 +8,12 @@ export default function createSearchRouter(options = {}) {
     pool: options.pool,
     embeddingsProviderFactory: options.embeddingsProviderFactory
   });
+  const tenantHelpers = options.tenantHelpers ||
+    (options.pool ? createTenantHelpers(options.pool) : null);
+
+  if (!tenantHelpers) {
+    throw new Error('Tenant helpers are required for search routes');
+  }
 
   router.get('/', async (req, res) => {
     const { q, k } = req.query;
@@ -17,9 +23,13 @@ export default function createSearchRouter(options = {}) {
       return;
     }
 
+    const ownerId = req.userId;
+
     try {
-      const ownerId = getUserId(req);
-      const results = await searchService.search(String(q), k ? Number(k) : undefined, ownerId);
+      const limit = k ? Number(k) : undefined;
+      const results = await tenantHelpers.withTenant(ownerId, (client) =>
+        searchService.search(String(q), limit, ownerId, client)
+      );
       res.json(results);
     } catch (error) {
       console.error('Search failed', error);

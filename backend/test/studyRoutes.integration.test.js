@@ -6,35 +6,39 @@ import { createApp } from '../src/app.js';
 import { createMemoryPool } from './utils/memoryPool.js';
 import { getEmbeddingsProvider } from '../src/embeddings/provider.js';
 import { formatEmbeddingForInsert } from '../src/embeddings/utils.js';
+import { createTenantHelpers } from '../src/db/tenant.js';
 
 const USER_ONE = '00000000-0000-0000-0000-000000000001';
 const USER_TWO = '00000000-0000-0000-0000-000000000002';
 
-async function seedDocument(pool, provider, ownerId, text, options = {}) {
+async function seedDocument(pool, tenantHelpers, provider, ownerId, text, options = {}) {
   const documentId = options.documentId || randomUUID();
   const title = options.title || 'Seed Document';
   const pages = options.pages || 5;
   const embedding = await provider.embedDocuments([text]);
   const vector = formatEmbeddingForInsert(embedding[0]);
 
-  await pool.query('INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)', [
-    documentId,
-    title,
-    pages,
-    ownerId
-  ]);
-
-  await pool.query(
-    'INSERT INTO chunks (document_id, page_start, page_end, text, token_count, embedding) VALUES ($1, $2, $3, $4, $5, $6::vector)',
-    [
+  await tenantHelpers.withTenant(ownerId, async (client) => {
+    await client.query('INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)', [
       documentId,
-      options.pageStart || 1,
-      options.pageEnd || 2,
-      text,
-      text.split(/\s+/).length,
-      vector
-    ]
-  );
+      title,
+      pages,
+      ownerId
+    ]);
+
+    await client.query(
+      'INSERT INTO chunks (document_id, page_start, page_end, text, token_count, embedding, owner_id) VALUES ($1, $2, $3, $4, $5, $6::vector, $7)',
+      [
+        documentId,
+        options.pageStart || 1,
+        options.pageEnd || 2,
+        text,
+        text.split(/\s+/).length,
+        vector,
+        ownerId
+      ]
+    );
+  });
 
   return documentId;
 }
@@ -43,20 +47,24 @@ describe('study endpoints', () => {
   beforeEach(() => {
     process.env.EMBEDDINGS_PROVIDER = 'mock';
     process.env.LLM_PROVIDER = 'mock';
+    process.env.AUTH_MODE = 'dev';
   });
 
   it('builds lessons scoped per user', async () => {
     const pool = createMemoryPool();
+    const tenantHelpers = createTenantHelpers(pool);
     const provider = await getEmbeddingsProvider();
 
     const docOne = await seedDocument(
       pool,
+      tenantHelpers,
       provider,
       USER_ONE,
       'Laplace transforms capture exponential responses and stabilize circuit analysis.'
     );
     await seedDocument(
       pool,
+      tenantHelpers,
       provider,
       USER_TWO,
       'Photosynthesis converts light energy into chemical energy within plant cells.'
@@ -86,16 +94,19 @@ describe('study endpoints', () => {
 
   it('generates MCQs scoped per user', async () => {
     const pool = createMemoryPool();
+    const tenantHelpers = createTenantHelpers(pool);
     const provider = await getEmbeddingsProvider();
 
     const docOne = await seedDocument(
       pool,
+      tenantHelpers,
       provider,
       USER_ONE,
       'Eigenvalues identify stretching factors for linear transformations and stability.'
     );
     await seedDocument(
       pool,
+      tenantHelpers,
       provider,
       USER_TWO,
       'In ecology, trophic levels describe energy transfer between organisms.'

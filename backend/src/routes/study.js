@@ -1,7 +1,7 @@
 import express from 'express';
 import createSearchService from '../search/service.js';
 import createStudyService from '../study/service.js';
-import { getUserId } from '../http/user.js';
+import { createTenantHelpers } from '../db/tenant.js';
 
 const DEFAULT_LESSON_K = 6;
 const DEFAULT_MCQ_COUNT = 5;
@@ -45,6 +45,12 @@ export default function createStudyRouter(options = {}) {
     createStudyService({
       llmProviderFactory: options.llmProviderFactory
     });
+  const tenantHelpers = options.tenantHelpers ||
+    (options.pool ? createTenantHelpers(options.pool) : null);
+
+  if (!tenantHelpers) {
+    throw new Error('Tenant helpers are required for study routes');
+  }
 
   router.post('/study/lesson', async (req, res) => {
     const { topic, query, k } = req.body || {};
@@ -56,10 +62,12 @@ export default function createStudyRouter(options = {}) {
     }
 
     const limit = normalizeLimit(k, DEFAULT_LESSON_K);
-    const ownerId = getUserId(req);
+    const ownerId = req.userId;
 
     try {
-      const chunks = await searchService.searchChunks(searchText, limit, ownerId);
+      const chunks = await tenantHelpers.withTenant(ownerId, (client) =>
+        searchService.searchChunks(searchText, limit, ownerId, client)
+      );
       const lesson = await studyService.buildLesson(chunks, { topic, query: searchText });
       res.json(lesson);
     } catch (error) {
@@ -78,12 +86,14 @@ export default function createStudyRouter(options = {}) {
 
     const safeTopic = typeof topic === 'string' && topic.trim() ? topic.trim() : null;
     const searchText = safeTopic || 'study practice';
-    const ownerId = getUserId(req);
+    const ownerId = req.userId;
     const questionCount = normalizeLimit(n, DEFAULT_MCQ_COUNT, 20);
     const chunkLimit = normalizeLimit(Math.max(questionCount, DEFAULT_LESSON_K), DEFAULT_LESSON_K);
 
     try {
-      const chunks = await searchService.searchChunks(searchText, chunkLimit, ownerId);
+      const chunks = await tenantHelpers.withTenant(ownerId, (client) =>
+        searchService.searchChunks(searchText, chunkLimit, ownerId, client)
+      );
       const annotatedChunks = mapChunksWithTopic(chunks, safeTopic || 'practice focus');
       const result = await studyService.makeMCQs(annotatedChunks, questionCount, difficulty || 'med');
       res.json(result);
