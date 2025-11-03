@@ -52,6 +52,7 @@ export default function createStudyRouter(options = {}) {
     throw new Error('Tenant helpers are required for study routes');
   }
 
+  // Legacy RAG-based lesson endpoint (keep for backward compatibility)
   router.post('/study/lesson', async (req, res) => {
     const { topic, query, k } = req.body || {};
     const searchText = ensureSearchText(topic, query);
@@ -73,6 +74,59 @@ export default function createStudyRouter(options = {}) {
     } catch (error) {
       console.error('Failed to build lesson', error);
       res.status(500).json({ error: 'Failed to build lesson' });
+    }
+  });
+
+  // MVP v1.0: Full-context lesson generation from document
+  router.post('/lessons/generate', async (req, res) => {
+    const { document_id, chapter, include_check_ins = true } = req.body || {};
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const lesson = await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Load full document text
+        const { rows } = await client.query(
+          `
+            SELECT id, title, full_text, material_type, chapter as doc_chapter
+            FROM documents
+            WHERE id = $1 AND owner_id = $2
+          `,
+          [document_id, ownerId]
+        );
+
+        if (rows.length === 0) {
+          return null;
+        }
+
+        const document = rows[0];
+
+        if (!document.full_text) {
+          throw new Error('Document does not have full text extracted');
+        }
+
+        // Generate lesson from full document text
+        return studyService.buildFullContextLesson(document, {
+          chapter: chapter || document.doc_chapter,
+          include_check_ins
+        });
+      });
+
+      if (!lesson) {
+        return res.status(404).json({
+          error: 'Document not found or you do not have permission to access it'
+        });
+      }
+
+      res.json(lesson);
+    } catch (error) {
+      console.error('Failed to generate lesson from document', error);
+      res.status(500).json({
+        error: error?.message || 'Failed to generate lesson from document'
+      });
     }
   });
 

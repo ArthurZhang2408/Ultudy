@@ -128,13 +128,17 @@ export function createMemoryPool() {
         return { rows };
       }
 
-      if (normalized.startsWith('SELECT id, title, pages, created_at FROM documents WHERE owner_id')) {
+      if (normalized.startsWith('SELECT id, title, pages, created_at FROM documents WHERE owner_id') ||
+          normalized.startsWith('SELECT id, title, pages, created_at, material_type, chapter, user_tags FROM documents WHERE owner_id')) {
         const ownerId = params[0];
         const rows = filterByTenant(Array.from(documents.values()), state, ownerId).map((doc) => ({
           id: doc.id,
           title: doc.title,
           pages: doc.pages,
-          created_at: doc.created_at
+          created_at: doc.created_at,
+          material_type: doc.material_type || null,
+          chapter: doc.chapter || null,
+          user_tags: doc.user_tags || []
         }));
 
         return { rows };

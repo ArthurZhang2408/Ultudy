@@ -11,7 +11,7 @@ import { formatEmbeddingForInsert } from '../embeddings/utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
-const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_OWNER_ID = 'dev-user-001';
 
 export function createPdfIngestionService(options = {}) {
   const activePool = options.pool ?? pool;
@@ -90,6 +90,8 @@ export function createPdfIngestionService(options = {}) {
     }
 
     const pageCount = pages.length;
+    // Extract full text from all pages for MVP v1.0
+    const fullText = pages.map((p) => p.text).join('\n\n');
     const chunks = chunker(pages);
     const embeddingsProvider = await embeddingsProviderFactory();
     const embedStart = Date.now();
@@ -107,14 +109,14 @@ export function createPdfIngestionService(options = {}) {
           : 0;
 
     console.info(
-      `[ingest] provider=${embeddingsProvider?.name || 'unknown'} file="${safeName}" chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms`
+      `[ingest] provider=${embeddingsProvider?.name || 'unknown'} file="${safeName}" chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms fullText=${fullText.length}chars`
     );
 
     try {
       await tenantHelpers.withTenant(ownerSegment, async (client) => {
         await client.query(
-          'INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)',
-          [documentId, safeName, pageCount, ownerSegment]
+          'INSERT INTO documents (id, title, pages, owner_id, full_text) VALUES ($1, $2, $3, $4, $5)',
+          [documentId, safeName, pageCount, ownerSegment, fullText]
         );
         await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
       });
