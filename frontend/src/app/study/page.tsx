@@ -1,7 +1,6 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '../../lib/api';
 
 type LessonSource = {
@@ -54,7 +53,6 @@ type McqResponse = {
 };
 
 export default function StudyPage() {
-  const { getToken } = useAuth();
   const [lessonParams, setLessonParams] = useState({ query: '', k: '6' });
   const [lesson, setLesson] = useState<LessonResponse | null>(null);
   const [lessonError, setLessonError] = useState<string | null>(null);
@@ -78,17 +76,15 @@ export default function StudyPage() {
     setLessonError(null);
 
     try {
-      const token = await getToken();
       const payload = await apiFetch<LessonResponse>(
-        '/study/lesson',
+        '/api/study/lesson',
         {
           method: 'POST',
           body: JSON.stringify({
             query: lessonParams.query.trim(),
             k: Number.parseInt(lessonParams.k, 10) || undefined
           })
-        },
-        token
+        }
       );
       setLesson(payload);
     } catch (error) {
@@ -112,9 +108,8 @@ export default function StudyPage() {
     setMcqError(null);
 
     try {
-      const token = await getToken();
       const payload = await apiFetch<McqResponse>(
-        '/practice/mcq',
+        '/api/study/mcq',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -122,8 +117,7 @@ export default function StudyPage() {
             n: Number.parseInt(mcqParams.n, 10) || undefined,
             difficulty: mcqParams.difficulty
           })
-        },
-        token
+        }
       );
       setMcq(payload);
     } catch (error) {
