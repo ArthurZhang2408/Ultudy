@@ -16,6 +16,7 @@ export function createStudyService(options = {}) {
     const limitedChunks = Array.isArray(chunks) ? chunks.slice(0, 12) : [];
     return provider.generateLesson({
       chunks: limitedChunks,
+      hits: limitedChunks,
       topic: context.topic,
       query: context.query
     });
@@ -27,6 +28,7 @@ export function createStudyService(options = {}) {
     const safeCount = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 20) : 5;
     return provider.generateMCQs({
       chunks: limitedChunks,
+      hits: limitedChunks,
       n: safeCount,
       difficulty
     });

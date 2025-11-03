@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 
 const DEFAULT_DIMENSIONS = 3072;
 
+let cachedProvider = null;
+let cachedProviderName = null;
+
 function mulberry32(seed) {
   let t = seed;
   return function next() {
@@ -67,14 +70,61 @@ async function createOpenAIProvider() {
   };
 }
 
-export async function getEmbeddingsProvider() {
-  const provider = (process.env.EMBEDDINGS_PROVIDER || 'mock').toLowerCase();
+async function createGeminiProvider() {
+  const { default: createGeminiEmbeddingsProvider } = await import('./providers/gemini.js');
+  return createGeminiEmbeddingsProvider();
+}
 
-  if (provider === 'openai') {
-    return createOpenAIProvider();
+function ensureGeminiConfiguration() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey && !process.env.CI) {
+    throw new Error('GEMINI_API_KEY is required when EMBEDDINGS_PROVIDER=gemini');
   }
 
-  return createMockProvider();
+  const dimRaw = process.env.GEMINI_EMBED_DIM;
+  if (dimRaw !== undefined) {
+    const parsed = Number.parseInt(dimRaw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error('GEMINI_EMBED_DIM must be a positive integer');
+    }
+  }
+}
+
+export async function getEmbeddingsProvider() {
+  const providerName = (process.env.EMBEDDINGS_PROVIDER || 'mock').toLowerCase();
+
+  if (cachedProvider && cachedProviderName === providerName) {
+    return cachedProvider;
+  }
+
+  if (providerName === 'openai') {
+    cachedProvider = await createOpenAIProvider();
+    cachedProviderName = providerName;
+    return cachedProvider;
+  }
+
+  if (providerName === 'gemini') {
+    ensureGeminiConfiguration();
+    cachedProvider = await createGeminiProvider();
+    cachedProviderName = providerName;
+    return cachedProvider;
+  }
+
+  cachedProvider = createMockProvider();
+  cachedProviderName = providerName;
+  return cachedProvider;
+}
+
+export function validateEmbeddingsProviderConfig() {
+  const providerName = (process.env.EMBEDDINGS_PROVIDER || 'mock').toLowerCase();
+  if (providerName === 'gemini') {
+    ensureGeminiConfiguration();
+  }
+}
+
+export function resetEmbeddingsProviderCache() {
+  cachedProvider = null;
+  cachedProviderName = null;
 }
 
 export default getEmbeddingsProvider;

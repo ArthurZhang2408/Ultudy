@@ -12,7 +12,7 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 - **Frontend:** React / Next.js
 - **Backend:** Node.js / Express
 - **Database:** PostgreSQL + pgvector
-- **AI:** OpenAI Responses + Embeddings
+- **AI:** Google Gemini (embeddings + lessons/MCQs) with optional OpenAI fallbacks
 
 ## Getting Started
 > This section will be filled in Milestone 1 when we scaffold the apps.
@@ -126,8 +126,30 @@ npm run build
 
 ### Embeddings provider configuration
 - `EMBEDDINGS_PROVIDER=mock` (default) generates deterministic pseudo-embeddings for local development and automated tests. No external services are required.
+- `EMBEDDINGS_PROVIDER=gemini` enables Google Gemini embeddings (`gemini-embedding-001`) at 3072 dimensions. Provide `GEMINI_API_KEY`, optionally override `GEMINI_EMBED_MODEL`, and ensure `GEMINI_EMBED_DIM` matches the pgvector column size. Gemini embeddings are unit-normalized, so cosine/L2 search works without additional scaling. Run `GET /admin/embed-probe` to confirm connectivity (`curl http://localhost:3001/admin/embed-probe`).
 - To switch to OpenAI embeddings locally, set `EMBEDDINGS_PROVIDER=openai` and supply an `OPENAI_API_KEY` in `backend/.env`, then restart the backend server. The code path is stubbed so CI never invokes the OpenAI API.
-- `LLM_PROVIDER=mock` (default) keeps lesson and MCQ generation offline. Set `LLM_PROVIDER=openai` with a valid `OPENAI_API_KEY` to enable OpenAI-powered outputs outside CI.
+- `LLM_PROVIDER=mock` (default) keeps lesson and MCQ generation offline. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY` + optional `GEMINI_GEN_MODEL`) for Gemini-powered lessons/MCQs, or `LLM_PROVIDER=openai` with a valid `OPENAI_API_KEY` to enable OpenAI outputs.
+
+### Gemini setup
+
+1. Visit [Google AI Studio](https://aistudio.google.com/) and create an API key. Paste it into `backend/.env` as `GEMINI_API_KEY` (the backend exits early at boot if the key is missing outside CI).
+2. Optional overrides:
+   - `GEMINI_EMBED_MODEL` (default `gemini-embedding-001`)
+   - `GEMINI_EMBED_DIM` (default `3072`; must match the `chunks.embedding` column definition)
+   - `GEMINI_GEN_MODEL` (default `gemini-1.5-flash`; `gemini-1.5-pro` works as long as the account has access)
+3. Restart the backend and verify the probe endpoint:
+
+```bash
+curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" http://localhost:3001/admin/embed-probe | jq
+```
+
+Gemini embeddings are returned in 3072-dimensional, L2-normalized vectors. If you later decide to shrink the dimensionality (e.g., 1536 or 768) set `GEMINI_EMBED_DIM` and `outputDimensionality` accordingly and run a Postgres migration to resize the `vector` column.
+
+**Rate limits & troubleshooting**
+
+- Free-tier keys enforce per-minute quotas. The embedding client retries with exponential backoff on HTTP 429/5xx errors; sustained throttling surfaces as a 5xx error to the caller.
+- A `401`/`403` response typically means the API key is invalid or lacks access to the requested model—double check the AI Studio project and regenerate the key if needed.
+- A `dimension mismatch` error means the API returned a vector with a different length than `GEMINI_EMBED_DIM`; confirm the env var, pgvector column definition, and any `outputDimensionality` overrides.
 
 ## Contributing / Workflow
 This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
