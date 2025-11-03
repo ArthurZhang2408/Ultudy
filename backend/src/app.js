@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import pool, { isDatabaseConfigured } from './db/index.js';
+import { getEmbeddingsProvider } from './embeddings/provider.js';
 import { requireUser } from './auth/middleware.js';
 import { createTenantHelpers } from './db/tenant.js';
 import createUploadRouter from './routes/upload.js';
@@ -12,6 +13,8 @@ export function createApp(options = {}) {
   const app = express();
   const hasCustomPool = Object.prototype.hasOwnProperty.call(options, 'pool');
   const activePool = hasCustomPool ? options.pool : pool;
+  const embeddingsProviderFactory =
+    options.embeddingsProviderFactory ?? getEmbeddingsProvider;
   const hasCustomConfigured = Object.prototype.hasOwnProperty.call(
     options,
     'isDatabaseConfigured'
@@ -73,7 +76,7 @@ export function createApp(options = {}) {
         storageDir: options.storageDir,
         extractText: options.extractText,
         chunker: options.chunker,
-        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        embeddingsProviderFactory,
         extractOptions: options.extractOptions,
         tenantHelpers
       })
@@ -84,7 +87,7 @@ export function createApp(options = {}) {
       createSearchRouter({
         pool: activePool,
         searchService: options.searchService,
-        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        embeddingsProviderFactory,
         tenantHelpers
       })
     );
@@ -102,11 +105,42 @@ export function createApp(options = {}) {
         pool: activePool,
         searchService: options.searchService,
         studyService: options.studyService,
-        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        embeddingsProviderFactory,
         llmProviderFactory: options.llmProviderFactory,
         tenantHelpers
       })
     );
+
+    app.get('/admin/embed-probe', async (req, res) => {
+      const providerName = (process.env.EMBEDDINGS_PROVIDER || 'mock').toLowerCase();
+      const modelName =
+        providerName === 'gemini'
+          ? process.env.GEMINI_EMBED_MODEL || 'gemini-embedding-001'
+          : providerName === 'openai'
+            ? 'text-embedding-3-large'
+            : 'mock';
+
+      try {
+        const provider = await embeddingsProviderFactory();
+        const [vector] = await provider.embedDocuments(['health check probe']);
+        const dimension = typeof vector?.length === 'number' ? vector.length : null;
+
+        res.json({
+          provider: provider.name || providerName,
+          model: modelName,
+          dim: dimension,
+          ok: true
+        });
+      } catch (error) {
+        console.error('Embedding probe failed', error);
+        res.status(500).json({
+          provider: providerName,
+          model: modelName,
+          ok: false,
+          error: error?.message || 'Failed to execute embedding probe'
+        });
+      }
+    });
   }
 
   return app;

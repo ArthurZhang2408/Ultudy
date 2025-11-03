@@ -92,9 +92,23 @@ export function createPdfIngestionService(options = {}) {
     const pageCount = pages.length;
     const chunks = chunker(pages);
     const embeddingsProvider = await embeddingsProviderFactory();
+    const embedStart = Date.now();
     const embeddings = chunks.length
       ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
       : [];
+    const embedDuration = Date.now() - embedStart;
+    const sampleVector = embeddings[0];
+    const configuredDim = Number.parseInt(process.env.GEMINI_EMBED_DIM || '3072', 10);
+    const dimension =
+      typeof sampleVector?.length === 'number' && Number.isFinite(sampleVector.length)
+        ? sampleVector.length
+        : Number.isFinite(configuredDim) && configuredDim > 0
+          ? configuredDim
+          : 0;
+
+    console.info(
+      `[ingest] provider=${embeddingsProvider?.name || 'unknown'} file="${safeName}" chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms`
+    );
 
     try {
       await tenantHelpers.withTenant(ownerSegment, async (client) => {
