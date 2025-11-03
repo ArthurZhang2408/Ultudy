@@ -4,8 +4,11 @@ const tokenTemplate =
   process.env.CLERK_JWT_TEMPLATE ?? process.env.NEXT_PUBLIC_CLERK_JWT_TEMPLATE;
 
 export async function getBackendToken() {
-  const authState = await auth();
-  const getToken = authState?.getToken;
+  const { userId, getToken } = await auth();
+
+  if (!userId) {
+    return null;
+  }
 
   if (typeof getToken !== 'function') {
     throw new Error('Clerk getToken helper is unavailable in this runtime');

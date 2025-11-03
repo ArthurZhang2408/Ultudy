@@ -4,8 +4,6 @@ import { DEV_USER } from '../http/user.js';
 
 dotenv.config();
 
-const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
 let cachedJwks = null;
 let cachedJwksUrl = null;
 let customJwtVerifier = null;
@@ -95,12 +93,7 @@ export async function requireUser(req, res, next) {
   const header = req.headers?.['x-user-id'];
 
   if (typeof header === 'string' && header.trim().length > 0) {
-    const normalized = header.trim().toLowerCase();
-
-    if (!UUID_REGEX.test(normalized)) {
-      res.status(400).json({ error: 'Invalid X-User-Id header; expected UUID format.' });
-      return;
-    }
+    const normalized = header.trim();
 
     req.userId = normalized;
     next();

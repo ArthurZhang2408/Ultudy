@@ -2,7 +2,7 @@ import pool from '../db/index.js';
 import { getEmbeddingsProvider } from '../embeddings/provider.js';
 import { formatEmbeddingForInsert } from '../embeddings/utils.js';
 
-const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_OWNER_ID = 'dev-user-001';
 
 export function createSearchService(options = {}) {
   const activePool = options.pool ?? pool;
@@ -23,7 +23,7 @@ export function createSearchService(options = {}) {
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 50) : 8;
 
     const ownerFilter =
-      typeof ownerId === 'string' && ownerId ? ownerId.toLowerCase() : DEFAULT_OWNER_ID;
+      typeof ownerId === 'string' && ownerId ? ownerId : DEFAULT_OWNER_ID;
 
     const executor = client ?? activePool;
 

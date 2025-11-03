@@ -73,7 +73,7 @@ export function createPdfIngestionService(options = {}) {
     const documentId = randomUUID();
     const safeName = originalName ? originalName.replace(/\s+/g, ' ').trim() : 'Untitled Document';
     const ownerSegment =
-      typeof ownerId === 'string' && ownerId ? ownerId.toLowerCase() : DEFAULT_OWNER_ID;
+      typeof ownerId === 'string' && ownerId ? ownerId : DEFAULT_OWNER_ID;
     const ownerDir = path.join(storageDir, ownerSegment);
     const storagePath = path.join(ownerDir, `${documentId}.pdf`);
 
