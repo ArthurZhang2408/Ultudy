@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -12,6 +12,10 @@ const USER_ONE = '00000000-0000-0000-0000-000000000001';
 const USER_TWO = '00000000-0000-0000-0000-000000000002';
 
 describe('multi-tenant request scoping', () => {
+  beforeEach(() => {
+    process.env.AUTH_MODE = 'dev';
+  });
+
   it('isolates uploads, search, and listing per user', async () => {
     process.env.EMBEDDINGS_PROVIDER = 'mock';
 

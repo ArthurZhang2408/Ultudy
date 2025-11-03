@@ -12,7 +12,7 @@ export function createSearchService(options = {}) {
     throw new Error('Database pool is required for search');
   }
 
-  async function performVectorSearch(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
+  async function performVectorSearch(query, limit = 8, ownerId = DEFAULT_OWNER_ID, client) {
     if (!query || !query.trim()) {
       return [];
     }
@@ -25,12 +25,17 @@ export function createSearchService(options = {}) {
     const ownerFilter =
       typeof ownerId === 'string' && ownerId ? ownerId.toLowerCase() : DEFAULT_OWNER_ID;
 
-    const { rows } = await activePool.query(
+    const executor = client ?? activePool;
+
+    if (!executor) {
+      throw new Error('Database pool is required for search');
+    }
+
+    const { rows } = await executor.query(
       `
         SELECT c.document_id, c.page_start, c.page_end, c.text, c.embedding <-> $1::vector AS distance
         FROM chunks c
-        JOIN documents d ON d.id = c.document_id
-        WHERE c.embedding IS NOT NULL AND d.owner_id = $2
+        WHERE c.embedding IS NOT NULL AND c.owner_id = $2
         ORDER BY c.embedding <-> $1::vector
         LIMIT $3
       `,
@@ -46,8 +51,8 @@ export function createSearchService(options = {}) {
     }));
   }
 
-  async function search(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
-    const rows = await performVectorSearch(query, limit, ownerId);
+  async function search(query, limit = 8, ownerId = DEFAULT_OWNER_ID, client) {
+    const rows = await performVectorSearch(query, limit, ownerId, client);
 
     return rows.map((row) => ({
       document_id: row.document_id,
@@ -58,8 +63,8 @@ export function createSearchService(options = {}) {
     }));
   }
 
-  async function searchChunks(query, limit = 8, ownerId = DEFAULT_OWNER_ID) {
-    return performVectorSearch(query, limit, ownerId);
+  async function searchChunks(query, limit = 8, ownerId = DEFAULT_OWNER_ID, client) {
+    return performVectorSearch(query, limit, ownerId, client);
   }
 
   return { search, searchChunks };

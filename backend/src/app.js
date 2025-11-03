@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import pool, { isDatabaseConfigured } from './db/index.js';
+import { requireUser } from './auth/middleware.js';
+import { createTenantHelpers } from './db/tenant.js';
 import createUploadRouter from './routes/upload.js';
 import createSearchRouter from './routes/search.js';
 import createDocumentsRouter from './routes/documents.js';
@@ -57,7 +59,12 @@ export function createApp(options = {}) {
     }
   });
 
+  const tenantHelpers = options.tenantHelpers ||
+    (activePool ? createTenantHelpers(activePool) : null);
+
   if (activePool) {
+    app.use(requireUser);
+
     app.use(
       '/upload',
       createUploadRouter({
@@ -67,7 +74,8 @@ export function createApp(options = {}) {
         extractText: options.extractText,
         chunker: options.chunker,
         embeddingsProviderFactory: options.embeddingsProviderFactory,
-        extractOptions: options.extractOptions
+        extractOptions: options.extractOptions,
+        tenantHelpers
       })
     );
 
@@ -76,14 +84,16 @@ export function createApp(options = {}) {
       createSearchRouter({
         pool: activePool,
         searchService: options.searchService,
-        embeddingsProviderFactory: options.embeddingsProviderFactory
+        embeddingsProviderFactory: options.embeddingsProviderFactory,
+        tenantHelpers
       })
     );
 
     app.use(
       '/documents',
       createDocumentsRouter({
-        pool: activePool
+        pool: activePool,
+        tenantHelpers
       })
     );
 
@@ -93,7 +103,8 @@ export function createApp(options = {}) {
         searchService: options.searchService,
         studyService: options.studyService,
         embeddingsProviderFactory: options.embeddingsProviderFactory,
-        llmProviderFactory: options.llmProviderFactory
+        llmProviderFactory: options.llmProviderFactory,
+        tenantHelpers
       })
     );
   }

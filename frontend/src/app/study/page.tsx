@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '../../lib/api';
-import { useUserId } from '../../lib/useUserId';
 
 type LessonSource = {
   document_id: string;
@@ -54,7 +54,7 @@ type McqResponse = {
 };
 
 export default function StudyPage() {
-  const { userId } = useUserId();
+  const { getToken } = useAuth();
   const [lessonParams, setLessonParams] = useState({ query: '', k: '6' });
   const [lesson, setLesson] = useState<LessonResponse | null>(null);
   const [lessonError, setLessonError] = useState<string | null>(null);
@@ -78,6 +78,7 @@ export default function StudyPage() {
     setLessonError(null);
 
     try {
+      const token = await getToken();
       const payload = await apiFetch<LessonResponse>(
         '/study/lesson',
         {
@@ -87,7 +88,7 @@ export default function StudyPage() {
             k: Number.parseInt(lessonParams.k, 10) || undefined
           })
         },
-        userId
+        token
       );
       setLesson(payload);
     } catch (error) {
@@ -111,6 +112,7 @@ export default function StudyPage() {
     setMcqError(null);
 
     try {
+      const token = await getToken();
       const payload = await apiFetch<McqResponse>(
         '/practice/mcq',
         {
@@ -121,7 +123,7 @@ export default function StudyPage() {
             difficulty: mcqParams.difficulty
           })
         },
-        userId
+        token
       );
       setMcq(payload);
     } catch (error) {

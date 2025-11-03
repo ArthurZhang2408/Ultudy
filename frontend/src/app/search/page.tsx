@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '../../lib/api';
-import { useUserId } from '../../lib/useUserId';
 
 type SearchResult = {
   document_id: string;
@@ -14,7 +14,7 @@ type SearchResult = {
 };
 
 export default function SearchPage() {
-  const { userId } = useUserId();
+  const { getToken } = useAuth();
   const [query, setQuery] = useState('');
   const [k, setK] = useState('8');
   const [isSearching, setIsSearching] = useState(false);
@@ -39,9 +39,10 @@ export default function SearchPage() {
     }
 
     try {
+      const token = await getToken();
       const response = await apiFetch<SearchResult[]>(`/search?${params.toString()}`, {
         method: 'GET'
-      }, userId);
+      }, token);
       setResults(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');

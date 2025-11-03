@@ -1,8 +1,8 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
 import { apiFetch } from '../../lib/api';
-import { useUserId } from '../../lib/useUserId';
 
 type UploadResponse = {
   document_id: string;
@@ -11,7 +11,7 @@ type UploadResponse = {
 };
 
 export default function UploadPage() {
-  const { userId } = useUserId();
+  const { getToken } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<UploadResponse | null>(null);
@@ -31,12 +31,13 @@ export default function UploadPage() {
     setResult(null);
 
     try {
+      const token = await getToken();
       const formData = new FormData();
       formData.append('file', file);
       const response = await apiFetch<UploadResponse>('/upload/pdf', {
         method: 'POST',
         body: formData
-      }, userId);
+      }, token);
       setResult(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');

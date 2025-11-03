@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pool from '../db/index.js';
+import { createTenantHelpers } from '../db/tenant.js';
 import { extractTextFromPdf } from './extractor.js';
 import { chunkPages } from './chunker.js';
 import { getEmbeddingsProvider } from '../embeddings/provider.js';
@@ -17,13 +18,21 @@ export function createPdfIngestionService(options = {}) {
   const extractor = options.extractText ?? extractTextFromPdf;
   const chunker = options.chunker ?? chunkPages;
   const storageDir = options.storageDir ?? DEFAULT_STORAGE_DIR;
-  const embeddingsProviderFactory = options.embeddingsProviderFactory ?? getEmbeddingsProvider;
+  const embeddingsProviderFactory =
+    options.embeddingsProviderFactory ?? getEmbeddingsProvider;
 
   if (!activePool) {
     throw new Error('Database pool is required for ingestion');
   }
 
-  async function persistChunks(client, documentId, chunks, embeddings) {
+  const tenantHelpers =
+    options.tenantHelpers ?? (activePool ? createTenantHelpers(activePool) : null);
+
+  if (!tenantHelpers) {
+    throw new Error('Tenant helpers are required for ingestion');
+  }
+
+  async function persistChunks(client, documentId, ownerId, chunks, embeddings) {
     if (!chunks.length) {
       return;
     }
@@ -33,20 +42,23 @@ export function createPdfIngestionService(options = {}) {
     let index = 1;
 
     chunks.forEach((chunk, i) => {
-      values.push(`($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}::vector)`);
+      values.push(
+        `($${index}, $${index + 1}, $${index + 2}, $${index + 3}, $${index + 4}, $${index + 5}::vector, $${index + 6})`
+      );
       params.push(
         documentId,
         chunk.pageStart,
         chunk.pageEnd,
         chunk.text,
         chunk.tokenCount,
-        formatEmbeddingForInsert(embeddings[i])
+        formatEmbeddingForInsert(embeddings[i]),
+        ownerId
       );
-      index += 6;
+      index += 7;
     });
 
     const query = `
-      INSERT INTO chunks (document_id, page_start, page_end, text, token_count, embedding)
+      INSERT INTO chunks (document_id, page_start, page_end, text, token_count, embedding, owner_id)
       VALUES ${values.join(', ')}
     `;
 
@@ -84,23 +96,17 @@ export function createPdfIngestionService(options = {}) {
       ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
       : [];
 
-    const client = await activePool.connect();
-
     try {
-      await client.query('BEGIN');
-      await client.query(
-        'INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)',
-        [documentId, safeName, pageCount, ownerSegment]
-      );
-      await persistChunks(client, documentId, chunks, embeddings);
-      await client.query('COMMIT');
+      await tenantHelpers.withTenant(ownerSegment, async (client) => {
+        await client.query(
+          'INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)',
+          [documentId, safeName, pageCount, ownerSegment]
+        );
+        await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
+      });
     } catch (error) {
-      await client.query('ROLLBACK');
-      await client.query('DELETE FROM documents WHERE id = $1', [documentId]);
       await fs.rm(storagePath, { force: true });
       throw error;
-    } finally {
-      client.release();
     }
 
     return { documentId, pageCount, chunkCount: chunks.length, storagePath };

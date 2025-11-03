@@ -5,8 +5,7 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 - **Practice** — MCQs with hints and rationales
 - **Review** — flashcards with spaced repetition (SM‑2)
 
-## Quick Links
-- 📜 Project spec & roadmap: [`task.md`](./task.md)
+- 🔐 Authentication setup: [`CLERK_SETUP.md`](./CLERK_SETUP.md)
 - 🧭 High-level milestones: [`milestone.md`](./milestone.md)
 
 ## MVP Tech
@@ -41,23 +40,36 @@ curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" -F file=@/path/to/file
 curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" "http://localhost:3001/search?q=Fourier%20transform"
 ```
 
-### Multi-tenant request scoping
-- Requests accept an `X-User-Id` header containing a UUID. The backend scopes uploads, search, and listings to that caller.
-- When the header is omitted, the dev user ID `00000000-0000-0000-0000-000000000001` is used automatically for local workflows.
+### Authentication & multi-tenant request scoping
+- `AUTH_MODE=dev` (default) keeps the existing `X-User-Id` header workflow. Supply a UUID per request; when it is omitted the shared dev ID `00000000-0000-0000-0000-000000000001` is applied automatically for local testing.
+- `AUTH_MODE=jwt` enables bearer token authentication. The backend verifies signatures via the configured JWKS (`AUTH_JWT_JWKS_URL`) and, if provided, enforces the issuer (`AUTH_JWT_ISS`) and audience (`AUTH_JWT_AUD`) claims. The verified token’s `sub` claim becomes the effective user id.
 
-Examples:
+Example requests:
 
 ```bash
-# user 1
+# dev header mode
 U1=00000000-0000-0000-0000-000000000001
 curl -H "X-User-Id: $U1" -F file=@/path/to/file1.pdf http://localhost:3001/upload/pdf
 curl -H "X-User-Id: $U1" "http://localhost:3001/search?q=introduction&k=5"
 
-# user 2
-U2=00000000-0000-0000-0000-000000000002
-curl -H "X-User-Id: $U2" -F file=@/path/to/file2.pdf http://localhost:3001/upload/pdf
-curl -H "X-User-Id: $U2" "http://localhost:3001/search?q=introduction&k=5"
+# JWT mode
+TOKEN="$(cat /path/to/token.jwt)"
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:3001/search?q=introduction&k=5"
 ```
+
+Configure JWT mode by setting the env vars in `backend/.env`:
+
+```bash
+AUTH_MODE=jwt
+AUTH_JWT_ISS=https://<your-issuer>/
+AUTH_JWT_AUD=<expected-audience>
+AUTH_JWT_JWKS_URL=https://<your-issuer>/.well-known/jwks.json
+```
+
+#### Database enforcement with RLS
+- Every request that touches tenant data runs inside `withTenant(userId, fn)` (`backend/src/db/tenant.js`). The helper opens a transaction, sets the Postgres session GUC `app.user_id`, and ensures all queries use the same client.
+- Postgres row-level security is enabled on the `documents` and `chunks` tables. Policies only expose rows where `owner_id::text = current_setting('app.user_id', true)` and reject inserts/updates with mismatched owners.
+- Application-level filters remain for redundancy, but the database is now the source of truth for isolation. When adding new queries, always wrap them with `withTenant()` (or its `runAs` shortcut) so the RLS policies can evaluate the correct tenant context.
 
 The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.
 
