@@ -37,6 +37,9 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                       <Link href="/courses" className="text-sm text-slate-600 hover:text-slate-900">
                         Courses
                       </Link>
+                      <Link href="/progress" className="text-sm text-slate-600 hover:text-slate-900">
+                        Progress
+                      </Link>
                       <Link href="/upload" className="text-sm text-slate-600 hover:text-slate-900">
                         Upload
                       </Link>
