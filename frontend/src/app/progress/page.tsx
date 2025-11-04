@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
@@ -65,7 +65,7 @@ type ProgressData = {
   };
 };
 
-export default function ProgressPage() {
+function ProgressContent() {
   const searchParams = useSearchParams();
   const courseId = searchParams.get('course_id');
 
@@ -373,5 +373,17 @@ export default function ProgressPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ProgressPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-12">
+        <div className="text-slate-600">Loading progress...</div>
+      </div>
+    }>
+      <ProgressContent />
+    </Suspense>
   );
 }
