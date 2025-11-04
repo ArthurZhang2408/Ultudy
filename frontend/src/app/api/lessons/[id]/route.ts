@@ -1,34 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createProxyResponse } from '../../_utils/proxy-response';
+import { getBackendToken } from '../../_utils/get-backend-token';
+import { getBackendUrl } from '../../../../lib/api';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+// DELETE /api/lessons/:id - Delete a cached lesson
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
-  const cookieHeader = request.headers.get('cookie') || '';
-
   try {
-    const response = await fetch(`${backendUrl}/lessons/${params.id}`, {
+    const token = await getBackendToken();
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const backendResponse = await fetch(`${getBackendUrl()}/lessons/${params.id}`, {
       method: 'DELETE',
       headers: {
-        'Cookie': cookieHeader,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
-    }
-
-    return NextResponse.json(data);
+    return createProxyResponse(backendResponse);
   } catch (error) {
-    console.error('Error deleting lesson:', error);
+    console.error('[api/lessons/:id] DELETE proxy failed:', error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to delete lesson' },
+      { error: 'proxy_failed', detail: message },
       { status: 500 }
     );
   }
