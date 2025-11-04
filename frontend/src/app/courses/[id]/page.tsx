@@ -112,12 +112,20 @@ export default function CoursePage() {
             )}
           </div>
         </div>
-        <Link
-          href={`/upload?course_id=${course.id}`}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          Upload Materials
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href={`/progress?course_id=${course.id}`}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            View Progress
+          </Link>
+          <Link
+            href={`/upload?course_id=${course.id}`}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Upload Materials
+          </Link>
+        </div>
       </div>
 
       {documents.length === 0 ? (

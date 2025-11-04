@@ -190,16 +190,30 @@ function ProgressContent() {
     return a.localeCompare(b, undefined, { numeric: true });
   });
 
+  // Get the course name if we're filtering by course
+  const filteredCourse = courseId && courseEntries.length > 0
+    ? courseEntries.find(c => c.key === courseId)
+    : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold text-slate-900">Learning Progress</h1>
-        <Link
-          href="/courses"
-          className="text-sm text-slate-600 hover:text-slate-900"
-        >
-          Back to Courses
-        </Link>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href={courseId ? `/courses/${courseId}` : '/courses'}
+            className="text-sm text-slate-600 hover:text-slate-900"
+          >
+            ← Back to {courseId ? 'course' : 'courses'}
+          </Link>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900">
+            {filteredCourse ? `${filteredCourse.course_name} Progress` : 'Learning Progress'}
+          </h1>
+          {!courseId && (
+            <p className="mt-1 text-sm text-slate-600">
+              Viewing progress across all courses
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Overall Stats */}
