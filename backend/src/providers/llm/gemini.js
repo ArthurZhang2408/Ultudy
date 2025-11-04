@@ -311,13 +311,13 @@ Use only the given context and match the requested difficulty. Input data: ${JSO
 }
 
 function buildFullContextLessonPrompt({ title, full_text, chapter, include_check_ins }) {
-  const systemInstruction = `You are an expert educational content creator. Your role is to:
-1. Read and understand full course materials (textbooks, lecture notes, etc.)
-2. Break down complex topics into clear, digestible lessons
-3. Create interactive check-in questions to verify understanding
-4. Identify key concepts that students need to master
+  const systemInstruction = `You are an expert educational content creator specializing in bite-sized, interactive learning. Your role is to:
+1. Read and understand full course materials
+2. Break down complex topics into digestible, focused concepts
+3. Create engaging, clear explanations (2-3 sentences max per concept)
+4. Generate multiple-choice questions with detailed explanations
 
-Always respond with valid JSON only.`;
+Always respond with valid JSON only. Keep explanations concise and avoid walls of text.`;
 
   const userPrompt = `I'm studying from this material:
 
@@ -329,45 +329,88 @@ ${full_text}
 
 ---
 
-Please create a comprehensive, interactive lesson from this content. Follow these guidelines:
+Create an interactive, concept-by-concept learning experience. Follow these principles:
 
-1. **Identify Concepts**: Extract 3-5 key concepts that a student needs to understand
-2. **Structure**: Provide a clear summary, thorough explanation, helpful analogies, and worked examples
-3. **Check-ins**: ${include_check_ins ? 'Create 2-3 check-in questions per concept to verify understanding' : 'Skip check-ins'}
+**PEDAGOGY:**
+- Progressive disclosure: One concept at a time
+- Concise explanations: 2-3 sentences max
+- Immediate application: MCQs right after each concept
+- Active learning: No passive reading
 
-Return a JSON object with this exact structure:
+**STRUCTURE:**
+
+1. **High-Level Summary** (3-5 numbered bullets):
+   - What this chapter covers
+   - Why it matters / real-world relevance
+   - What you'll be able to do after learning this
+
+2. **Concepts** (3-8 key concepts):
+   For each concept, provide:
+   - Short, focused explanation (2-3 sentences)
+   - ONE simple analogy or real-world example
+   - 3-4 MCQ questions testing understanding
+
+**MCQ REQUIREMENTS:**
+- 4 options (A, B, C, D) per question
+- ONE correct answer
+- Each option needs an explanation:
+  * Correct: Why it's right + key insight
+  * Incorrect: Why it's wrong + common misconception addressed
+- Questions should test conceptual understanding, not memorization
+
+Return JSON in this EXACT structure:
 {
-  "topic": "A clear, concise title for this lesson",
-  "summary": "An engaging overview (200-300 words) of what will be covered",
-  "explanation": "A detailed narrative (350-500 words) teaching the material step-by-step",
+  "topic": "Clear title for this lesson",
+  "summary": {
+    "what": ["Bullet 1", "Bullet 2", "Bullet 3"],
+    "why": "One sentence on why this matters",
+    "outcome": "What you'll learn to do"
+  },
   "concepts": [
     {
-      "name": "Concept name",
-      "explanation": "Clear explanation of this concept (150-250 words)",
-      "analogies": ["Analogy 1", "Analogy 2"],
-      "examples": [
+      "name": "Concept Name",
+      "explanation": "2-3 sentence explanation. Be clear and concise.",
+      "analogy": "One simple, relatable analogy",
+      "mcqs": [
         {
-          "setup": "Description of the example problem or scenario",
-          "steps": ["Step 1", "Step 2", "Step 3..."]
+          "question": "Clear question testing understanding",
+          "options": [
+            {
+              "letter": "A",
+              "text": "Option text",
+              "correct": false,
+              "explanation": "Why this is wrong + what misconception this represents"
+            },
+            {
+              "letter": "B",
+              "text": "Option text",
+              "correct": true,
+              "explanation": "Why this is correct + key insight"
+            },
+            {
+              "letter": "C",
+              "text": "Option text",
+              "correct": false,
+              "explanation": "Why this is wrong"
+            },
+            {
+              "letter": "D",
+              "text": "Option text",
+              "correct": false,
+              "explanation": "Why this is wrong"
+            }
+          ]
         }
       ]
-    }
-  ],
-  "checkins": [
-    {
-      "concept": "Which concept this checks",
-      "question": "The check-in question",
-      "hint": "A helpful hint without giving away the answer",
-      "expected_answer": "What a correct answer should include"
     }
   ]
 }
 
-Important:
-- Base everything ONLY on the provided content
-- Make explanations clear and beginner-friendly
-- Check-in questions should test understanding, not just memorization
-- Provide hints that guide thinking without revealing answers`;
+CRITICAL REMINDERS:
+- Keep explanations SHORT (2-3 sentences)
+- Every option needs an explanation
+- Base everything on the provided content
+- Test understanding, not memorization`;
 
   return { systemInstruction, userPrompt };
 }
@@ -382,102 +425,117 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     throw new Error('Gemini LLM provider returned no concepts');
   }
 
-  const explanation = requireString(payload.explanation, 'explanation');
+  // Parse new summary structure: {what: [], why: string, outcome: string}
+  let summaryText = '';
+  if (payload.summary && typeof payload.summary === 'object') {
+    const summaryParts = [];
 
-  const conceptCheckinMap = new Map();
-  const checkins = Array.isArray(payload.checkins) ? payload.checkins : [];
-  const normalizedCheckins = checkins.map((checkin, idx) => {
-    const conceptName = requireString(checkin?.concept, `checkin ${idx + 1} concept`);
-    const normalized = {
-      concept: conceptName,
-      question: requireString(checkin?.question, `checkin ${idx + 1} question`),
-      hint: sanitizeText(checkin?.hint || ''),
-      expected_answer: requireString(checkin?.expected_answer, `checkin ${idx + 1} expected_answer`)
-    };
-
-    const key = conceptName.trim().toLowerCase();
-    if (!conceptCheckinMap.has(key)) {
-      conceptCheckinMap.set(key, []);
+    if (Array.isArray(payload.summary.what) && payload.summary.what.length > 0) {
+      summaryParts.push('What you\'ll learn:');
+      payload.summary.what.forEach((item, idx) => {
+        summaryParts.push(`${idx + 1}. ${item}`);
+      });
     }
-    conceptCheckinMap.get(key).push({
-      question: normalized.question,
-      expected_answer: normalized.expected_answer,
-      hint: normalized.hint
-    });
 
-    return normalized;
-  });
+    if (typeof payload.summary.why === 'string' && payload.summary.why.trim()) {
+      summaryParts.push('');
+      summaryParts.push(`Why it matters: ${payload.summary.why.trim()}`);
+    }
 
+    if (typeof payload.summary.outcome === 'string' && payload.summary.outcome.trim()) {
+      summaryParts.push('');
+      summaryParts.push(`Learning outcome: ${payload.summary.outcome.trim()}`);
+    }
+
+    summaryText = summaryParts.join('\n');
+  } else if (typeof payload.summary === 'string') {
+    // Backward compatibility with old string summary
+    summaryText = payload.summary;
+  }
+
+  // Build a combined explanation from all concept explanations
+  const explanation = concepts
+    .map((c, idx) => {
+      const name = c?.name || `Concept ${idx + 1}`;
+      const exp = c?.explanation || '';
+      return `**${name}**: ${exp}`;
+    })
+    .join('\n\n');
+
+  // Process concepts with MCQs
+  const allCheckins = [];
   const normalizedConcepts = concepts.map((concept, idx) => {
     const name = requireString(concept?.name, `concept ${idx + 1} name`);
-    const analogies = Array.isArray(concept.analogies)
-      ? concept.analogies.filter(a => typeof a === 'string' && a.trim()).slice(0, 3)
-      : [];
+    const conceptExplanation = requireString(concept?.explanation, `concept ${idx + 1} explanation`);
 
-    const examples = Array.isArray(concept.examples) ? concept.examples : [];
-    const normalizedExamples = examples.map(ex => ({
-      setup: requireString(ex?.setup, `concept ${idx + 1} example setup`),
-      steps: requireStringArray(ex?.steps, 1, `concept ${idx + 1} example steps`)
-    }));
+    // Handle analogy (single string now, not array)
+    const analogy = typeof concept.analogy === 'string' && concept.analogy.trim()
+      ? concept.analogy.trim()
+      : '';
+    const analogies = analogy ? [analogy] : [];
 
-    const checkInsFromConcept = Array.isArray(concept.check_ins)
-      ? concept.check_ins
-          .map((entry, checkIdx) => {
-            try {
-              return {
-                question: requireString(entry?.question, `concept ${idx + 1} check_in ${checkIdx + 1} question`),
-                expected_answer: requireString(entry?.expected_answer, `concept ${idx + 1} check_in ${checkIdx + 1} expected_answer`),
-                hint: sanitizeText(entry?.hint || '')
-              };
-            } catch (error) {
-              return null;
-            }
-          })
-          .filter(Boolean)
-      : [];
+    // Process MCQs from this concept
+    const mcqs = Array.isArray(concept.mcqs) ? concept.mcqs : [];
+    const checkIns = mcqs.map((mcq, mcqIdx) => {
+      const question = requireString(mcq?.question, `concept ${idx + 1} MCQ ${mcqIdx + 1} question`);
+      const options = Array.isArray(mcq?.options) ? mcq.options : [];
 
-    const conceptKey = name.trim().toLowerCase();
-    const mappedCheckIns = conceptCheckinMap.get(conceptKey);
-    if (mappedCheckIns && mappedCheckIns.length) {
-      checkInsFromConcept.push(...mappedCheckIns);
-      conceptCheckinMap.delete(conceptKey);
-    }
+      if (options.length !== 4) {
+        throw new Error(`concept ${idx + 1} MCQ ${mcqIdx + 1} must have exactly 4 options`);
+      }
+
+      // Validate each option has required fields
+      const normalizedOptions = options.map((opt, optIdx) => {
+        return {
+          letter: requireString(opt?.letter, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} letter`),
+          text: requireString(opt?.text, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} text`),
+          correct: opt?.correct === true,
+          explanation: requireString(opt?.explanation, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} explanation`)
+        };
+      });
+
+      // Ensure exactly one correct answer
+      const correctCount = normalizedOptions.filter(opt => opt.correct).length;
+      if (correctCount !== 1) {
+        throw new Error(`concept ${idx + 1} MCQ ${mcqIdx + 1} must have exactly 1 correct answer, found ${correctCount}`);
+      }
+
+      const correctOption = normalizedOptions.find(opt => opt.correct);
+
+      return {
+        question,
+        options: normalizedOptions,
+        expected_answer: correctOption.text,
+        hint: '' // MCQs don't need hints since options have explanations
+      };
+    });
+
+    // Add to flat checkins array for backward compatibility
+    checkIns.forEach(checkIn => {
+      allCheckins.push({
+        concept: name,
+        question: checkIn.question,
+        options: checkIn.options,
+        expected_answer: checkIn.expected_answer,
+        hint: checkIn.hint
+      });
+    });
 
     return {
       name,
-      explanation: requireString(concept?.explanation, `concept ${idx + 1} explanation`),
+      explanation: conceptExplanation,
       analogies,
-      examples: normalizedExamples,
-      check_ins: checkInsFromConcept
+      examples: [], // No separate examples in new format
+      check_ins: checkIns
     };
   });
 
-  if (conceptCheckinMap.size > 0) {
-    if (normalizedConcepts.length > 0) {
-      const fallbackConcept = normalizedConcepts[0];
-      for (const extra of conceptCheckinMap.values()) {
-        fallbackConcept.check_ins.push(...extra);
-      }
-    } else {
-      const extras = Array.from(conceptCheckinMap.values()).flat();
-      if (extras.length) {
-        normalizedConcepts.push({
-          name: 'Lesson Check-ins',
-          explanation,
-          analogies: [],
-          examples: [],
-          check_ins: extras
-        });
-      }
-    }
-  }
-
   return {
     topic: requireString(payload.topic, 'topic'),
-    summary: requireString(payload.summary, 'summary'),
+    summary: summaryText,
     explanation,
     concepts: normalizedConcepts,
-    checkins: normalizedCheckins,
+    checkins: allCheckins,
     document_id
   };
 }
