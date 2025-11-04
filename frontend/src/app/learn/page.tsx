@@ -214,6 +214,11 @@ function LearnPageContent() {
   // Check if this is a new MCQ-based lesson or old format
   const hasNewFormat = currentMCQ?.options && Array.isArray(currentMCQ.options);
 
+  // Debug logging
+  console.log('[learn] Current concept:', currentConcept);
+  console.log('[learn] Current MCQ:', currentMCQ);
+  console.log('[learn] Has new format:', hasNewFormat);
+
   // If old format lesson, show a message to regenerate
   if (!hasNewFormat && !showingSummary) {
     return (

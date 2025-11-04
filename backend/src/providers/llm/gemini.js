@@ -581,8 +581,20 @@ export default async function createGeminiLLMProvider() {
         include_check_ins
       });
 
-      const lesson = await callModel(systemInstruction, userPrompt);
-      return normalizeFullContextLessonPayload(lesson, document_id);
+      try {
+        console.log('[gemini] Calling model for full context lesson...');
+        const lesson = await callModel(systemInstruction, userPrompt);
+        console.log('[gemini] Raw lesson response:', JSON.stringify(lesson, null, 2));
+
+        console.log('[gemini] Normalizing lesson payload...');
+        const normalized = normalizeFullContextLessonPayload(lesson, document_id);
+        console.log('[gemini] Normalization successful');
+        return normalized;
+      } catch (error) {
+        console.error('[gemini] ERROR in generateFullContextLesson:', error);
+        console.error('[gemini] Error stack:', error.stack);
+        throw error;
+      }
     },
     /**
      * General-purpose text generation for check-in evaluation, etc.

@@ -69,11 +69,19 @@ function normalizeCheckInEntry(entry) {
 
   const hint = typeof entry?.hint === 'string' ? entry.hint.trim() : '';
 
-  return {
+  // Preserve options array for MCQ-based check-ins
+  const result = {
     question,
     expected_answer: expectedAnswer,
     hint
   };
+
+  // If this is an MCQ (has options array), include it
+  if (Array.isArray(entry?.options)) {
+    result.options = entry.options;
+  }
+
+  return result;
 }
 
 function attachCheckinsToConcepts(conceptsInput = [], checkins = []) {
