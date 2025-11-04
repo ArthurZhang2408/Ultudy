@@ -11,7 +11,7 @@ import { formatEmbeddingForInsert } from '../embeddings/utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
-const DEFAULT_OWNER_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_OWNER_ID = 'dev-user-001';
 
 export function createPdfIngestionService(options = {}) {
   const activePool = options.pool ?? pool;
@@ -90,33 +90,50 @@ export function createPdfIngestionService(options = {}) {
     }
 
     const pageCount = pages.length;
-    const chunks = chunker(pages);
-    const embeddingsProvider = await embeddingsProviderFactory();
-    const embedStart = Date.now();
-    const embeddings = chunks.length
-      ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
-      : [];
-    const embedDuration = Date.now() - embedStart;
-    const sampleVector = embeddings[0];
-    const configuredDim = Number.parseInt(process.env.GEMINI_EMBED_DIM || '3072', 10);
-    const dimension =
-      typeof sampleVector?.length === 'number' && Number.isFinite(sampleVector.length)
-        ? sampleVector.length
-        : Number.isFinite(configuredDim) && configuredDim > 0
-          ? configuredDim
-          : 0;
+    // Extract full text from all pages for MVP v1.0
+    const fullText = pages.map((p) => p.text).join('\n\n');
+
+    // MVP v1.0: Embeddings are optional now (only needed for legacy RAG search)
+    // Set SKIP_EMBEDDINGS=true to avoid Gemini quota issues on upload
+    const skipEmbeddings = process.env.SKIP_EMBEDDINGS === 'true';
+
+    let chunks = [];
+    let embeddings = [];
+    let embedDuration = 0;
+    let dimension = 0;
+
+    if (!skipEmbeddings) {
+      chunks = chunker(pages);
+      const embeddingsProvider = await embeddingsProviderFactory();
+      const embedStart = Date.now();
+      embeddings = chunks.length
+        ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
+        : [];
+      embedDuration = Date.now() - embedStart;
+      const sampleVector = embeddings[0];
+      const configuredDim = Number.parseInt(process.env.GEMINI_EMBED_DIM || '3072', 10);
+      dimension =
+        typeof sampleVector?.length === 'number' && Number.isFinite(sampleVector.length)
+          ? sampleVector.length
+          : Number.isFinite(configuredDim) && configuredDim > 0
+            ? configuredDim
+            : 0;
+    }
 
     console.info(
-      `[ingest] provider=${embeddingsProvider?.name || 'unknown'} file="${safeName}" chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms`
+      `[ingest] file="${safeName}" pages=${pageCount} fullText=${fullText.length}chars ${skipEmbeddings ? 'embeddings=skipped' : `chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms`}`
     );
 
     try {
       await tenantHelpers.withTenant(ownerSegment, async (client) => {
         await client.query(
-          'INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)',
-          [documentId, safeName, pageCount, ownerSegment]
+          'INSERT INTO documents (id, title, pages, owner_id, full_text) VALUES ($1, $2, $3, $4, $5)',
+          [documentId, safeName, pageCount, ownerSegment, fullText]
         );
-        await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
+        // Only create chunks if embeddings were generated
+        if (!skipEmbeddings && chunks.length > 0) {
+          await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
+        }
       });
     } catch (error) {
       await fs.rm(storagePath, { force: true });

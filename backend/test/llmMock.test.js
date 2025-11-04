@@ -48,6 +48,24 @@ describe('mock LLM provider', () => {
     assert.ok(first.sources.some((source) => source.document_id === SAMPLE_CHUNKS[0].document_id));
   });
 
+  it('creates structured full-context lessons with explanation and check-ins', async () => {
+    const lesson = await provider.generateFullContextLesson({
+      document_id: 'doc-1',
+      title: 'Advanced Calculus',
+      full_text: 'Derivatives, integrals, and series expansions underpin calculus problem solving.'
+    });
+
+    assert.equal(lesson.topic, 'Advanced Calculus');
+    assert.ok(typeof lesson.summary === 'string' && lesson.summary.length > 0);
+    assert.ok(typeof lesson.explanation === 'string' && lesson.explanation.length > 0);
+    assert.ok(Array.isArray(lesson.concepts));
+    assert.ok(lesson.concepts.length >= 1);
+    assert.ok(lesson.concepts.every((concept) => Array.isArray(concept.check_ins)));
+    assert.ok(lesson.concepts.some((concept) => concept.check_ins.length > 0));
+    assert.ok(Array.isArray(lesson.checkins));
+    assert.ok(lesson.checkins.length > 0);
+  });
+
   it('creates deterministic MCQ output matching requested count and shape', async () => {
     const first = await provider.generateMCQs({ chunks: SAMPLE_CHUNKS, n: 4, difficulty: 'med', topic: 'Signal analysis' });
     const second = await provider.generateMCQs({ chunks: SAMPLE_CHUNKS, n: 4, difficulty: 'med', topic: 'Signal analysis' });

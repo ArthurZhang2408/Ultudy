@@ -8,6 +8,7 @@ import createUploadRouter from './routes/upload.js';
 import createSearchRouter from './routes/search.js';
 import createDocumentsRouter from './routes/documents.js';
 import createStudyRouter from './routes/study.js';
+import createCoursesRouter from './routes/courses.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -25,7 +26,7 @@ export function createApp(options = {}) {
 
   const corsMiddleware = cors({
     origin: true,
-    credentials: false
+    credentials: true
   });
   app.use(corsMiddleware);
   app.options('*', corsMiddleware);
@@ -95,6 +96,14 @@ export function createApp(options = {}) {
     app.use(
       '/documents',
       createDocumentsRouter({
+        pool: activePool,
+        tenantHelpers
+      })
+    );
+
+    app.use(
+      '/courses',
+      createCoursesRouter({
         pool: activePool,
         tenantHelpers
       })

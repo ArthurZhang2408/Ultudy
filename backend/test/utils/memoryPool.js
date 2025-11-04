@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export function parseVector(value) {
   if (Array.isArray(value)) {
     return value;
@@ -24,6 +26,7 @@ export function euclideanDistance(a, b) {
 export function createMemoryPool() {
   const documents = new Map();
   const chunks = [];
+  const lessons = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -66,13 +69,24 @@ export function createMemoryPool() {
 
       if (normalized.startsWith('INSERT INTO documents')) {
         const ownerId = params[3];
+        const fullText = params[4] ?? null;
+        const materialType = params[5] ?? null;
+        const chapter = params[6] ?? null;
+        const userTags = params[7] ?? [];
+        const courseId = params[8] ?? null;
+
         enforceRowLevelSecurity(state, ownerId, 'documents');
         documents.set(params[0], {
           id: params[0],
           title: params[1],
           pages: params[2],
           owner_id: ownerId,
-          created_at: new Date()
+          created_at: new Date(),
+          full_text: fullText,
+          material_type: materialType,
+          chapter,
+          user_tags: Array.isArray(userTags) ? userTags : [],
+          course_id: courseId
         });
         return { rows: [] };
       }
@@ -94,6 +108,57 @@ export function createMemoryPool() {
         return { rows: [] };
       }
 
+      if (normalized.startsWith('INSERT INTO lessons')) {
+        const ownerId = params[0];
+        enforceRowLevelSecurity(state, ownerId, 'lessons');
+
+        const id = randomUUID();
+        const createdAt = new Date();
+        const examplesValue = params[6];
+        const analogiesValue = params[7];
+        const conceptsValue = params[8];
+
+        const examples = typeof examplesValue === 'string'
+          ? JSON.parse(examplesValue)
+          : (examplesValue ?? []);
+        const analogies = typeof analogiesValue === 'string'
+          ? JSON.parse(analogiesValue)
+          : (analogiesValue ?? []);
+        const concepts = typeof conceptsValue === 'string'
+          ? JSON.parse(conceptsValue)
+          : (conceptsValue ?? []);
+
+        const lesson = {
+          id,
+          owner_id: ownerId,
+          document_id: params[1],
+          course_id: params[2] ?? null,
+          chapter: params[3] ?? null,
+          summary: params[4] ?? null,
+          explanation: params[5],
+          examples,
+          analogies,
+          concepts,
+          created_at: createdAt
+        };
+
+        lessons.set(id, lesson);
+
+        return {
+          rows: [
+            {
+              id: lesson.id,
+              summary: lesson.summary,
+              explanation: lesson.explanation,
+              examples: lesson.examples,
+              analogies: lesson.analogies,
+              concepts: lesson.concepts,
+              created_at: lesson.created_at
+            }
+          ]
+        };
+      }
+
       if (normalized.startsWith('DELETE FROM chunks')) {
         const id = params[0];
         for (let i = chunks.length - 1; i >= 0; i -= 1) {
@@ -101,6 +166,12 @@ export function createMemoryPool() {
             chunks.splice(i, 1);
           }
         }
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('INSERT INTO concepts')) {
+        const ownerId = params[0];
+        enforceRowLevelSecurity(state, ownerId, 'concepts');
         return { rows: [] };
       }
 
@@ -128,16 +199,140 @@ export function createMemoryPool() {
         return { rows };
       }
 
-      if (normalized.startsWith('SELECT id, title, pages, created_at FROM documents WHERE owner_id')) {
+      if (normalized.startsWith('SELECT id, title, pages, created_at as uploaded_at, material_type, chapter, user_tags, course_id FROM documents WHERE owner_id = $1')) {
+        const ownerId = params[0];
+        const courseIdFilter = params[1];
+        const rows = filterByTenant(Array.from(documents.values()), state, ownerId)
+          .filter((doc) => courseIdFilter ? doc.course_id === courseIdFilter : true)
+          .sort((a, b) => b.created_at - a.created_at)
+          .slice(0, 100)
+          .map((doc) => ({
+            id: doc.id,
+            title: doc.title,
+            pages: doc.pages,
+            uploaded_at: doc.created_at,
+            material_type: doc.material_type || null,
+            chapter: doc.chapter || null,
+            user_tags: doc.user_tags || [],
+            course_id: doc.course_id || null
+          }));
+
+        return { rows };
+      }
+
+      if (normalized.startsWith('SELECT id, title, pages, created_at FROM documents WHERE owner_id') ||
+          normalized.startsWith('SELECT id, title, pages, created_at, material_type, chapter, user_tags FROM documents WHERE owner_id')) {
         const ownerId = params[0];
         const rows = filterByTenant(Array.from(documents.values()), state, ownerId).map((doc) => ({
           id: doc.id,
           title: doc.title,
           pages: doc.pages,
-          created_at: doc.created_at
+          created_at: doc.created_at,
+          material_type: doc.material_type || null,
+          chapter: doc.chapter || null,
+          user_tags: doc.user_tags || []
         }));
 
         return { rows };
+      }
+
+      if (normalized.startsWith('SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id FROM documents WHERE id = $1 AND owner_id = $2')) {
+        const documentId = params[0];
+        const ownerId = params[1];
+        const doc = documents.get(documentId);
+        if (doc && doc.owner_id === ownerId && (!state?.currentUserId || state.currentUserId === ownerId)) {
+          return {
+            rows: [{
+              id: doc.id,
+              title: doc.title,
+              full_text: doc.full_text,
+              material_type: doc.material_type || null,
+              doc_chapter: doc.chapter || null,
+              course_id: doc.course_id || null
+            }]
+          };
+        }
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('SELECT id, summary, explanation, examples, analogies, concepts, created_at FROM lessons WHERE document_id = $1 AND owner_id = $2')) {
+        const documentId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.document_id === documentId && lesson.owner_id === ownerId) {
+            return {
+              rows: [
+                {
+                  id: lesson.id,
+                  summary: lesson.summary,
+                  explanation: lesson.explanation,
+                  examples: lesson.examples,
+                  analogies: lesson.analogies,
+                  concepts: lesson.concepts,
+                  created_at: lesson.created_at
+                }
+              ]
+            };
+          }
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('UPDATE documents SET')) {
+        const documentId = params[0];
+        const ownerId = params[1];
+        const doc = documents.get(documentId);
+
+        if (!doc || doc.owner_id !== ownerId || (state?.currentUserId && state.currentUserId !== ownerId)) {
+          return { rows: [] };
+        }
+
+        const setClause = normalized.slice('UPDATE documents SET '.length, normalized.indexOf(' WHERE '));
+        const assignments = setClause.split(',').map((part) => part.trim());
+
+        for (const assignment of assignments) {
+          const [field, placeholder] = assignment.split('=').map((piece) => piece.trim());
+          const paramPosition = Number.parseInt(placeholder.replace('$', ''), 10) - 1;
+          const value = params[paramPosition];
+
+          switch (field) {
+            case 'material_type':
+              doc.material_type = value ?? null;
+              break;
+            case 'chapter':
+              doc.chapter = value ?? null;
+              break;
+            case 'title':
+              doc.title = value ?? doc.title;
+              break;
+            case 'user_tags':
+              doc.user_tags = Array.isArray(value) ? value : [];
+              break;
+            case 'course_id':
+              doc.course_id = value ?? null;
+              break;
+            default:
+              break;
+          }
+        }
+
+        return {
+          rows: [{
+            id: doc.id,
+            title: doc.title,
+            pages: doc.pages,
+            created_at: doc.created_at,
+            material_type: doc.material_type || null,
+            chapter: doc.chapter || null,
+            user_tags: doc.user_tags || [],
+            course_id: doc.course_id || null
+          }]
+        };
       }
 
       if (normalized.startsWith('SELECT id, owner_id FROM documents')) {

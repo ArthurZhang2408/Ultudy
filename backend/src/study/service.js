@@ -34,7 +34,34 @@ export function createStudyService(options = {}) {
     });
   }
 
-  return { buildLesson, makeMCQs };
+  /**
+   * MVP v1.0: Generate lesson from full document context
+   * @param {Object} document - Document with full_text
+   * @param {Object} options - Generation options (chapter, include_check_ins)
+   */
+  async function buildFullContextLesson(document, options = {}) {
+    const provider = await resolveProvider();
+    const { chapter, include_check_ins = true } = options;
+
+    // Prepare the full text (potentially filtered by chapter if needed in future)
+    const fullText = document.full_text || '';
+
+    if (fullText.length === 0) {
+      throw new Error('Document has no text content');
+    }
+
+    // Call LLM provider with full document context
+    return provider.generateFullContextLesson({
+      document_id: document.id,
+      title: document.title,
+      full_text: fullText,
+      material_type: document.material_type,
+      chapter,
+      include_check_ins
+    });
+  }
+
+  return { buildLesson, makeMCQs, buildFullContextLesson };
 }
 
 export default createStudyService;
