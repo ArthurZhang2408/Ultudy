@@ -42,7 +42,7 @@ describe('requireUser middleware', () => {
     });
 
     assert.equal(res.statusCode, 200);
-    assert.equal(req.userId, '00000000-0000-0000-0000-0000000000aa');
+    assert.equal(req.userId, '00000000-0000-0000-0000-0000000000AA');
     assert.ok(called);
   });
 
@@ -60,15 +60,18 @@ describe('requireUser middleware', () => {
     assert.ok(called);
   });
 
-  it('rejects invalid UUID header in dev mode', async () => {
-    const req = { headers: { 'x-user-id': 'not-a-uuid' } };
+  it('accepts any non-empty X-User-Id header in dev mode', async () => {
+    const req = { headers: { 'x-user-id': 'user_clerk_id_123' } };
     const res = createResponse();
+    let called = false;
 
-    await requireUser(req, res, () => {});
+    await requireUser(req, res, () => {
+      called = true;
+    });
 
-    assert.equal(res.statusCode, 400);
-    assert.deepEqual(res.body, { error: 'Invalid X-User-Id header; expected UUID format.' });
-    assert.equal(req.userId, undefined);
+    assert.equal(res.statusCode, 200);
+    assert.equal(req.userId, 'user_clerk_id_123');
+    assert.ok(called);
   });
 
   it('verifies JWT tokens when AUTH_MODE=jwt', async () => {

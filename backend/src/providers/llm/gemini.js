@@ -1,8 +1,7 @@
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.0-flash-exp';
 const MAX_CONTEXT_CHARS = 8000;
 const MAX_SNIPPET_CHARS = 600;
 
-let modelPromise = null;
 let sdkImportPromise = null;
 
 function sanitizeText(value) {
@@ -210,33 +209,6 @@ async function loadGoogleGenerativeAI() {
   return module.GoogleGenerativeAI ?? module.default;
 }
 
-async function getModel() {
-  if (modelPromise) {
-    return modelPromise;
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is required when using the gemini LLM provider');
-  }
-
-  const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
-
-  modelPromise = (async () => {
-    const GoogleGenerativeAI = await loadGoogleGenerativeAI();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    return genAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.4
-      }
-    });
-  })();
-
-  return modelPromise;
-}
-
 function extractResponseText(result) {
   if (!result) {
     return '';
@@ -271,10 +243,26 @@ function parseJsonOutput(rawText) {
 }
 
 async function callModel(systemPrompt, userPrompt) {
-  const model = await getModel();
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is required when using the gemini LLM provider');
+  }
+
+  const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
+
+  const GoogleGenerativeAI = await loadGoogleGenerativeAI();
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: systemPrompt,
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.4
+    }
+  });
+
   const response = await model.generateContent({
     contents: [
-      { role: 'system', parts: [{ text: systemPrompt }] },
       { role: 'user', parts: [{ text: userPrompt }] }
     ]
   });
@@ -345,6 +333,5 @@ export default async function createGeminiLLMProvider() {
 }
 
 export function __resetGeminiLLMState() {
-  modelPromise = null;
   sdkImportPromise = null;
 }

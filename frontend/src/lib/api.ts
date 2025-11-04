@@ -22,29 +22,19 @@ function parseErrorMessage(payload: unknown, status: number) {
 }
 
 /**
- * API client that uses Clerk authentication tokens
+ * API client for calling Next.js API routes from the browser.
  * @param path - API endpoint path
  * @param init - Fetch options
- * @param token - Optional Clerk session token (JWT). If not provided, request is unauthenticated.
  */
-export async function apiFetch<T = unknown>(
-  path: string,
-  init: RequestInit = {},
-  token?: string | null
-): Promise<T> {
+export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers || undefined);
-
-  // Add Authorization header with Bearer token if available
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
 
   const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
   if (!headers.has('Content-Type') && init.body && !isFormData) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${getBackendUrl()}${path}`, {
+  const response = await fetch(path, {
     ...init,
     headers
   });

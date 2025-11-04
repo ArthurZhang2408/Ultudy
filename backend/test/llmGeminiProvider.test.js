@@ -63,10 +63,11 @@ describe('gemini llm provider', () => {
           this.apiKey = apiKey;
         }
 
-        getGenerativeModel() {
+        getGenerativeModel({ systemInstruction }) {
           return {
+            systemInstruction,
             async generateContent({ contents }) {
-              capturedPrompts.push(contents);
+              capturedPrompts.push({ systemInstruction, contents });
               return {
                 response: {
                   text: () => JSON.stringify(fakeOutput)
@@ -86,7 +87,7 @@ describe('gemini llm provider', () => {
     assert.equal(lesson.example.workedSteps.length, 3);
     assert.equal(lesson.sources[0].document_id, SAMPLE_HITS[0].document_id);
     assert.ok(capturedPrompts.length > 0);
-    const promptText = capturedPrompts[0][1].parts[0].text;
+    const promptText = capturedPrompts[0].contents[0].parts[0].text;
     assert.match(promptText, /Fourier transforms convert signals/);
     assert.match(promptText, /Document 1111/i, 'prompt includes formatted bullet list');
   });

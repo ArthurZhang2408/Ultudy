@@ -12,6 +12,7 @@ const PDF_BYTES = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer\n<<>>\n%%EOF
 describe('PDF ingestion and search integration', () => {
   it('uploads, chunks, embeds, and searches', async () => {
     process.env.EMBEDDINGS_PROVIDER = 'mock';
+    process.env.AUTH_MODE = 'dev';
 
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ingestion-test-'));
     const mockPool = createMemoryPool();
