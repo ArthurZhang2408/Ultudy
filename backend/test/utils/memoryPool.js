@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 export function parseVector(value) {
   if (Array.isArray(value)) {
     return value;
@@ -24,6 +26,7 @@ export function euclideanDistance(a, b) {
 export function createMemoryPool() {
   const documents = new Map();
   const chunks = [];
+  const lessons = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -105,6 +108,57 @@ export function createMemoryPool() {
         return { rows: [] };
       }
 
+      if (normalized.startsWith('INSERT INTO lessons')) {
+        const ownerId = params[0];
+        enforceRowLevelSecurity(state, ownerId, 'lessons');
+
+        const id = randomUUID();
+        const createdAt = new Date();
+        const examplesValue = params[6];
+        const analogiesValue = params[7];
+        const conceptsValue = params[8];
+
+        const examples = typeof examplesValue === 'string'
+          ? JSON.parse(examplesValue)
+          : (examplesValue ?? []);
+        const analogies = typeof analogiesValue === 'string'
+          ? JSON.parse(analogiesValue)
+          : (analogiesValue ?? []);
+        const concepts = typeof conceptsValue === 'string'
+          ? JSON.parse(conceptsValue)
+          : (conceptsValue ?? []);
+
+        const lesson = {
+          id,
+          owner_id: ownerId,
+          document_id: params[1],
+          course_id: params[2] ?? null,
+          chapter: params[3] ?? null,
+          summary: params[4] ?? null,
+          explanation: params[5],
+          examples,
+          analogies,
+          concepts,
+          created_at: createdAt
+        };
+
+        lessons.set(id, lesson);
+
+        return {
+          rows: [
+            {
+              id: lesson.id,
+              summary: lesson.summary,
+              explanation: lesson.explanation,
+              examples: lesson.examples,
+              analogies: lesson.analogies,
+              concepts: lesson.concepts,
+              created_at: lesson.created_at
+            }
+          ]
+        };
+      }
+
       if (normalized.startsWith('DELETE FROM chunks')) {
         const id = params[0];
         for (let i = chunks.length - 1; i >= 0; i -= 1) {
@@ -112,6 +166,12 @@ export function createMemoryPool() {
             chunks.splice(i, 1);
           }
         }
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('INSERT INTO concepts')) {
+        const ownerId = params[0];
+        enforceRowLevelSecurity(state, ownerId, 'concepts');
         return { rows: [] };
       }
 
@@ -192,6 +252,34 @@ export function createMemoryPool() {
             }]
           };
         }
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('SELECT id, summary, explanation, examples, analogies, concepts, created_at FROM lessons WHERE document_id = $1 AND owner_id = $2')) {
+        const documentId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.document_id === documentId && lesson.owner_id === ownerId) {
+            return {
+              rows: [
+                {
+                  id: lesson.id,
+                  summary: lesson.summary,
+                  explanation: lesson.explanation,
+                  examples: lesson.examples,
+                  analogies: lesson.analogies,
+                  concepts: lesson.concepts,
+                  created_at: lesson.created_at
+                }
+              ]
+            };
+          }
+        }
+
         return { rows: [] };
       }
 

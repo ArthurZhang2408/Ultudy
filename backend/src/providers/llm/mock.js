@@ -254,6 +254,8 @@ function createMockLLMProvider() {
         }
       ];
 
+      const explanation = `This lesson guides you through ${baseTopic} by layering foundational understanding before applying it. ${textSample}`;
+
       const checkins = include_check_ins
         ? [
             {
@@ -271,10 +273,26 @@ function createMockLLMProvider() {
           ]
         : [];
 
+      const conceptsWithCheckIns = concepts.map((concept) => {
+        const related = checkins
+          .filter((checkin) => checkin.concept === concept.name)
+          .map((checkin) => ({
+            question: checkin.question,
+            hint: checkin.hint,
+            expected_answer: checkin.expected_answer
+          }));
+
+        return {
+          ...concept,
+          check_ins: related
+        };
+      });
+
       return {
         topic: baseTopic,
         summary: `This lesson covers key concepts from ${baseTopic}. ${textSample}`,
-        concepts,
+        explanation,
+        concepts: conceptsWithCheckIns,
         checkins,
         document_id
       };

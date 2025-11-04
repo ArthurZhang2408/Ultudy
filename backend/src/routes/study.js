@@ -35,6 +35,169 @@ function mapChunksWithTopic(chunks, topic) {
   return chunks.map((chunk) => ({ ...chunk, topic }));
 }
 
+function parseJsonColumn(value, fallback = []) {
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    return value;
+  }
+
+  return fallback;
+}
+
+function normalizeCheckInEntry(entry) {
+  const question = typeof entry?.question === 'string' ? entry.question.trim() : '';
+  const expectedAnswer = typeof entry?.expected_answer === 'string' ? entry.expected_answer.trim() : '';
+
+  if (!question || !expectedAnswer) {
+    return null;
+  }
+
+  const hint = typeof entry?.hint === 'string' ? entry.hint.trim() : '';
+
+  return {
+    question,
+    expected_answer: expectedAnswer,
+    hint
+  };
+}
+
+function attachCheckinsToConcepts(conceptsInput = [], checkins = []) {
+  const normalizedConcepts = Array.isArray(conceptsInput)
+    ? conceptsInput.map((concept) => {
+        const baseCheckIns = Array.isArray(concept?.check_ins)
+          ? concept.check_ins.map((entry) => normalizeCheckInEntry(entry)).filter(Boolean)
+          : [];
+
+        return {
+          ...concept,
+          check_ins: baseCheckIns
+        };
+      })
+    : [];
+
+  if (!Array.isArray(checkins) || checkins.length === 0) {
+    return normalizedConcepts;
+  }
+
+  const conceptLookup = new Map();
+  normalizedConcepts.forEach((concept) => {
+    if (typeof concept?.name === 'string' && concept.name.trim()) {
+      conceptLookup.set(concept.name.trim().toLowerCase(), concept);
+    }
+  });
+
+  const additionalConcepts = new Map();
+
+  checkins.forEach((checkin) => {
+    const normalized = normalizeCheckInEntry(checkin);
+    if (!normalized) {
+      return;
+    }
+
+    const rawConceptName = typeof checkin?.concept === 'string' ? checkin.concept.trim() : '';
+
+    if (rawConceptName) {
+      const key = rawConceptName.toLowerCase();
+      if (conceptLookup.has(key)) {
+        const target = conceptLookup.get(key);
+        const hasDuplicate = target.check_ins.some((existing) =>
+          existing.question === normalized.question && existing.expected_answer === normalized.expected_answer
+        );
+        if (!hasDuplicate) {
+          target.check_ins.push(normalized);
+        }
+        return;
+      }
+
+      if (additionalConcepts.has(key)) {
+        additionalConcepts.get(key).check_ins.push(normalized);
+        return;
+      }
+
+      additionalConcepts.set(key, {
+        name: rawConceptName,
+        explanation: '',
+        analogies: [],
+        examples: [],
+        check_ins: [normalized]
+      });
+      return;
+    }
+
+    if (normalizedConcepts.length > 0) {
+      normalizedConcepts[0].check_ins.push(normalized);
+      return;
+    }
+
+    if (!additionalConcepts.has('general')) {
+      additionalConcepts.set('general', {
+        name: 'General Check-ins',
+        explanation: '',
+        analogies: [],
+        examples: [],
+        check_ins: []
+      });
+    }
+
+    additionalConcepts.get('general').check_ins.push(normalized);
+  });
+
+  return normalizedConcepts.concat(Array.from(additionalConcepts.values()));
+}
+
+function buildLessonResponse(row, fallbackCheckins = []) {
+  if (!row) {
+    return null;
+  }
+
+  const analogies = parseJsonColumn(row.analogies, []);
+  const examples = parseJsonColumn(row.examples, []);
+  const conceptsInput = parseJsonColumn(row.concepts, []);
+  const concepts = attachCheckinsToConcepts(conceptsInput, fallbackCheckins);
+
+  const checkins = [];
+  concepts.forEach((concept) => {
+    const conceptName = typeof concept?.name === 'string' && concept.name.trim() ? concept.name : 'Concept';
+    const conceptCheckIns = Array.isArray(concept?.check_ins) ? concept.check_ins : [];
+
+    conceptCheckIns.forEach((entry) => {
+      const normalized = normalizeCheckInEntry(entry);
+      if (normalized) {
+        checkins.push({
+          concept: conceptName,
+          question: normalized.question,
+          expected_answer: normalized.expected_answer,
+          hint: normalized.hint
+        });
+      }
+    });
+  });
+
+  return {
+    ...row,
+    analogies,
+    examples,
+    concepts,
+    checkins,
+    check_ins: checkins
+  };
+}
+
 export default function createStudyRouter(options = {}) {
   const router = express.Router();
   const searchService = options.searchService ||
@@ -101,7 +264,7 @@ export default function createStudyRouter(options = {}) {
 
         if (existingLessons.length > 0) {
           console.log(`[lessons/generate] Returning cached lesson for document ${document_id}`);
-          return existingLessons[0];
+          return buildLessonResponse(existingLessons[0]);
         }
 
         // Step 2: Load full document text
@@ -129,6 +292,11 @@ export default function createStudyRouter(options = {}) {
           include_check_ins
         });
 
+        const conceptsForStorage = attachCheckinsToConcepts(
+          generatedLesson.concepts || [],
+          generatedLesson.checkins || []
+        );
+
         // Step 4: Persist lesson to database
         const { rows: insertedLesson } = await client.query(
           `INSERT INTO lessons (owner_id, document_id, course_id, chapter, summary, explanation, examples, analogies, concepts)
@@ -143,13 +311,13 @@ export default function createStudyRouter(options = {}) {
             generatedLesson.explanation,
             JSON.stringify(generatedLesson.examples || []),
             JSON.stringify(generatedLesson.analogies || []),
-            JSON.stringify(generatedLesson.concepts || [])
+            JSON.stringify(conceptsForStorage)
           ]
         );
 
         // Step 5: Extract and persist concepts to concepts table
-        if (generatedLesson.concepts && Array.isArray(generatedLesson.concepts)) {
-          for (const conceptData of generatedLesson.concepts) {
+        if (Array.isArray(conceptsForStorage) && conceptsForStorage.length > 0) {
+          for (const conceptData of conceptsForStorage) {
             // Create concept record with not_learned state
             await client.query(
               `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state)
@@ -166,7 +334,12 @@ export default function createStudyRouter(options = {}) {
           }
         }
 
-        return insertedLesson[0];
+        const formattedLesson = buildLessonResponse(insertedLesson[0], generatedLesson.checkins || []);
+        if (generatedLesson.topic && !formattedLesson.topic) {
+          formattedLesson.topic = generatedLesson.topic;
+        }
+
+        return formattedLesson;
       });
 
       if (!lesson) {

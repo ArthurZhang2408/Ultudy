@@ -332,13 +332,14 @@ ${full_text}
 Please create a comprehensive, interactive lesson from this content. Follow these guidelines:
 
 1. **Identify Concepts**: Extract 3-5 key concepts that a student needs to understand
-2. **Structure**: Provide a clear summary, helpful analogies, and worked examples
+2. **Structure**: Provide a clear summary, thorough explanation, helpful analogies, and worked examples
 3. **Check-ins**: ${include_check_ins ? 'Create 2-3 check-in questions per concept to verify understanding' : 'Skip check-ins'}
 
 Return a JSON object with this exact structure:
 {
   "topic": "A clear, concise title for this lesson",
   "summary": "An engaging overview (200-300 words) of what will be covered",
+  "explanation": "A detailed narrative (350-500 words) teaching the material step-by-step",
   "concepts": [
     {
       "name": "Concept name",
@@ -381,7 +382,34 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     throw new Error('Gemini LLM provider returned no concepts');
   }
 
+  const explanation = requireString(payload.explanation, 'explanation');
+
+  const conceptCheckinMap = new Map();
+  const checkins = Array.isArray(payload.checkins) ? payload.checkins : [];
+  const normalizedCheckins = checkins.map((checkin, idx) => {
+    const conceptName = requireString(checkin?.concept, `checkin ${idx + 1} concept`);
+    const normalized = {
+      concept: conceptName,
+      question: requireString(checkin?.question, `checkin ${idx + 1} question`),
+      hint: sanitizeText(checkin?.hint || ''),
+      expected_answer: requireString(checkin?.expected_answer, `checkin ${idx + 1} expected_answer`)
+    };
+
+    const key = conceptName.trim().toLowerCase();
+    if (!conceptCheckinMap.has(key)) {
+      conceptCheckinMap.set(key, []);
+    }
+    conceptCheckinMap.get(key).push({
+      question: normalized.question,
+      expected_answer: normalized.expected_answer,
+      hint: normalized.hint
+    });
+
+    return normalized;
+  });
+
   const normalizedConcepts = concepts.map((concept, idx) => {
+    const name = requireString(concept?.name, `concept ${idx + 1} name`);
     const analogies = Array.isArray(concept.analogies)
       ? concept.analogies.filter(a => typeof a === 'string' && a.trim()).slice(0, 3)
       : [];
@@ -392,25 +420,62 @@ function normalizeFullContextLessonPayload(payload, document_id) {
       steps: requireStringArray(ex?.steps, 1, `concept ${idx + 1} example steps`)
     }));
 
+    const checkInsFromConcept = Array.isArray(concept.check_ins)
+      ? concept.check_ins
+          .map((entry, checkIdx) => {
+            try {
+              return {
+                question: requireString(entry?.question, `concept ${idx + 1} check_in ${checkIdx + 1} question`),
+                expected_answer: requireString(entry?.expected_answer, `concept ${idx + 1} check_in ${checkIdx + 1} expected_answer`),
+                hint: sanitizeText(entry?.hint || '')
+              };
+            } catch (error) {
+              return null;
+            }
+          })
+          .filter(Boolean)
+      : [];
+
+    const conceptKey = name.trim().toLowerCase();
+    const mappedCheckIns = conceptCheckinMap.get(conceptKey);
+    if (mappedCheckIns && mappedCheckIns.length) {
+      checkInsFromConcept.push(...mappedCheckIns);
+      conceptCheckinMap.delete(conceptKey);
+    }
+
     return {
-      name: requireString(concept?.name, `concept ${idx + 1} name`),
+      name,
       explanation: requireString(concept?.explanation, `concept ${idx + 1} explanation`),
       analogies,
-      examples: normalizedExamples
+      examples: normalizedExamples,
+      check_ins: checkInsFromConcept
     };
   });
 
-  const checkins = Array.isArray(payload.checkins) ? payload.checkins : [];
-  const normalizedCheckins = checkins.map((checkin, idx) => ({
-    concept: requireString(checkin?.concept, `checkin ${idx + 1} concept`),
-    question: requireString(checkin?.question, `checkin ${idx + 1} question`),
-    hint: sanitizeText(checkin?.hint || ''),
-    expected_answer: requireString(checkin?.expected_answer, `checkin ${idx + 1} expected_answer`)
-  }));
+  if (conceptCheckinMap.size > 0) {
+    if (normalizedConcepts.length > 0) {
+      const fallbackConcept = normalizedConcepts[0];
+      for (const extra of conceptCheckinMap.values()) {
+        fallbackConcept.check_ins.push(...extra);
+      }
+    } else {
+      const extras = Array.from(conceptCheckinMap.values()).flat();
+      if (extras.length) {
+        normalizedConcepts.push({
+          name: 'Lesson Check-ins',
+          explanation,
+          analogies: [],
+          examples: [],
+          check_ins: extras
+        });
+      }
+    }
+  }
 
   return {
     topic: requireString(payload.topic, 'topic'),
     summary: requireString(payload.summary, 'summary'),
+    explanation,
     concepts: normalizedConcepts,
     checkins: normalizedCheckins,
     document_id
