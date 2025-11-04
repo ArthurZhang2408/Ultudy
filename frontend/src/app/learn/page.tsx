@@ -109,8 +109,12 @@ function LearnPageContent() {
   const [evaluation, setEvaluation] = useState<any>(null);
   const [completedCheckIns, setCompletedCheckIns] = useState<Set<number>>(new Set());
 
+  // Prevent duplicate API calls in StrictMode
+  const hasGeneratedRef = useState({ current: false })[0];
+
   useEffect(() => {
-    if (documentId) {
+    if (documentId && !hasGeneratedRef.current) {
+      hasGeneratedRef.current = true;
       generateLesson();
     }
   }, [documentId]);
@@ -135,11 +139,15 @@ function LearnPageContent() {
         console.log('[learn] Normalized lesson:', normalizedLesson);
         setLesson(normalizedLesson);
       } else {
-        alert('Failed to generate lesson');
+        const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
+        const errorMessage = errorData.details
+          ? `${errorData.error}\n\n${errorData.details}`
+          : errorData.error || 'Failed to generate lesson';
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Failed to generate lesson:', error);
-      alert('Failed to generate lesson');
+      alert('Failed to generate lesson. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -183,11 +191,15 @@ function LearnPageContent() {
           setCompletedCheckIns(new Set([...completedCheckIns, currentCheckIn]));
         }
       } else {
-        alert('Failed to evaluate answer');
+        const errorData = await res.json().catch(() => ({ error: 'Failed to evaluate answer' }));
+        const errorMessage = errorData.details
+          ? `${errorData.error}\n\n${errorData.details}`
+          : errorData.error || 'Failed to evaluate answer';
+        alert(errorMessage);
       }
     } catch (error) {
       console.error('Failed to submit check-in:', error);
-      alert('Failed to submit check-in');
+      alert('Failed to submit check-in. Please check your connection and try again.');
     } finally {
       setEvaluating(false);
     }
