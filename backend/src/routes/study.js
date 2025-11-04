@@ -793,7 +793,7 @@ export default function createStudyRouter(options = {}) {
           .sort((a, b) => a.accuracy - b.accuracy)
           .slice(0, 10); // Top 10 weak areas
 
-        // 4. Fetch recent study sessions
+        // 4. Fetch recent study sessions (limit to 10 for display)
         const sessionsResult = await client.query(
           `SELECT
             id,
@@ -827,11 +827,23 @@ export default function createStudyRouter(options = {}) {
           completed_at: session.completed_at
         }));
 
-        // 5. Calculate study stats
-        const totalSessions = studySessions.length;
-        const totalCheckIns = studySessions.reduce((sum, s) => sum + s.total_check_ins, 0);
-        const totalCorrectCheckIns = studySessions.reduce((sum, s) => sum + s.correct_check_ins, 0);
-        const totalMinutes = studySessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+        // 5. Calculate study stats from ALL sessions (not just the 10 most recent)
+        const statsResult = await client.query(
+          `SELECT
+            COUNT(*) as total_sessions,
+            COALESCE(SUM(total_check_ins), 0) as total_check_ins,
+            COALESCE(SUM(correct_check_ins), 0) as total_correct,
+            COALESCE(SUM(duration_minutes), 0) as total_minutes
+           FROM study_sessions
+           WHERE ${whereClause}`,
+          params
+        );
+
+        const stats = statsResult.rows[0];
+        const totalSessions = parseInt(stats.total_sessions, 10);
+        const totalCheckIns = parseInt(stats.total_check_ins, 10);
+        const totalCorrectCheckIns = parseInt(stats.total_correct, 10);
+        const totalMinutes = Math.round(parseFloat(stats.total_minutes));
 
         res.json({
           content_mastery: {

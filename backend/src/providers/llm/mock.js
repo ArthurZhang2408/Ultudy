@@ -352,6 +352,23 @@ function createMockLLMProvider() {
       }
 
       return { items };
+    },
+    async generateText(prompt) {
+      // Mock implementation for text generation (e.g., for check-in evaluation)
+      // Returns a simple evaluation response
+      const isCorrectQuery = prompt.toLowerCase().includes('correct') || prompt.toLowerCase().includes('right');
+      const score = isCorrectQuery ? 85 : 65;
+      const correct = score >= 70;
+
+      return JSON.stringify({
+        correct,
+        score,
+        feedback: correct
+          ? "Good understanding! Your answer captures the key concepts."
+          : "Not quite right. Review the core principles and try again.",
+        keyPoints: ["Key concept 1", "Key concept 2"],
+        misconceptions: correct ? [] : ["Common misconception addressed"]
+      });
     }
   };
 }
