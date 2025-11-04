@@ -351,8 +351,30 @@ export default function createStudyRouter(options = {}) {
       res.json(lesson);
     } catch (error) {
       console.error('Failed to generate lesson from document', error);
+
+      // Provide more detailed error messages
+      let errorMessage = 'Failed to generate lesson from document';
+      let errorDetails = null;
+
+      if (error.message) {
+        if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+          errorMessage = 'Rate limit exceeded. Please wait a few minutes and try again.';
+          errorDetails = 'The AI service is temporarily rate limited. This usually resets within 1-2 minutes.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'API configuration error';
+          errorDetails = 'Please contact support.';
+        } else if (error.message.includes('full text')) {
+          errorMessage = 'Document text not available';
+          errorDetails = 'This document may not have been fully processed yet.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       res.status(500).json({
-        error: error?.message || 'Failed to generate lesson from document'
+        error: errorMessage,
+        details: errorDetails,
+        type: error.status === 429 ? 'rate_limit' : 'generation_error'
       });
     }
   });
@@ -460,8 +482,29 @@ export default function createStudyRouter(options = {}) {
       });
     } catch (error) {
       console.error('Failed to submit check-in', error);
+
+      // Provide more detailed error messages
+      let errorMessage = 'Failed to evaluate check-in answer';
+      let errorDetails = null;
+
+      if (error.message) {
+        if (error.message.includes('429') || error.message.includes('Too Many Requests')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
+          errorDetails = 'The AI service is temporarily unavailable due to high usage.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'API configuration error';
+          errorDetails = 'Please contact support.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       res.status(500).json({
-        error: error?.message || 'Failed to evaluate check-in answer'
+        error: errorMessage,
+        details: errorDetails,
+        type: error.status === 429 ? 'rate_limit' : 'evaluation_error'
       });
     }
   });

@@ -525,6 +525,36 @@ export default async function createGeminiLLMProvider() {
 
       const lesson = await callModel(systemInstruction, userPrompt);
       return normalizeFullContextLessonPayload(lesson, document_id);
+    },
+    /**
+     * General-purpose text generation for check-in evaluation, etc.
+     * Returns raw text response, not parsed JSON
+     */
+    async generateText(prompt) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY environment variable is required');
+      }
+
+      const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
+
+      const GoogleGenerativeAI = await loadGoogleGenerativeAI();
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: 'You are a helpful AI assistant.',
+        generationConfig: {
+          temperature: 0.4
+        }
+      });
+
+      const response = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: prompt }] }
+        ]
+      });
+
+      return extractResponseText(response);
     }
   };
 }
