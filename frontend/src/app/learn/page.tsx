@@ -211,6 +211,87 @@ function LearnPageContent() {
   const currentMCQ = currentConcept?.check_ins?.[currentMCQIndex];
   const totalMCQsInConcept = currentConcept?.check_ins?.length || 0;
 
+  // Check if this is a new MCQ-based lesson or old format
+  const hasNewFormat = currentMCQ?.options && Array.isArray(currentMCQ.options);
+
+  // If old format lesson, show a message to regenerate
+  if (!hasNewFormat && !showingSummary) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <button
+            onClick={() => router.push('/courses')}
+            className="text-sm text-slate-600 hover:text-slate-900"
+          >
+            ← Back to courses
+          </button>
+        </div>
+
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-8 shadow-sm space-y-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-amber-900">
+                Lesson Format Update Available
+              </h2>
+              <p className="mt-2 text-amber-800">
+                This lesson was generated with an older format. To experience the new interactive,
+                concept-by-concept learning with multiple-choice questions and instant feedback,
+                you'll need to regenerate it.
+              </p>
+              <p className="mt-2 text-amber-800">
+                The new format features:
+              </p>
+              <ul className="mt-2 ml-6 list-disc text-amber-800">
+                <li>Bite-sized explanations (no walls of text)</li>
+                <li>Interactive MCQs with instant feedback</li>
+                <li>Detailed explanations for each answer option</li>
+                <li>Progress tracking across concepts</li>
+              </ul>
+              <p className="mt-4 text-sm text-amber-700">
+                Note: This will delete the cached lesson and generate a new one (takes ~10 seconds).
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push('/courses')}
+              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-50"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('Regenerate this lesson with the new format?')) return;
+
+                // Delete the cached lesson first
+                try {
+                  const deleteRes = await fetch(`/api/lessons/${lesson.id}`, {
+                    method: 'DELETE'
+                  });
+
+                  if (!deleteRes.ok) {
+                    alert('Failed to delete cached lesson. Please try again.');
+                    return;
+                  }
+
+                  // Reload the page to regenerate
+                  window.location.reload();
+                } catch (error) {
+                  console.error('Failed to delete lesson:', error);
+                  alert('Failed to delete cached lesson. Please try again.');
+                }
+              }}
+              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Regenerate Lesson
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Show summary screen
   if (showingSummary) {
     return (

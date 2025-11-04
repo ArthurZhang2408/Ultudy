@@ -406,6 +406,34 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
+  // Delete a cached lesson (useful for regenerating with new format)
+  router.delete('/lessons/:lesson_id', async (req, res) => {
+    const { lesson_id } = req.params;
+    const ownerId = req.userId;
+
+    if (!lesson_id) {
+      return res.status(400).json({ error: 'lesson_id is required' });
+    }
+
+    try {
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        const result = await client.query(
+          `DELETE FROM lessons WHERE id = $1 AND owner_id = $2`,
+          [lesson_id, ownerId]
+        );
+
+        if (result.rowCount === 0) {
+          throw new Error('Lesson not found or you do not have permission to delete it');
+        }
+      });
+
+      res.json({ success: true, message: 'Lesson deleted successfully' });
+    } catch (error) {
+      console.error('Failed to delete lesson', error);
+      res.status(500).json({ error: error.message || 'Failed to delete lesson' });
+    }
+  });
+
   // MVP v1.0: Check-in submission and mastery tracking
   router.post('/check-ins/submit', async (req, res) => {
     const {
