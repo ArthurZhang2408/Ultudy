@@ -61,54 +61,54 @@ export default function createDocumentsRouter(options = {}) {
       });
     }
 
+    // Build dynamic update query outside tenant helper so we can fail fast
+    const updates = [];
+    const params = [id, ownerId];
+    let paramIndex = 3;
+
+    if (material_type !== undefined) {
+      updates.push(`material_type = $${paramIndex}`);
+      params.push(material_type);
+      paramIndex++;
+    }
+
+    if (chapter !== undefined) {
+      updates.push(`chapter = $${paramIndex}`);
+      params.push(chapter);
+      paramIndex++;
+    }
+
+    if (title !== undefined) {
+      updates.push(`title = $${paramIndex}`);
+      params.push(title);
+      paramIndex++;
+    }
+
+    if (user_tags !== undefined) {
+      updates.push(`user_tags = $${paramIndex}`);
+      params.push(user_tags);
+      paramIndex++;
+    }
+
+    if (course_id !== undefined) {
+      updates.push(`course_id = $${paramIndex}`);
+      params.push(course_id);
+      paramIndex++;
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        error: 'No metadata fields provided to update'
+      });
+    }
+
     try {
       const result = await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Build dynamic update query
-        const updates = [];
-        const params = [id, ownerId];
-        let paramIndex = 3;
-
-        if (material_type !== undefined) {
-          updates.push(`material_type = $${paramIndex}`);
-          params.push(material_type);
-          paramIndex++;
-        }
-
-        if (chapter !== undefined) {
-          updates.push(`chapter = $${paramIndex}`);
-          params.push(chapter);
-          paramIndex++;
-        }
-
-        if (title !== undefined) {
-          updates.push(`title = $${paramIndex}`);
-          params.push(title);
-          paramIndex++;
-        }
-
-        if (user_tags !== undefined) {
-          updates.push(`user_tags = $${paramIndex}`);
-          params.push(user_tags);
-          paramIndex++;
-        }
-
-        if (course_id !== undefined) {
-          updates.push(`course_id = $${paramIndex}`);
-          params.push(course_id);
-          paramIndex++;
-        }
-
-        if (updates.length === 0) {
-          return res.status(400).json({
-            error: 'No metadata fields provided to update'
-          });
-        }
-
         const query = `
           UPDATE documents
           SET ${updates.join(', ')}
           WHERE id = $1 AND owner_id = $2
-          RETURNING id, title, pages, created_at, material_type, chapter, user_tags
+          RETURNING id, title, pages, created_at, material_type, chapter, user_tags, course_id
         `;
 
         const { rows } = await client.query(query, params);

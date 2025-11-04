@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState, useEffect } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 type Course = {
@@ -16,6 +16,14 @@ type UploadResponse = {
 };
 
 export default function UploadPage() {
+  return (
+    <Suspense fallback={<UploadPageFallback />}> 
+      <UploadPageContent />
+    </Suspense>
+  );
+}
+
+function UploadPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const courseIdParam = searchParams.get('course_id');
@@ -35,6 +43,12 @@ export default function UploadPage() {
   useEffect(() => {
     fetchCourses();
   }, []);
+
+  useEffect(() => {
+    if (courseIdParam && courseIdParam !== courseId) {
+      setCourseId(courseIdParam);
+    }
+  }, [courseIdParam]);
 
   async function fetchCourses() {
     try {
@@ -201,52 +215,73 @@ export default function UploadPage() {
                 className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               >
                 <option value="textbook">Textbook</option>
-                <option value="lecture">Lecture Notes</option>
-                <option value="tutorial">Tutorial/Practice</option>
-                <option value="exam">Past Exam</option>
+                <option value="lecture">Lecture</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="exam">Exam</option>
               </select>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-700">
-                Chapter
+                Chapter/Section
               </label>
               <input
                 type="text"
                 value={chapter}
                 onChange={(e) => setChapter(e.target.value)}
-                placeholder="e.g., 1, 2, 3"
+                placeholder="Optional"
                 className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
               />
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isUploading}
-              className="rounded-md bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-            >
-              {isUploading ? 'Uploading...' : 'Upload & Save'}
-            </button>
+          <div className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">
+            <p>
+              <span className="font-semibold text-slate-900">What happens next?</span>
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>We store the full text of your PDF for rich lesson generation.</li>
+              <li>You can tag the document with course, chapter, and material type.</li>
+              <li>After upload completes, you’ll be redirected back to your course.</li>
+            </ul>
           </div>
+
+          <button
+            type="submit"
+            disabled={isUploading}
+            className="w-full rounded-md bg-blue-600 px-4 py-2 text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isUploading ? 'Uploading...' : 'Upload PDF'}
+          </button>
+
+          {error && (
+            <p className="text-sm text-red-600">{error}</p>
+          )}
+
+          {result && (
+            <div className="rounded-lg bg-green-50 p-4 text-sm text-green-800">
+              <p className="font-medium text-green-900">Upload successful!</p>
+              <p className="mt-1">Processed {result.pages} pages and created {result.chunks} searchable chunks.</p>
+              {uploadedDocId && (
+                <p className="mt-2 text-xs text-green-700">Document ID: {uploadedDocId}</p>
+              )}
+            </div>
+          )}
         </form>
       )}
+    </section>
+  );
+}
 
-      {error && (
-        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      {result && (
-        <div className="rounded border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-          <h2 className="font-semibold">Upload successful!</h2>
-          <p className="mt-2">
-            Document uploaded with {result.pages} pages. Redirecting to course page...
-          </p>
-        </div>
-      )}
+function UploadPageFallback() {
+  return (
+    <section className="space-y-6 max-w-2xl">
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Upload Study Material</h1>
+        <p className="text-slate-600">Preparing upload tools...</p>
+      </div>
+      <div className="rounded-lg border border-dashed border-slate-200 bg-white p-8 text-center text-slate-500">
+        Loading course information...
+      </div>
     </section>
   );
 }

@@ -74,10 +74,16 @@ describe('multi-tenant request scoping', () => {
 
     assert.equal(listUserOne.status, 200);
     assert.equal(listUserTwo.status, 200);
-    assert.equal(listUserOne.body.length, 1);
-    assert.equal(listUserTwo.body.length, 1);
-    assert.equal(listUserOne.body[0].id, uploadUserOne.body.document_id);
-    assert.equal(listUserTwo.body[0].id, uploadUserTwo.body.document_id);
+
+    const documentsOne = Array.isArray(listUserOne.body) ? listUserOne.body : listUserOne.body.documents;
+    const documentsTwo = Array.isArray(listUserTwo.body) ? listUserTwo.body : listUserTwo.body.documents;
+
+    assert.ok(Array.isArray(documentsOne));
+    assert.ok(Array.isArray(documentsTwo));
+    assert.equal(documentsOne.length, 1);
+    assert.equal(documentsTwo.length, 1);
+    assert.equal(documentsOne[0].id, uploadUserOne.body.document_id);
+    assert.equal(documentsTwo[0].id, uploadUserTwo.body.document_id);
 
     await fs.rm(tempDir, { recursive: true, force: true });
   });

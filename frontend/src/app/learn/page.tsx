@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 type CheckIn = {
@@ -36,7 +36,12 @@ type MasteryUpdate = {
 };
 
 // Helper function to parse JSONB fields and normalize lesson structure
-function normalizeLesson(rawLesson: any): Lesson & { parsedExamples: string[], parsedAnalogies: string[], parsedConcepts: Concept[], allCheckIns: CheckIn[] } {
+function normalizeLesson(rawLesson: any): Lesson & {
+  parsedExamples: string[];
+  parsedAnalogies: string[];
+  parsedConcepts: Concept[];
+  allCheckIns: CheckIn[];
+} {
   // Parse JSONB fields if they are strings
   const examples = typeof rawLesson.examples === 'string'
     ? JSON.parse(rawLesson.examples)
@@ -76,12 +81,20 @@ function normalizeLesson(rawLesson: any): Lesson & { parsedExamples: string[], p
     ...rawLesson,
     parsedExamples: examples,
     parsedAnalogies: analogies,
-    parsedConcepts: parsedConcepts,
+    parsedConcepts,
     allCheckIns: checkIns
   };
 }
 
 export default function LearnPage() {
+  return (
+    <Suspense fallback={<LearnPageFallback />}> 
+      <LearnPageContent />
+    </Suspense>
+  );
+}
+
+function LearnPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const documentId = searchParams.get('document_id');
@@ -195,16 +208,7 @@ export default function LearnPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center space-y-4">
-          <div className="text-slate-600">Loading your lesson...</div>
-          <div className="text-sm text-slate-500">
-            Checking for cached lesson or generating new one (up to 10 seconds for first time)
-          </div>
-        </div>
-      </div>
-    );
+    return <LearnPageFallback />;
   }
 
   if (!lesson) {
@@ -255,7 +259,9 @@ export default function LearnPage() {
             <h3 className="font-semibold text-blue-900">Examples</h3>
             <div className="mt-2 space-y-3 text-sm text-blue-800">
               {lesson.parsedExamples.map((example, i) => (
-                <div key={i} className="whitespace-pre-wrap">{typeof example === 'string' ? example : JSON.stringify(example)}</div>
+                <div key={i} className="whitespace-pre-wrap">
+                  {typeof example === 'string' ? example : JSON.stringify(example)}
+                </div>
               ))}
             </div>
           </div>
@@ -266,7 +272,9 @@ export default function LearnPage() {
             <h3 className="font-semibold text-green-900">Analogies</h3>
             <div className="mt-2 space-y-3 text-sm text-green-800">
               {lesson.parsedAnalogies.map((analogy, i) => (
-                <div key={i} className="whitespace-pre-wrap">{typeof analogy === 'string' ? analogy : JSON.stringify(analogy)}</div>
+                <div key={i} className="whitespace-pre-wrap">
+                  {typeof analogy === 'string' ? analogy : JSON.stringify(analogy)}
+                </div>
               ))}
             </div>
           </div>
@@ -358,25 +366,23 @@ export default function LearnPage() {
                   </div>
                 )}
 
-                <div className="flex justify-end">
-                  {evaluation.correct ? (
-                    <button
-                      onClick={nextCheckIn}
-                      className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      {currentCheckIn < totalCheckIns - 1 ? 'Next Question' : 'Finish Lesson'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setEvaluation(null);
-                        setUserAnswer('');
-                      }}
-                      className="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      Try Again
-                    </button>
-                  )}
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => {
+                      setEvaluation(null);
+                      setUserAnswer('');
+                      setShowHint(false);
+                    }}
+                    className="text-sm text-slate-600 hover:text-slate-900"
+                  >
+                    Edit answer
+                  </button>
+                  <button
+                    onClick={nextCheckIn}
+                    className="rounded-md bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  >
+                    {currentCheckIn === totalCheckIns - 1 ? 'Finish Lesson' : 'Next Question'}
+                  </button>
                 </div>
               </div>
             )}
@@ -399,6 +405,19 @@ export default function LearnPage() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function LearnPageFallback() {
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-center space-y-4">
+        <div className="text-slate-600">Loading your lesson...</div>
+        <div className="text-sm text-slate-500">
+          Checking for cached lesson or generating new one (up to 10 seconds for first time)
+        </div>
+      </div>
     </div>
   );
 }
