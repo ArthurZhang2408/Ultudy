@@ -92,24 +92,36 @@ export function createPdfIngestionService(options = {}) {
     const pageCount = pages.length;
     // Extract full text from all pages for MVP v1.0
     const fullText = pages.map((p) => p.text).join('\n\n');
-    const chunks = chunker(pages);
-    const embeddingsProvider = await embeddingsProviderFactory();
-    const embedStart = Date.now();
-    const embeddings = chunks.length
-      ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
-      : [];
-    const embedDuration = Date.now() - embedStart;
-    const sampleVector = embeddings[0];
-    const configuredDim = Number.parseInt(process.env.GEMINI_EMBED_DIM || '3072', 10);
-    const dimension =
-      typeof sampleVector?.length === 'number' && Number.isFinite(sampleVector.length)
-        ? sampleVector.length
-        : Number.isFinite(configuredDim) && configuredDim > 0
-          ? configuredDim
-          : 0;
+
+    // MVP v1.0: Embeddings are optional now (only needed for legacy RAG search)
+    // Set SKIP_EMBEDDINGS=true to avoid Gemini quota issues on upload
+    const skipEmbeddings = process.env.SKIP_EMBEDDINGS === 'true';
+
+    let chunks = [];
+    let embeddings = [];
+    let embedDuration = 0;
+    let dimension = 0;
+
+    if (!skipEmbeddings) {
+      chunks = chunker(pages);
+      const embeddingsProvider = await embeddingsProviderFactory();
+      const embedStart = Date.now();
+      embeddings = chunks.length
+        ? await embeddingsProvider.embedDocuments(chunks.map((chunk) => chunk.text))
+        : [];
+      embedDuration = Date.now() - embedStart;
+      const sampleVector = embeddings[0];
+      const configuredDim = Number.parseInt(process.env.GEMINI_EMBED_DIM || '3072', 10);
+      dimension =
+        typeof sampleVector?.length === 'number' && Number.isFinite(sampleVector.length)
+          ? sampleVector.length
+          : Number.isFinite(configuredDim) && configuredDim > 0
+            ? configuredDim
+            : 0;
+    }
 
     console.info(
-      `[ingest] provider=${embeddingsProvider?.name || 'unknown'} file="${safeName}" chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms fullText=${fullText.length}chars`
+      `[ingest] file="${safeName}" pages=${pageCount} fullText=${fullText.length}chars ${skipEmbeddings ? 'embeddings=skipped' : `chunks=${chunks.length} dim=${dimension} time=${embedDuration}ms`}`
     );
 
     try {
@@ -118,7 +130,10 @@ export function createPdfIngestionService(options = {}) {
           'INSERT INTO documents (id, title, pages, owner_id, full_text) VALUES ($1, $2, $3, $4, $5)',
           [documentId, safeName, pageCount, ownerSegment, fullText]
         );
-        await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
+        // Only create chunks if embeddings were generated
+        if (!skipEmbeddings && chunks.length > 0) {
+          await persistChunks(client, documentId, ownerSegment, chunks, embeddings);
+        }
       });
     } catch (error) {
       await fs.rm(storagePath, { force: true });

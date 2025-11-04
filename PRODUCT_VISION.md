@@ -66,24 +66,73 @@ The single magical moment that differentiates us from ChatGPT.
 
 ---
 
-## 3. Product Architecture
+## 3. Data Hierarchy & Organization
 
-### 3.1 Dual Mastery System
+The app supports **multi-course learning** with clear organizational hierarchy:
 
 ```
-User Progress
-├── Content Mastery (Concepts)
-│   ├── Chapter 1: Introduction
-│   │   ├── Concept: Signal Definition [✓ Mastered]
-│   │   ├── Concept: Continuous vs Discrete [⚠ Needs Review]
-│   │   └── Concept: Sampling Theorem [✗ Not Learned]
-│   └── Chapter 2: Fourier Transforms
-│       └── ...
+User (Student)
 │
-└── Problem Mastery (Techniques)
-    ├── Time-domain convolution [90% - Strong]
-    ├── Frequency-domain analysis [40% - Weak]
-    └── Z-transforms [0% - Not Attempted]
+├── Course: "ECE 358 - Computer Networks" (Fall 2025)
+│   ├── Documents
+│   │   ├── Textbook Chapter 1: "Network Fundamentals"
+│   │   ├── Textbook Chapter 2: "Data Link Layer"
+│   │   ├── Lecture 1 Notes (Week 1)
+│   │   ├── Tutorial 1 Solutions
+│   │   └── Midterm 2023 (Past Exam)
+│   │
+│   ├── Concepts (Content Mastery)
+│   │   ├── Chapter 1
+│   │   │   ├── "TCP/IP Stack" [✓ Mastered]
+│   │   │   ├── "Packet Switching" [⚠ Needs Review]
+│   │   │   └── "Bandwidth" [✗ Not Learned]
+│   │   └── Chapter 2
+│   │       └── ...
+│   │
+│   ├── Problem Types (Problem Mastery)
+│   │   ├── "Throughput Calculations" [90% - Strong]
+│   │   ├── "Protocol Analysis" [40% - Weak]
+│   │   └── "Network Design" [0% - Not Attempted]
+│   │
+│   └── Study Sessions
+│       ├── Nov 3: Learned Chapter 1 (3 concepts, 45 min)
+│       └── Nov 4: Practiced throughput problems (5/7 correct)
+│
+└── Course: "MATH 237 - Calculus 3"
+    └── ...
+```
+
+### 3.1 Hierarchy Levels Explained
+
+1. **User** - The student using the app
+2. **Course** - A class they're taking (e.g., "ECE 358", "MATH 237")
+   - Name, code, term, exam date
+3. **Document** - Learning materials uploaded to a course
+   - Material type: textbook, lecture, tutorial, exam
+   - Tagged with chapter/section
+4. **Chapter** - Organizational unit within course
+   - Extracted from document tags
+5. **Concept** - Atomic learning unit (e.g., "Fourier Transform")
+   - Belongs to a Chapter
+   - Has mastery state and tracking
+6. **Check-in** - Question to verify concept understanding
+   - Links to specific Concept
+7. **Problem Type** - Category of problems (e.g., "Integration by parts")
+   - Belongs to Course
+   - Relates to multiple Concepts
+   - Has percentage mastery
+8. **Study Session** - Tracks learning activity
+   - What was studied (chapters, concepts, problems)
+   - Duration, performance, completion
+
+### 3.2 Dual Mastery System
+
+**Content Mastery (Concept-level):**
+```
+Chapter 1: Network Fundamentals
+├── TCP/IP Stack [✓ Mastered] (3 consecutive correct)
+├── Packet Switching [⚠ Needs Review] (1/3 attempts correct)
+└── Bandwidth [✗ Not Learned] (not attempted)
 ```
 
 **Concept Mastery States:**

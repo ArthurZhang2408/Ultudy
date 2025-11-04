@@ -12,23 +12,29 @@ export default function createDocumentsRouter(options = {}) {
 
   router.get('/', async (req, res) => {
     const ownerId = req.userId;
+    const { course_id } = req.query;
 
     try {
       const rows = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows: result } = await client.query(
-          `
-            SELECT id, title, pages, created_at, material_type, chapter, user_tags
-            FROM documents
-            WHERE owner_id = $1
-            ORDER BY created_at DESC
-            LIMIT 100
-          `,
-          [ownerId]
-        );
+        let query = `
+          SELECT id, title, pages, created_at as uploaded_at, material_type, chapter, user_tags, course_id
+          FROM documents
+          WHERE owner_id = $1
+        `;
+        const params = [ownerId];
+
+        if (course_id) {
+          query += ` AND course_id = $2`;
+          params.push(course_id);
+        }
+
+        query += ` ORDER BY created_at DESC LIMIT 100`;
+
+        const { rows: result } = await client.query(query, params);
         return result;
       });
 
-      res.json(rows);
+      res.json({ documents: rows });
     } catch (error) {
       console.error('Failed to list documents', error);
       res.status(500).json({ error: 'Failed to list documents' });
@@ -38,7 +44,7 @@ export default function createDocumentsRouter(options = {}) {
   router.post('/:id/metadata', async (req, res) => {
     const ownerId = req.userId;
     const { id } = req.params;
-    const { material_type, chapter, title, user_tags } = req.body;
+    const { material_type, chapter, title, user_tags, course_id } = req.body;
 
     // Validate material_type if provided
     const validMaterialTypes = ['textbook', 'lecture', 'tutorial', 'exam'];
@@ -83,6 +89,12 @@ export default function createDocumentsRouter(options = {}) {
         if (user_tags !== undefined) {
           updates.push(`user_tags = $${paramIndex}`);
           params.push(user_tags);
+          paramIndex++;
+        }
+
+        if (course_id !== undefined) {
+          updates.push(`course_id = $${paramIndex}`);
+          params.push(course_id);
           paramIndex++;
         }
 
