@@ -19,11 +19,12 @@ async function seedDocument(pool, tenantHelpers, provider, ownerId, text, option
   const vector = formatEmbeddingForInsert(embedding[0]);
 
   await tenantHelpers.withTenant(ownerId, async (client) => {
-    await client.query('INSERT INTO documents (id, title, pages, owner_id) VALUES ($1, $2, $3, $4)', [
+    await client.query('INSERT INTO documents (id, title, pages, owner_id, full_text) VALUES ($1, $2, $3, $4, $5)', [
       documentId,
       title,
       pages,
-      ownerId
+      ownerId,
+      options.fullText || text
     ]);
 
     await client.query(
@@ -90,6 +91,48 @@ describe('study endpoints', () => {
     assert.equal(responseTwo.status, 200);
     assert.ok(responseTwo.body.topic.includes('photosynthesis basics'));
     assert.ok(responseTwo.body.sources.every((source) => source.document_id !== docOne));
+  });
+
+  it('generates and caches full-context lessons with check-ins', async () => {
+    const pool = createMemoryPool();
+    const tenantHelpers = createTenantHelpers(pool);
+    const provider = await getEmbeddingsProvider();
+
+    const documentId = await seedDocument(
+      pool,
+      tenantHelpers,
+      provider,
+      USER_ONE,
+      'Maxwell equations describe the fundamentals of electromagnetism and wave propagation.',
+      { title: 'Electromagnetism 101', fullText: 'Electric and magnetic fields interact dynamically in Maxwell equations.' }
+    );
+
+    const app = createApp({ pool, isDatabaseConfigured: true });
+
+    const firstResponse = await request(app)
+      .post('/lessons/generate')
+      .set('X-User-Id', USER_ONE)
+      .send({ document_id: documentId, include_check_ins: true });
+
+    assert.equal(firstResponse.status, 200);
+    assert.ok(typeof firstResponse.body.explanation === 'string' && firstResponse.body.explanation.length > 0);
+    assert.ok(Array.isArray(firstResponse.body.concepts));
+    assert.ok(firstResponse.body.concepts.some((concept) => Array.isArray(concept.check_ins) && concept.check_ins.length > 0));
+    assert.ok(Array.isArray(firstResponse.body.check_ins));
+    assert.ok(firstResponse.body.check_ins.length > 0);
+
+    const lessonId = firstResponse.body.id;
+    assert.ok(lessonId, 'lesson id should be returned');
+
+    const secondResponse = await request(app)
+      .post('/lessons/generate')
+      .set('X-User-Id', USER_ONE)
+      .send({ document_id: documentId, include_check_ins: true });
+
+    assert.equal(secondResponse.status, 200);
+    assert.equal(secondResponse.body.id, lessonId);
+    assert.ok(Array.isArray(secondResponse.body.check_ins));
+    assert.ok(secondResponse.body.check_ins.length > 0);
   });
 
   it('generates MCQs scoped per user', async () => {

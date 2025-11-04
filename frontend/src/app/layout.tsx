@@ -34,14 +34,14 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                 {authEnabled && (
                   <nav className="hidden gap-4 md:flex">
                     <SignedIn>
+                      <Link href="/courses" className="text-sm text-slate-600 hover:text-slate-900">
+                        Courses
+                      </Link>
                       <Link href="/upload" className="text-sm text-slate-600 hover:text-slate-900">
                         Upload
                       </Link>
                       <Link href="/search" className="text-sm text-slate-600 hover:text-slate-900">
                         Search
-                      </Link>
-                      <Link href="/study" className="text-sm text-slate-600 hover:text-slate-900">
-                        Study
                       </Link>
                     </SignedIn>
                   </nav>

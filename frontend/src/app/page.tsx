@@ -2,32 +2,61 @@ import Link from 'next/link';
 
 export default function HomePage() {
   return (
-    <section className="space-y-6">
-      <h1 className="text-3xl font-semibold text-slate-900">Ultudy Frontend MVP</h1>
-      <p className="text-slate-700">
-        This minimal interface lets you upload PDFs, search across your personal library, and
-        generate study materials powered by the Ultudy backend.
-      </p>
-      <ol className="list-decimal space-y-3 pl-6 text-slate-700">
-        <li>
-          Set your <strong>User ID</strong> in the header bar. Each request includes this value as
-          <code className="ml-1 rounded bg-slate-200 px-1 py-0.5">X-User-Id</code> and isolates your
-          data.
-        </li>
-        <li>
-          Visit <Link href="/upload">Upload</Link> to add PDFs to your library.
-        </li>
-        <li>
-          Explore <Link href="/search">Search</Link> to find relevant excerpts.
-        </li>
-        <li>
-          Use <Link href="/study">Study</Link> to build lessons and practice quizzes.
-        </li>
-      </ol>
-      <p className="text-slate-600">
-        The backend URL defaults to <code className="rounded bg-slate-200 px-1 py-0.5">http://localhost:3001</code>
-        and can be configured via <code className="rounded bg-slate-200 px-1 py-0.5">NEXT_PUBLIC_BACKEND_URL</code>.
-      </p>
+    <section className="space-y-8">
+      <div className="text-center space-y-4 py-12">
+        <h1 className="text-4xl font-bold text-slate-900">Welcome to Ultudy</h1>
+        <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+          Your AI-powered adaptive learning companion. Master any course with personalized lessons and intelligent progress tracking.
+        </p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">1. Organize Courses</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Create courses and upload your textbooks, lecture notes, and materials organized by chapter.
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">2. Interactive Learning</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Get AI-generated lessons with check-in questions that adapt to your understanding.
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">3. Track Mastery</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            See your progress across all concepts and identify weak areas that need review.
+          </p>
+        </div>
+      </div>
+
+      <div className="text-center">
+        <Link
+          href="/courses"
+          className="inline-block rounded-md bg-slate-900 px-6 py-3 text-base font-medium text-white hover:bg-slate-800"
+        >
+          Get Started with Your Courses →
+        </Link>
+      </div>
+
+      <div className="mt-12 rounded-lg border border-slate-200 bg-slate-50 p-6">
+        <h3 className="font-semibold text-slate-900">Quick Start Guide</h3>
+        <ol className="list-decimal space-y-2 pl-6 mt-3 text-sm text-slate-700">
+          <li>
+            Create a course for each class you're taking
+          </li>
+          <li>
+            Upload your course materials (PDFs) and tag them by chapter
+          </li>
+          <li>
+            Click "Study" on any document to start an interactive learning session
+          </li>
+          <li>
+            Answer check-in questions to track your mastery of each concept
+          </li>
+        </ol>
+      </div>
     </section>
   );
 }

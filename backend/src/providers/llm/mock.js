@@ -222,6 +222,81 @@ function createMockLLMProvider() {
         sources
       };
     },
+    async generateFullContextLesson({ document_id, title, full_text, include_check_ins = true } = {}) {
+      const baseTopic = cleanTopic(title, 'Document Content');
+      const seedInput = document_id || title || 'full-context-default';
+      const rand = mulberry32(hashSeed(seedInput));
+
+      // Extract key concepts from full text (mock version)
+      const textSample = full_text ? truncateWords(full_text, 200) : 'Sample content';
+      const concepts = [
+        {
+          name: `Core Concept from ${baseTopic}`,
+          explanation: `This is a foundational idea extracted from the material. ${textSample}`,
+          analogies: buildAnalogies(baseTopic, rand),
+          examples: [
+            {
+              setup: `Consider this scenario from ${baseTopic}`,
+              steps: ['Step 1: Understand the context', 'Step 2: Apply the principle', 'Step 3: Verify the result']
+            }
+          ]
+        },
+        {
+          name: `Secondary Concept from ${baseTopic}`,
+          explanation: `This builds upon the foundation with more advanced understanding.`,
+          analogies: [`Understanding this is like building on solid ground.`],
+          examples: [
+            {
+              setup: `A practical application scenario`,
+              steps: ['Identify the components', 'Connect the relationships', 'Draw conclusions']
+            }
+          ]
+        }
+      ];
+
+      const explanation = `This lesson guides you through ${baseTopic} by layering foundational understanding before applying it. ${textSample}`;
+
+      const checkins = include_check_ins
+        ? [
+            {
+              concept: concepts[0].name,
+              question: `What is the main idea behind ${concepts[0].name}?`,
+              hint: 'Think about the foundational principle discussed',
+              expected_answer: 'The core principle that underpins this concept'
+            },
+            {
+              concept: concepts[1].name,
+              question: `How does ${concepts[1].name} relate to the first concept?`,
+              hint: 'Consider how one builds upon the other',
+              expected_answer: 'It extends the foundation with practical applications'
+            }
+          ]
+        : [];
+
+      const conceptsWithCheckIns = concepts.map((concept) => {
+        const related = checkins
+          .filter((checkin) => checkin.concept === concept.name)
+          .map((checkin) => ({
+            question: checkin.question,
+            hint: checkin.hint,
+            expected_answer: checkin.expected_answer
+          }));
+
+        return {
+          ...concept,
+          check_ins: related
+        };
+      });
+
+      return {
+        topic: baseTopic,
+        summary: `This lesson covers key concepts from ${baseTopic}. ${textSample}`,
+        explanation,
+        concepts: conceptsWithCheckIns,
+        checkins,
+        document_id
+      };
+    },
     async generateMCQs({ chunks = [], n = 5, difficulty = 'med', topic } = {}) {
       const limitedChunks = Array.isArray(chunks) ? chunks.slice(0, 12) : [];
       const questionCount = Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 20) : 5;
