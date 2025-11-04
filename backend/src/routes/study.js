@@ -545,5 +545,323 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
+  // POST /study-sessions/start - Start a new study session
+  router.post('/study-sessions/start', async (req, res) => {
+    const ownerId = req.userId;
+    const { session_type, chapter, document_id, course_id } = req.body;
+
+    if (!session_type) {
+      return res.status(400).json({ error: 'session_type is required' });
+    }
+
+    try {
+      let sessionId;
+
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        const { rows } = await client.query(
+          `INSERT INTO study_sessions
+           (owner_id, session_type, chapter, document_id, course_id, started_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           RETURNING id, started_at`,
+          [ownerId, session_type, chapter || null, document_id || null, course_id || null]
+        );
+
+        sessionId = rows[0].id;
+        console.log(`[study-sessions] Started session ${sessionId} for user ${ownerId}`);
+      });
+
+      res.json({
+        session_id: sessionId,
+        message: 'Study session started'
+      });
+    } catch (error) {
+      console.error('Failed to start study session', error);
+      res.status(500).json({
+        error: 'Failed to start study session',
+        detail: error.message
+      });
+    }
+  });
+
+  // POST /study-sessions/:id/track-checkin - Track a check-in in the current session
+  router.post('/study-sessions/:id/track-checkin', async (req, res) => {
+    const ownerId = req.userId;
+    const { id: sessionId } = req.params;
+    const { correct, concept_id } = req.body;
+
+    if (typeof correct !== 'boolean') {
+      return res.status(400).json({ error: 'correct (boolean) is required' });
+    }
+
+    try {
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Update session stats
+        await client.query(
+          `UPDATE study_sessions
+           SET total_check_ins = total_check_ins + 1,
+               correct_check_ins = correct_check_ins + ${correct ? 1 : 0}
+           WHERE id = $1 AND owner_id = $2`,
+          [sessionId, ownerId]
+        );
+
+        // Optionally track which concepts were covered
+        if (concept_id) {
+          await client.query(
+            `UPDATE study_sessions
+             SET concepts_covered = array_append(
+               COALESCE(concepts_covered, ARRAY[]::uuid[]),
+               $1::uuid
+             )
+             WHERE id = $2 AND owner_id = $3
+             AND NOT ($1::uuid = ANY(COALESCE(concepts_covered, ARRAY[]::uuid[])))`,
+            [concept_id, sessionId, ownerId]
+          );
+        }
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to track check-in', error);
+      res.status(500).json({
+        error: 'Failed to track check-in',
+        detail: error.message
+      });
+    }
+  });
+
+  // POST /study-sessions/:id/complete - Complete a study session
+  router.post('/study-sessions/:id/complete', async (req, res) => {
+    const ownerId = req.userId;
+    const { id: sessionId } = req.params;
+
+    try {
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Calculate duration and mark as completed
+        const { rows } = await client.query(
+          `UPDATE study_sessions
+           SET completed_at = NOW(),
+               duration_minutes = EXTRACT(EPOCH FROM (NOW() - started_at)) / 60
+           WHERE id = $1 AND owner_id = $2 AND completed_at IS NULL
+           RETURNING duration_minutes, total_check_ins, correct_check_ins`,
+          [sessionId, ownerId]
+        );
+
+        if (rows.length === 0) {
+          return res.status(404).json({ error: 'Session not found or already completed' });
+        }
+
+        const session = rows[0];
+        console.log(
+          `[study-sessions] Completed session ${sessionId}: ${Math.round(session.duration_minutes)} minutes, ` +
+          `${session.correct_check_ins}/${session.total_check_ins} correct`
+        );
+
+        res.json({
+          success: true,
+          duration_minutes: Math.round(session.duration_minutes),
+          total_check_ins: session.total_check_ins,
+          correct_check_ins: session.correct_check_ins
+        });
+      });
+    } catch (error) {
+      console.error('Failed to complete study session', error);
+      res.status(500).json({
+        error: 'Failed to complete study session',
+        detail: error.message
+      });
+    }
+  });
+
+  // GET /progress/overview - Get user's overall progress dashboard
+  router.get('/progress/overview', async (req, res) => {
+    const ownerId = req.userId;
+    const { course_id } = req.query;
+
+    try {
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Build base query conditions
+        const conditions = ['owner_id = $1'];
+        const params = [ownerId];
+
+        if (course_id) {
+          conditions.push('course_id = $2');
+          params.push(course_id);
+        }
+
+        const whereClause = conditions.join(' AND ');
+
+        // 1. Fetch all concepts with mastery data
+        const conceptsResult = await client.query(
+          `SELECT
+            id,
+            name,
+            chapter,
+            course_id,
+            mastery_state,
+            total_attempts,
+            correct_attempts,
+            consecutive_correct,
+            last_reviewed_at,
+            created_at
+           FROM concepts
+           WHERE ${whereClause}
+           ORDER BY chapter, name`,
+          params
+        );
+
+        const concepts = conceptsResult.rows;
+
+        // 2. Group concepts by chapter and calculate mastery percentage
+        const byChapter = {};
+        let totalConcepts = 0;
+        let masteredConcepts = 0;
+        let understoodConcepts = 0;
+
+        concepts.forEach(concept => {
+          const chapter = concept.chapter || 'Uncategorized';
+
+          if (!byChapter[chapter]) {
+            byChapter[chapter] = {
+              concepts: [],
+              total: 0,
+              mastered: 0,
+              understood: 0,
+              needs_review: 0,
+              not_learned: 0
+            };
+          }
+
+          byChapter[chapter].concepts.push({
+            id: concept.id,
+            name: concept.name,
+            mastery_state: concept.mastery_state,
+            total_attempts: concept.total_attempts,
+            correct_attempts: concept.correct_attempts,
+            accuracy: concept.total_attempts > 0
+              ? Math.round((concept.correct_attempts / concept.total_attempts) * 100)
+              : 0,
+            last_reviewed_at: concept.last_reviewed_at
+          });
+
+          byChapter[chapter].total++;
+          totalConcepts++;
+
+          // Count by mastery state
+          if (concept.mastery_state === 'mastered') {
+            byChapter[chapter].mastered++;
+            masteredConcepts++;
+          } else if (concept.mastery_state === 'understood') {
+            byChapter[chapter].understood++;
+            understoodConcepts++;
+          } else if (concept.mastery_state === 'needs_review') {
+            byChapter[chapter].needs_review++;
+          } else if (concept.mastery_state === 'not_learned' || concept.mastery_state === 'introduced') {
+            byChapter[chapter].not_learned++;
+          }
+        });
+
+        // Calculate percentage for each chapter
+        Object.keys(byChapter).forEach(chapter => {
+          const chapterData = byChapter[chapter];
+          // Mastery percentage: (mastered + 0.5 * understood) / total
+          chapterData.percentage = chapterData.total > 0
+            ? Math.round(((chapterData.mastered + 0.5 * chapterData.understood) / chapterData.total) * 100)
+            : 0;
+        });
+
+        // Calculate overall mastery percentage
+        const overallPercentage = totalConcepts > 0
+          ? Math.round(((masteredConcepts + 0.5 * understoodConcepts) / totalConcepts) * 100)
+          : 0;
+
+        // 3. Identify weak areas (needs_review or low accuracy)
+        const weakAreas = concepts
+          .filter(concept =>
+            concept.mastery_state === 'needs_review' ||
+            (concept.total_attempts >= 2 && (concept.correct_attempts / concept.total_attempts) < 0.5)
+          )
+          .map(concept => ({
+            id: concept.id,
+            name: concept.name,
+            chapter: concept.chapter,
+            mastery_state: concept.mastery_state,
+            accuracy: concept.total_attempts > 0
+              ? Math.round((concept.correct_attempts / concept.total_attempts) * 100)
+              : 0,
+            total_attempts: concept.total_attempts
+          }))
+          .sort((a, b) => a.accuracy - b.accuracy)
+          .slice(0, 10); // Top 10 weak areas
+
+        // 4. Fetch recent study sessions
+        const sessionsResult = await client.query(
+          `SELECT
+            id,
+            session_type,
+            chapter,
+            course_id,
+            total_check_ins,
+            correct_check_ins,
+            duration_minutes,
+            started_at,
+            completed_at
+           FROM study_sessions
+           WHERE ${whereClause}
+           ORDER BY started_at DESC
+           LIMIT 10`,
+          params
+        );
+
+        const studySessions = sessionsResult.rows.map(session => ({
+          id: session.id,
+          session_type: session.session_type,
+          chapter: session.chapter,
+          course_id: session.course_id,
+          total_check_ins: session.total_check_ins,
+          correct_check_ins: session.correct_check_ins,
+          accuracy: session.total_check_ins > 0
+            ? Math.round((session.correct_check_ins / session.total_check_ins) * 100)
+            : 0,
+          duration_minutes: session.duration_minutes,
+          started_at: session.started_at,
+          completed_at: session.completed_at
+        }));
+
+        // 5. Calculate study stats
+        const totalSessions = studySessions.length;
+        const totalCheckIns = studySessions.reduce((sum, s) => sum + s.total_check_ins, 0);
+        const totalCorrectCheckIns = studySessions.reduce((sum, s) => sum + s.correct_check_ins, 0);
+        const totalMinutes = studySessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+
+        res.json({
+          content_mastery: {
+            by_chapter: byChapter,
+            overall: overallPercentage,
+            total_concepts: totalConcepts,
+            mastered_concepts: masteredConcepts,
+            understood_concepts: understoodConcepts
+          },
+          weak_areas: weakAreas,
+          study_sessions: studySessions,
+          stats: {
+            total_sessions: totalSessions,
+            total_check_ins: totalCheckIns,
+            total_correct: totalCorrectCheckIns,
+            overall_accuracy: totalCheckIns > 0
+              ? Math.round((totalCorrectCheckIns / totalCheckIns) * 100)
+              : 0,
+            total_study_time_minutes: totalMinutes
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Failed to fetch progress overview', error);
+      res.status(500).json({
+        error: 'Failed to fetch progress overview',
+        detail: error.message
+      });
+    }
+  });
+
   return router;
 }
