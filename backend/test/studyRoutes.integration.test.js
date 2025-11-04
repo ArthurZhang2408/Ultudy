@@ -175,4 +175,144 @@ describe('study endpoints', () => {
     assert.equal(responseTwo.body.items.length, 2);
     assert.ok(responseTwo.body.items.every((item) => item.source.document_id !== docOne));
   });
+
+  it('aggregates progress by course and counts full session history', async () => {
+    const pool = createMemoryPool();
+    const tenantHelpers = createTenantHelpers(pool);
+    const app = createApp({ pool, isDatabaseConfigured: true });
+
+    const courseA = randomUUID();
+    const courseB = randomUUID();
+
+    await tenantHelpers.withTenant(USER_ONE, async (client) => {
+      await client.query('INSERT INTO courses (id, owner_id, name) VALUES ($1, $2, $3)', [courseA, USER_ONE, 'Signals and Systems']);
+      await client.query('INSERT INTO courses (id, owner_id, name) VALUES ($1, $2, $3)', [courseB, USER_ONE, 'Circuit Analysis']);
+
+      await client.query(
+        `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [USER_ONE, 'Laplace Transform Basics', '1', courseA, null, 'mastered', 4, 4, 4]
+      );
+
+      await client.query(
+        `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [USER_ONE, 'Frequency Response Intuition', '2', courseA, null, 'understood', 3, 2, 1]
+      );
+
+      await client.query(
+        `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [USER_ONE, 'Kirchhoff Voltage Law', '1', courseB, null, 'needs_review', 5, 2, 0]
+      );
+
+      await client.query(
+        `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+        [USER_ONE, 'General Study Habit', null, null, null, 'introduced', 1, 0, 0]
+      );
+    });
+
+    const courseASessions = 12;
+    const courseBSessions = 3;
+
+    const createSession = async (courseId, index) => {
+      const startResponse = await request(app)
+        .post('/study-sessions/start')
+        .set('X-User-Id', USER_ONE)
+        .send({ session_type: 'lesson', course_id: courseId, chapter: '1' });
+
+      assert.equal(startResponse.status, 200);
+      const sessionId = startResponse.body.session_id;
+      assert.ok(sessionId);
+
+      const correctFirst = index % 2 === 0;
+
+      const firstTrack = await request(app)
+        .post(`/study-sessions/${sessionId}/track-checkin`)
+        .set('X-User-Id', USER_ONE)
+        .send({ correct: correctFirst });
+      assert.equal(firstTrack.status, 200);
+
+      const secondTrack = await request(app)
+        .post(`/study-sessions/${sessionId}/track-checkin`)
+        .set('X-User-Id', USER_ONE)
+        .send({ correct: true });
+      assert.equal(secondTrack.status, 200);
+
+      const completeResponse = await request(app)
+        .post(`/study-sessions/${sessionId}/complete`)
+        .set('X-User-Id', USER_ONE)
+        .send();
+
+      assert.equal(completeResponse.status, 200);
+    };
+
+    for (let i = 0; i < courseASessions; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await createSession(courseA, i);
+    }
+
+    for (let i = 0; i < courseBSessions; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await createSession(courseB, i);
+    }
+
+    const overviewResponse = await request(app)
+      .get('/progress/overview')
+      .set('X-User-Id', USER_ONE);
+
+    assert.equal(overviewResponse.status, 200);
+    const overview = overviewResponse.body;
+
+    const byCourse = overview.content_mastery.by_course;
+    assert.ok(byCourse[courseA], 'course A should be present in by_course');
+    assert.equal(byCourse[courseA].course_name, 'Signals and Systems');
+    assert.equal(byCourse[courseA].total, 2);
+    assert.ok(byCourse[courseA].chapters['1']);
+    assert.ok(byCourse[courseA].chapters['2']);
+
+    assert.ok(byCourse[courseB]);
+    assert.equal(byCourse[courseB].course_name, 'Circuit Analysis');
+
+    const unassignedEntry = byCourse.uncategorized;
+    assert.ok(unassignedEntry);
+    assert.equal(unassignedEntry.course_name, 'Unassigned Course');
+
+    assert.equal(overview.stats.total_sessions, courseASessions + courseBSessions);
+    assert.equal(overview.study_sessions.length, 10, 'recent sessions should be capped at 10');
+
+    const weakAreasCourses = overview.weak_areas.map((area) => area.course_id);
+    assert.ok(weakAreasCourses.includes(courseB));
+
+    const filteredResponse = await request(app)
+      .get(`/progress/overview?course_id=${courseA}`)
+      .set('X-User-Id', USER_ONE);
+
+    assert.equal(filteredResponse.status, 200);
+    const filtered = filteredResponse.body;
+    const filteredCourses = Object.keys(filtered.content_mastery.by_course);
+    assert.deepEqual(filteredCourses, [courseA]);
+    assert.equal(filtered.stats.total_sessions, courseASessions);
+    assert.ok(filtered.weak_areas.every((area) => area.course_id === courseA));
+  });
+
+  it('validates study session inputs', async () => {
+    const pool = createMemoryPool();
+    const app = createApp({ pool, isDatabaseConfigured: true });
+
+    const invalidTypeResponse = await request(app)
+      .post('/study-sessions/start')
+      .set('X-User-Id', USER_ONE)
+      .send({ session_type: 'speed-run' });
+
+    assert.equal(invalidTypeResponse.status, 400);
+
+    const invalidCourseResponse = await request(app)
+      .post('/study-sessions/start')
+      .set('X-User-Id', USER_ONE)
+      .send({ session_type: 'lesson', course_id: 'not-a-uuid' });
+
+    assert.equal(invalidCourseResponse.status, 400);
+  });
 });

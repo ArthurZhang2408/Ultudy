@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 type MCQOption = {
@@ -18,19 +18,36 @@ type MCQ = {
 };
 
 type Concept = {
+  id?: string;
   name: string;
   explanation: string;
   analogies?: string[];
+  examples?: string[];
   check_ins?: MCQ[];
 };
 
 type Lesson = {
   id?: string;
+  document_id?: string;
+  course_id?: string | null;
+  chapter?: string | null;
   topic?: string;
   summary?: string;
   explanation?: string;
   concepts?: Concept[];
   created_at?: string;
+};
+
+type AnswerRecord = {
+  selected: string;
+  correct: boolean;
+};
+
+type StoredProgress = {
+  conceptIndex: number;
+  mcqIndex: number;
+  conceptProgress: Array<[number, 'completed' | 'skipped' | 'wrong']>;
+  answerHistory: Record<string, AnswerRecord>;
 };
 
 type MasteryUpdate = {
@@ -45,14 +62,34 @@ type MasteryUpdate = {
 
 // Helper function to parse JSONB fields and normalize lesson structure
 function normalizeLesson(rawLesson: any): Lesson {
-  // Parse JSONB fields if they are strings
-  const concepts = typeof rawLesson.concepts === 'string'
+  const rawConcepts = typeof rawLesson.concepts === 'string'
     ? JSON.parse(rawLesson.concepts)
     : (rawLesson.concepts || []);
 
+  const concepts = Array.isArray(rawConcepts)
+    ? rawConcepts.map((concept: any) => {
+        const examples = Array.isArray(concept?.examples)
+          ? concept.examples
+          : typeof concept?.examples === 'string'
+          ? [concept.examples]
+          : [];
+
+        const checkIns = Array.isArray(concept?.check_ins) ? concept.check_ins : [];
+
+        return {
+          ...concept,
+          examples,
+          check_ins: checkIns
+        };
+      })
+    : [];
+
   return {
     ...rawLesson,
-    concepts: Array.isArray(concepts) ? concepts : []
+    course_id: rawLesson.course_id ?? null,
+    document_id: rawLesson.document_id ?? rawLesson.documentId ?? null,
+    chapter: rawLesson.chapter ?? null,
+    concepts
   };
 }
 
@@ -78,9 +115,31 @@ function LearnPageContent() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showingExplanations, setShowingExplanations] = useState(false);
   const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong'>>(new Map());
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [answerHistory, setAnswerHistory] = useState<Record<string, AnswerRecord>>({});
+  const [storedProgress, setStoredProgress] = useState<StoredProgress | null>(null);
+  const storageKeyRef = useRef<string | null>(null);
+  const activeConceptRef = useRef<HTMLDivElement | null>(null);
 
   // Prevent duplicate API calls in StrictMode
   const hasGeneratedRef = useState({ current: false })[0];
+
+  function makeQuestionKey(conceptIndex: number, mcqIndex: number) {
+    return `${conceptIndex}-${mcqIndex}`;
+  }
+
+  function getLessonStorageKey(lessonData: Lesson | null) {
+    if (!lessonData) {
+      return null;
+    }
+
+    const baseId = lessonData.id || lessonData.document_id || documentId;
+    if (!baseId) {
+      return null;
+    }
+
+    return `lesson-progress:${baseId}`;
+  }
 
   useEffect(() => {
     if (documentId && !hasGeneratedRef.current) {
@@ -123,68 +182,429 @@ function LearnPageContent() {
     }
   }
 
-  function handleStartLearning() {
-    setShowingSummary(false);
-    setCurrentConceptIndex(0);
-    setCurrentMCQIndex(0);
-  }
+  useEffect(() => {
+    if (!lesson) {
+      return;
+    }
 
-  function handleSelectOption(letter: string) {
-    setSelectedOption(letter);
-    setShowingExplanations(true);
-  }
+    if (typeof window === 'undefined') {
+      return;
+    }
 
-  function handleNextMCQ() {
-    if (!lesson?.concepts) return;
+    const storageKey = getLessonStorageKey(lesson);
+    storageKeyRef.current = storageKey;
 
-    const currentConcept = lesson.concepts[currentConceptIndex];
-    const mcqs = currentConcept?.check_ins || [];
+    if (!storageKey) {
+      setStoredProgress(null);
+      setConceptProgress(new Map());
+      setAnswerHistory({});
+      setCurrentConceptIndex(0);
+      setCurrentMCQIndex(0);
+      return;
+    }
 
-    // Mark answer as correct or wrong
-    const wasCorrect = selectedOption === mcqs[currentMCQIndex]?.options?.find(opt => opt.correct)?.letter;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
 
-    if (currentMCQIndex < mcqs.length - 1) {
-      // More MCQs in this concept
-      setCurrentMCQIndex(currentMCQIndex + 1);
+      if (raw) {
+        const parsed = JSON.parse(raw) as StoredProgress;
+        setStoredProgress(parsed);
+        setConceptProgress(new Map(parsed.conceptProgress || []));
+        setAnswerHistory(parsed.answerHistory || {});
+        setCurrentConceptIndex(parsed.conceptIndex ?? 0);
+        setCurrentMCQIndex(parsed.mcqIndex ?? 0);
+      } else {
+        setStoredProgress(null);
+        setConceptProgress(new Map());
+        setAnswerHistory({});
+        setCurrentConceptIndex(0);
+        setCurrentMCQIndex(0);
+      }
+    } catch (error) {
+      console.error('Failed to restore lesson progress:', error);
+      setStoredProgress(null);
+      setConceptProgress(new Map());
+      setAnswerHistory({});
+      setCurrentConceptIndex(0);
+      setCurrentMCQIndex(0);
+    }
+  }, [lesson]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!lesson) {
+      return;
+    }
+
+    const storageKey = storageKeyRef.current;
+
+    if (!storageKey) {
+      return;
+    }
+
+    const payload: StoredProgress = {
+      conceptIndex: currentConceptIndex,
+      mcqIndex: currentMCQIndex,
+      conceptProgress: Array.from(conceptProgress.entries()),
+      answerHistory
+    };
+
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(payload));
+      setStoredProgress(payload);
+    } catch (error) {
+      console.error('Failed to persist lesson progress:', error);
+    }
+  }, [lesson, currentConceptIndex, currentMCQIndex, conceptProgress, answerHistory]);
+
+  useEffect(() => {
+    if (showingSummary) {
       setSelectedOption(null);
       setShowingExplanations(false);
-    } else {
-      // Finished all MCQs for this concept
-      const newProgress = new Map(conceptProgress);
-      if (!wasCorrect && !conceptProgress.has(currentConceptIndex)) {
-        newProgress.set(currentConceptIndex, 'wrong');
-      } else if (!conceptProgress.has(currentConceptIndex)) {
-        newProgress.set(currentConceptIndex, 'completed');
-      }
-      setConceptProgress(newProgress);
+      return;
+    }
 
-      // Move to next concept
-      if (currentConceptIndex < lesson.concepts.length - 1) {
-        setCurrentConceptIndex(currentConceptIndex + 1);
-        setCurrentMCQIndex(0);
-        setSelectedOption(null);
-        setShowingExplanations(false);
-      } else {
-        // All concepts completed
-        router.push('/courses');
+    const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
+    const record = answerHistory[key];
+
+    if (record) {
+      setSelectedOption(record.selected);
+      setShowingExplanations(true);
+    } else {
+      setSelectedOption(null);
+      setShowingExplanations(false);
+    }
+  }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
+
+  useEffect(() => {
+    if (showingSummary) {
+      return;
+    }
+
+    if (!activeConceptRef.current) {
+      return;
+    }
+
+    activeConceptRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showingSummary, currentConceptIndex]);
+
+  async function startStudySession(): Promise<string | null> {
+    if (sessionId) {
+      return sessionId;
+    }
+
+    if (!lesson) {
+      return null;
+    }
+
+    const payload: Record<string, unknown> = {
+      session_type: 'lesson'
+    };
+
+    const lessonChapter = lesson.chapter || chapter || null;
+    if (lessonChapter) {
+      payload.chapter = lessonChapter;
+    }
+
+    const lessonDocumentId = lesson.document_id || documentId;
+    if (lessonDocumentId) {
+      payload.document_id = lessonDocumentId;
+    }
+
+    if (lesson.course_id) {
+      payload.course_id = lesson.course_id;
+    }
+
+    try {
+      const response = await fetch('/api/study-sessions/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || 'Failed to start study session');
+      }
+
+      const data = await response.json();
+      setSessionId(data.session_id);
+      return data.session_id as string;
+    } catch (error) {
+      console.error('Failed to start study session:', error);
+      return null;
+    }
+  }
+
+  async function completeStudySession() {
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/study-sessions/${sessionId}/complete`, {
+        method: 'POST'
+      });
+
+      if (!response.ok && response.status !== 409 && response.status !== 404) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || 'Failed to complete study session');
+      }
+    } catch (error) {
+      console.error('Failed to complete study session:', error);
+    } finally {
+      setSessionId(null);
+    }
+  }
+
+  async function recordCheckIn({
+    wasCorrect,
+    selectedOption,
+    correctOption,
+    concept,
+    question
+  }: {
+    wasCorrect: boolean;
+    selectedOption: MCQOption;
+    correctOption?: MCQOption;
+    concept: Concept;
+    question: MCQ;
+  }) {
+    if (!lesson) {
+      return;
+    }
+
+    const activeSessionId = await startStudySession();
+
+    const expectedAnswer = question.expected_answer || correctOption?.text || selectedOption.text;
+
+    try {
+      await fetch('/api/check-ins/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          concept_id: concept.id,
+          concept_name: concept.name,
+          course_id: lesson.course_id ?? undefined,
+          chapter: lesson.chapter || chapter || undefined,
+          document_id: lesson.document_id || documentId || undefined,
+          question: question.question,
+          user_answer: selectedOption.text,
+          expected_answer: expectedAnswer,
+          context: concept.explanation,
+          evaluation_mode: 'mcq',
+          mcq: {
+            selected_letter: selectedOption.letter,
+            correct_letter: correctOption?.letter ?? '',
+            selected_text: selectedOption.text,
+            correct_text: correctOption?.text ?? expectedAnswer,
+            selected_explanation: selectedOption.explanation,
+            correct_explanation: correctOption?.explanation ?? selectedOption.explanation
+          }
+        })
+      });
+    } catch (error) {
+      console.error('Failed to record concept mastery:', error);
+    }
+
+    if (activeSessionId) {
+      try {
+        await fetch(`/api/study-sessions/${activeSessionId}/track-checkin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            correct: wasCorrect,
+            concept_id: concept.id ?? undefined
+          })
+        });
+      } catch (error) {
+        console.error('Failed to track study session check-in:', error);
       }
     }
   }
 
-  function handleSkipConcept() {
-    if (!lesson?.concepts) return;
+  async function handleStartLearning() {
+    if (!lesson) {
+      return;
+    }
 
-    const newProgress = new Map(conceptProgress);
-    newProgress.set(currentConceptIndex, 'skipped');
-    setConceptProgress(newProgress);
+    void startStudySession();
+
+    if (storedProgress) {
+      setConceptProgress(new Map(storedProgress.conceptProgress || []));
+      setAnswerHistory(storedProgress.answerHistory || {});
+      setCurrentConceptIndex(storedProgress.conceptIndex ?? 0);
+      setCurrentMCQIndex(storedProgress.mcqIndex ?? 0);
+    } else {
+      setConceptProgress(new Map());
+      setAnswerHistory({});
+      setCurrentConceptIndex(0);
+      setCurrentMCQIndex(0);
+    }
+
+    setShowingSummary(false);
+  }
+
+  function handleSelectOption(letter: string) {
+    if (!lesson) {
+      return;
+    }
+
+    if (showingExplanations) {
+      return;
+    }
+
+    const currentConcept = lesson.concepts[currentConceptIndex];
+    const mcqs = currentConcept?.check_ins || [];
+    const question = mcqs[currentMCQIndex];
+
+    if (!question) {
+      return;
+    }
+
+    const selectedOptionData = question.options.find((option) => option.letter === letter);
+
+    if (!selectedOptionData) {
+      return;
+    }
+
+    const correctOption = question.options.find((option) => option.correct);
+    const wasCorrect = Boolean(correctOption && correctOption.letter === letter);
+    const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
+
+    if (answerHistory[key]) {
+      setSelectedOption(letter);
+      setShowingExplanations(true);
+      return;
+    }
+
+    setSelectedOption(letter);
+    setShowingExplanations(true);
+    setAnswerHistory((prev) => ({
+      ...prev,
+      [key]: {
+        selected: letter,
+        correct: wasCorrect
+      }
+    }));
+
+    if (!wasCorrect) {
+      setConceptProgress((prev) => {
+        const updated = new Map(prev);
+        updated.set(currentConceptIndex, 'wrong');
+        return updated;
+      });
+    }
+
+    void recordCheckIn({
+      wasCorrect,
+      selectedOption: selectedOptionData,
+      correctOption,
+      concept: currentConcept,
+      question
+    });
+  }
+
+  async function handleNextMCQ() {
+    if (!lesson?.concepts) {
+      return;
+    }
+
+    const currentConcept = lesson.concepts[currentConceptIndex];
+    const mcqs = currentConcept?.check_ins || [];
+    const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
+    const answered = answerHistory[key];
+
+    if (!answered) {
+      return;
+    }
+
+    if (currentMCQIndex < mcqs.length - 1) {
+      setCurrentMCQIndex((prev) => prev + 1);
+      return;
+    }
+
+    setConceptProgress((prev) => {
+      const updated = new Map(prev);
+
+      if (!answered.correct) {
+        updated.set(currentConceptIndex, 'wrong');
+      } else if (!updated.has(currentConceptIndex) || updated.get(currentConceptIndex) !== 'wrong') {
+        updated.set(currentConceptIndex, 'completed');
+      }
+
+      return updated;
+    });
 
     if (currentConceptIndex < lesson.concepts.length - 1) {
-      setCurrentConceptIndex(currentConceptIndex + 1);
+      setCurrentConceptIndex((prev) => prev + 1);
       setCurrentMCQIndex(0);
-      setSelectedOption(null);
-      setShowingExplanations(false);
     } else {
+      if (storageKeyRef.current && typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(storageKeyRef.current);
+        } catch (error) {
+          console.error('Failed to clear lesson progress cache:', error);
+        }
+      }
+
+      await completeStudySession();
       router.push('/courses');
+    }
+  }
+
+  function handleSkipConcept() {
+    if (!lesson?.concepts) {
+      return;
+    }
+
+    setConceptProgress((prev) => {
+      const updated = new Map(prev);
+      updated.set(currentConceptIndex, 'skipped');
+      return updated;
+    });
+
+    setAnswerHistory((prev) => {
+      const updated = { ...prev };
+      const prefix = `${currentConceptIndex}-`;
+      Object.keys(updated).forEach((key) => {
+        if (key.startsWith(prefix)) {
+          delete updated[key];
+        }
+      });
+      return updated;
+    });
+
+    if (currentConceptIndex < lesson.concepts.length - 1) {
+      setCurrentConceptIndex((prev) => prev + 1);
+      setCurrentMCQIndex(0);
+    } else {
+      if (storageKeyRef.current && typeof window !== 'undefined') {
+        window.localStorage.removeItem(storageKeyRef.current);
+      }
+      void completeStudySession();
+      router.push('/courses');
+    }
+  }
+
+  function handlePreviousMCQ() {
+    if (!lesson?.concepts) {
+      return;
+    }
+
+    if (currentMCQIndex > 0) {
+      setCurrentMCQIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+
+    if (currentConceptIndex > 0) {
+      const previousConcept = lesson.concepts[currentConceptIndex - 1];
+      const previousTotal = previousConcept?.check_ins?.length || 0;
+      setCurrentConceptIndex((prev) => prev - 1);
+      setCurrentMCQIndex(previousTotal > 0 ? previousTotal - 1 : 0);
     }
   }
 
@@ -210,6 +630,20 @@ function LearnPageContent() {
   const totalConcepts = lesson.concepts.length;
   const currentMCQ = currentConcept?.check_ins?.[currentMCQIndex];
   const totalMCQsInConcept = currentConcept?.check_ins?.length || 0;
+
+  const hasResumeProgress = Boolean(
+    storedProgress &&
+      (storedProgress.conceptIndex > 0 ||
+        storedProgress.mcqIndex > 0 ||
+        (storedProgress.conceptProgress?.length ?? 0) > 0)
+  );
+
+  const resumeConceptNumber = storedProgress ? Math.min(storedProgress.conceptIndex + 1, totalConcepts) : 1;
+  const resumeQuestionNumber = storedProgress ? storedProgress.mcqIndex + 1 : 1;
+
+  const startButtonLabel = hasResumeProgress
+    ? `Resume Learning (Concept ${resumeConceptNumber})`
+    : `Start Learning (${totalConcepts} concepts)`;
 
   // Check if this is a new MCQ-based lesson or old format
   const hasNewFormat = currentMCQ?.options && Array.isArray(currentMCQ.options);
@@ -337,11 +771,19 @@ function LearnPageContent() {
             </div>
           </div>
 
+          {hasResumeProgress && (
+            <div className="rounded-md bg-slate-100 px-4 py-3 text-sm text-slate-700">
+              Resume from concept {resumeConceptNumber}, question {resumeQuestionNumber}.
+            </div>
+          )}
+
           <button
-            onClick={handleStartLearning}
+            onClick={() => {
+              void handleStartLearning();
+            }}
             className="w-full rounded-md bg-blue-600 px-6 py-3 text-base font-medium text-white hover:bg-blue-700"
           >
-            Start Learning ({totalConcepts} concepts)
+            {startButtonLabel}
           </button>
         </div>
       </div>
@@ -364,7 +806,7 @@ function LearnPageContent() {
       </div>
 
       {/* Concept Explanation */}
-      <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-4">
+      <div ref={activeConceptRef} className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-4">
         <h2 className="text-2xl font-bold text-slate-900">{currentConcept.name}</h2>
 
         <div className="text-slate-700 text-base leading-relaxed">
@@ -379,6 +821,17 @@ function LearnPageContent() {
                 {currentConcept.analogies[0]}
               </div>
             </div>
+          </div>
+        )}
+
+        {currentConcept.examples && currentConcept.examples.length > 0 && (
+          <div className="rounded-lg bg-indigo-50 p-4 space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-wide text-indigo-900">Examples</div>
+            <ul className="space-y-2 list-disc pl-5 text-indigo-800 text-sm leading-relaxed">
+              {currentConcept.examples.map((example, index) => (
+                <li key={index}>{example}</li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
@@ -454,15 +907,26 @@ function LearnPageContent() {
             })}
           </div>
 
-          <div className="flex items-center justify-between pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handlePreviousMCQ}
+                disabled={currentConceptIndex === 0 && currentMCQIndex === 0}
+                className="text-sm text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Previous question
+              </button>
+              <button
+                onClick={handleSkipConcept}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                Skip concept
+              </button>
+            </div>
             <button
-              onClick={handleSkipConcept}
-              className="text-sm text-slate-600 hover:text-slate-900"
-            >
-              Skip concept
-            </button>
-            <button
-              onClick={handleNextMCQ}
+              onClick={() => {
+                void handleNextMCQ();
+              }}
               disabled={!showingExplanations}
               className="rounded-md bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >

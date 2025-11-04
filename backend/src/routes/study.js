@@ -8,6 +8,22 @@ const DEFAULT_LESSON_K = 6;
 const DEFAULT_MCQ_COUNT = 5;
 const MAX_CHUNK_LIMIT = 12;
 const ALLOWED_DIFFICULTIES = new Set(['easy', 'med', 'hard']);
+const VALID_SESSION_TYPES = new Set(['lesson', 'practice', 'review', 'flashcards']);
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WEAK_AREA_ACCURACY_THRESHOLD = 0.5;
+const WEAK_AREA_MIN_ATTEMPTS = 2;
+
+class HttpError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+    this.name = 'HttpError';
+  }
+}
+
+function isValidUUID(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
 
 function normalizeLimit(value, fallback, cap = MAX_CHUNK_LIMIT) {
   if (Number.isFinite(value) && value > 0) {
@@ -453,7 +469,9 @@ export default function createStudyRouter(options = {}) {
       question,
       user_answer,
       expected_answer,
-      context
+      context,
+      evaluation_mode,
+      mcq
     } = req.body || {};
 
     const ownerId = req.userId;
@@ -476,14 +494,57 @@ export default function createStudyRouter(options = {}) {
     }
 
     try {
-      // Evaluate the answer using LLM
-      const evaluation = await evaluateAnswer({
-        question,
-        userAnswer: user_answer.trim(),
-        expectedAnswer: expected_answer,
-        concept: concept_name,
-        context: context || ''
-      });
+      const normalizedContext = context || '';
+      const mode = typeof evaluation_mode === 'string' ? evaluation_mode.toLowerCase() : 'llm';
+
+      let evaluation;
+
+      if (mode === 'mcq') {
+        const mcqInfo = typeof mcq === 'object' && mcq !== null ? mcq : {};
+        const selectedLetter = typeof mcqInfo.selected_letter === 'string'
+          ? mcqInfo.selected_letter.trim().toUpperCase()
+          : user_answer.trim().toUpperCase();
+        const correctLetter = typeof mcqInfo.correct_letter === 'string'
+          ? mcqInfo.correct_letter.trim().toUpperCase()
+          : '';
+        const selectedText = typeof mcqInfo.selected_text === 'string'
+          ? mcqInfo.selected_text.trim()
+          : user_answer.trim();
+        const correctText = typeof mcqInfo.correct_text === 'string'
+          ? mcqInfo.correct_text.trim()
+          : expected_answer;
+        const isCorrect = selectedLetter && correctLetter
+          ? selectedLetter === correctLetter
+          : selectedText.toLowerCase() === correctText.toLowerCase();
+
+        const correctExplanation = typeof mcqInfo.correct_explanation === 'string'
+          ? mcqInfo.correct_explanation.trim()
+          : '';
+        const selectedExplanation = typeof mcqInfo.selected_explanation === 'string'
+          ? mcqInfo.selected_explanation.trim()
+          : '';
+
+        evaluation = {
+          correct: isCorrect,
+          score: isCorrect ? 100 : 0,
+          feedback: isCorrect
+            ? (selectedExplanation || 'Great job! You chose the correct answer.')
+            : (correctExplanation || 'Not quite. Review the explanation and try again.'),
+          keyPoints: isCorrect && correctExplanation ? [correctExplanation] : [],
+          misconceptions: isCorrect
+            ? []
+            : (selectedExplanation ? [selectedExplanation] : [])
+        };
+      } else {
+        // Evaluate the answer using LLM
+        evaluation = await evaluateAnswer({
+          question,
+          userAnswer: user_answer.trim(),
+          expectedAnswer: expected_answer,
+          concept: concept_name,
+          context: normalizedContext
+        });
+      }
 
       // Update concept mastery in database
       const masteryUpdate = await tenantHelpers.withTenant(ownerId, (client) =>
@@ -550,20 +611,64 @@ export default function createStudyRouter(options = {}) {
     const ownerId = req.userId;
     const { session_type, chapter, document_id, course_id } = req.body;
 
-    if (!session_type) {
+    if (!session_type || typeof session_type !== 'string') {
       return res.status(400).json({ error: 'session_type is required' });
+    }
+
+    const normalizedType = session_type.toLowerCase();
+    if (!VALID_SESSION_TYPES.has(normalizedType)) {
+      return res.status(400).json({ error: 'Invalid session_type' });
+    }
+
+    if (chapter && typeof chapter !== 'string') {
+      return res.status(400).json({ error: 'chapter must be a string if provided' });
+    }
+
+    const trimmedChapter = typeof chapter === 'string' ? chapter.trim() : null;
+    if (trimmedChapter && trimmedChapter.length > 120) {
+      return res.status(400).json({ error: 'chapter must be 120 characters or fewer' });
+    }
+
+    if (document_id && !isValidUUID(document_id)) {
+      return res.status(400).json({ error: 'Invalid document_id format' });
+    }
+
+    if (course_id && !isValidUUID(course_id)) {
+      return res.status(400).json({ error: 'Invalid course_id format' });
     }
 
     try {
       let sessionId;
 
       await tenantHelpers.withTenant(ownerId, async (client) => {
+        if (document_id) {
+          const documentCheck = await client.query(
+            'SELECT 1 FROM documents WHERE id = $1 AND owner_id = $2',
+            [document_id, ownerId]
+          );
+
+          if (documentCheck.rowCount === 0) {
+            throw new HttpError(400, 'Document not found');
+          }
+        }
+
+        if (course_id) {
+          const courseCheck = await client.query(
+            'SELECT 1 FROM courses WHERE id = $1 AND owner_id = $2',
+            [course_id, ownerId]
+          );
+
+          if (courseCheck.rowCount === 0) {
+            throw new HttpError(400, 'Course not found');
+          }
+        }
+
         const { rows } = await client.query(
           `INSERT INTO study_sessions
            (owner_id, session_type, chapter, document_id, course_id, started_at)
            VALUES ($1, $2, $3, $4, $5, NOW())
            RETURNING id, started_at`,
-          [ownerId, session_type, chapter || null, document_id || null, course_id || null]
+          [ownerId, normalizedType, trimmedChapter || null, document_id || null, course_id || null]
         );
 
         sessionId = rows[0].id;
@@ -576,10 +681,14 @@ export default function createStudyRouter(options = {}) {
       });
     } catch (error) {
       console.error('Failed to start study session', error);
-      res.status(500).json({
-        error: 'Failed to start study session',
-        detail: error.message
-      });
+      if (error instanceof HttpError) {
+        res.status(error.status).json({ error: error.message });
+      } else {
+        res.status(500).json({
+          error: 'Failed to start study session',
+          detail: error.message
+        });
+      }
     }
   });
 
@@ -593,15 +702,19 @@ export default function createStudyRouter(options = {}) {
       return res.status(400).json({ error: 'correct (boolean) is required' });
     }
 
+    if (concept_id && !isValidUUID(concept_id)) {
+      return res.status(400).json({ error: 'Invalid concept_id format' });
+    }
+
     try {
       await tenantHelpers.withTenant(ownerId, async (client) => {
         // Update session stats
         await client.query(
           `UPDATE study_sessions
            SET total_check_ins = total_check_ins + 1,
-               correct_check_ins = correct_check_ins + ${correct ? 1 : 0}
+               correct_check_ins = correct_check_ins + $3
            WHERE id = $1 AND owner_id = $2`,
-          [sessionId, ownerId]
+          [sessionId, ownerId, correct ? 1 : 0]
         );
 
         // Optionally track which concepts were covered
@@ -635,7 +748,7 @@ export default function createStudyRouter(options = {}) {
     const { id: sessionId } = req.params;
 
     try {
-      await tenantHelpers.withTenant(ownerId, async (client) => {
+      const result = await tenantHelpers.withTenant(ownerId, async (client) => {
         // Calculate duration and mark as completed
         const { rows } = await client.query(
           `UPDATE study_sessions
@@ -647,7 +760,16 @@ export default function createStudyRouter(options = {}) {
         );
 
         if (rows.length === 0) {
-          return res.status(404).json({ error: 'Session not found or already completed' });
+          const existing = await client.query(
+            'SELECT completed_at FROM study_sessions WHERE id = $1 AND owner_id = $2',
+            [sessionId, ownerId]
+          );
+
+          if (existing.rowCount > 0 && existing.rows[0].completed_at) {
+            throw new HttpError(409, 'Session already completed');
+          }
+
+          throw new HttpError(404, 'Session not found');
         }
 
         const session = rows[0];
@@ -656,19 +778,25 @@ export default function createStudyRouter(options = {}) {
           `${session.correct_check_ins}/${session.total_check_ins} correct`
         );
 
-        res.json({
+        return {
           success: true,
           duration_minutes: Math.round(session.duration_minutes),
           total_check_ins: session.total_check_ins,
           correct_check_ins: session.correct_check_ins
-        });
+        };
       });
+
+      res.json(result);
     } catch (error) {
       console.error('Failed to complete study session', error);
-      res.status(500).json({
-        error: 'Failed to complete study session',
-        detail: error.message
-      });
+      if (error instanceof HttpError) {
+        res.status(error.status).json({ error: error.message });
+      } else {
+        res.status(500).json({
+          error: 'Failed to complete study session',
+          detail: error.message
+        });
+      }
     }
   });
 
@@ -679,46 +807,57 @@ export default function createStudyRouter(options = {}) {
 
     try {
       await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Build base query conditions
-        const conditions = ['owner_id = $1'];
-        const params = [ownerId];
+        const buildFilters = (alias = '') => {
+          const prefix = alias ? `${alias}.` : '';
+          const params = [ownerId];
+          const conditions = [`${prefix}owner_id = $1`];
 
-        if (course_id) {
-          conditions.push('course_id = $2');
-          params.push(course_id);
-        }
+          if (course_id) {
+            params.push(course_id);
+            conditions.push(`${prefix}course_id = $${params.length}`);
+          }
 
-        const whereClause = conditions.join(' AND ');
+          return {
+            whereClause: conditions.join(' AND '),
+            params
+          };
+        };
 
         // 1. Fetch all concepts with mastery data
+        const conceptFilters = buildFilters('cpt');
         const conceptsResult = await client.query(
           `SELECT
-            id,
-            name,
-            chapter,
-            course_id,
-            mastery_state,
-            total_attempts,
-            correct_attempts,
-            consecutive_correct,
-            last_reviewed_at,
-            created_at
-           FROM concepts
-           WHERE ${whereClause}
-           ORDER BY chapter, name`,
-          params
+            cpt.id,
+            cpt.name,
+            cpt.chapter,
+            cpt.course_id,
+            cpt.mastery_state,
+            cpt.total_attempts,
+            cpt.correct_attempts,
+            cpt.consecutive_correct,
+            cpt.last_reviewed_at,
+            cpt.created_at,
+            COALESCE(crs.name, 'Unassigned Course') AS course_name
+           FROM concepts cpt
+           LEFT JOIN courses crs ON cpt.course_id = crs.id
+           WHERE ${conceptFilters.whereClause}
+           ORDER BY cpt.course_id NULLS LAST, cpt.chapter, cpt.name`,
+          conceptFilters.params
         );
 
         const concepts = conceptsResult.rows;
 
         // 2. Group concepts by chapter and calculate mastery percentage
         const byChapter = {};
+        const byCourse = {};
         let totalConcepts = 0;
         let masteredConcepts = 0;
         let understoodConcepts = 0;
 
         concepts.forEach(concept => {
           const chapter = concept.chapter || 'Uncategorized';
+          const courseKey = concept.course_id || 'uncategorized';
+          const courseName = concept.course_name || 'Unassigned Course';
 
           if (!byChapter[chapter]) {
             byChapter[chapter] = {
@@ -730,6 +869,35 @@ export default function createStudyRouter(options = {}) {
               not_learned: 0
             };
           }
+
+          if (!byCourse[courseKey]) {
+            byCourse[courseKey] = {
+              course_id: concept.course_id || null,
+              course_name: courseName,
+              total: 0,
+              mastered: 0,
+              understood: 0,
+              needs_review: 0,
+              not_learned: 0,
+              chapters: {}
+            };
+          }
+
+          const courseEntry = byCourse[courseKey];
+
+          if (!courseEntry.chapters[chapter]) {
+            courseEntry.chapters[chapter] = {
+              concepts: [],
+              total: 0,
+              mastered: 0,
+              understood: 0,
+              needs_review: 0,
+              not_learned: 0,
+              percentage: 0
+            };
+          }
+
+          const chapterEntry = courseEntry.chapters[chapter];
 
           byChapter[chapter].concepts.push({
             id: concept.id,
@@ -745,19 +913,41 @@ export default function createStudyRouter(options = {}) {
 
           byChapter[chapter].total++;
           totalConcepts++;
+          courseEntry.total++;
+          chapterEntry.total++;
 
           // Count by mastery state
           if (concept.mastery_state === 'mastered') {
             byChapter[chapter].mastered++;
             masteredConcepts++;
+            courseEntry.mastered++;
+            chapterEntry.mastered++;
           } else if (concept.mastery_state === 'understood') {
             byChapter[chapter].understood++;
             understoodConcepts++;
+            courseEntry.understood++;
+            chapterEntry.understood++;
           } else if (concept.mastery_state === 'needs_review') {
             byChapter[chapter].needs_review++;
+            courseEntry.needs_review++;
+            chapterEntry.needs_review++;
           } else if (concept.mastery_state === 'not_learned' || concept.mastery_state === 'introduced') {
             byChapter[chapter].not_learned++;
+            courseEntry.not_learned++;
+            chapterEntry.not_learned++;
           }
+
+          chapterEntry.concepts.push({
+            id: concept.id,
+            name: concept.name,
+            mastery_state: concept.mastery_state,
+            total_attempts: concept.total_attempts,
+            correct_attempts: concept.correct_attempts,
+            accuracy: concept.total_attempts > 0
+              ? Math.round((concept.correct_attempts / concept.total_attempts) * 100)
+              : 0,
+            last_reviewed_at: concept.last_reviewed_at
+          });
         });
 
         // Calculate percentage for each chapter
@@ -766,6 +956,19 @@ export default function createStudyRouter(options = {}) {
           // Mastery percentage: (mastered + 0.5 * understood) / total
           chapterData.percentage = chapterData.total > 0
             ? Math.round(((chapterData.mastered + 0.5 * chapterData.understood) / chapterData.total) * 100)
+            : 0;
+        });
+
+        Object.values(byCourse).forEach((courseData) => {
+          Object.keys(courseData.chapters).forEach((chapterName) => {
+            const chapterData = courseData.chapters[chapterName];
+            chapterData.percentage = chapterData.total > 0
+              ? Math.round(((chapterData.mastered + 0.5 * chapterData.understood) / chapterData.total) * 100)
+              : 0;
+          });
+
+          courseData.overall = courseData.total > 0
+            ? Math.round(((courseData.mastered + 0.5 * courseData.understood) / courseData.total) * 100)
             : 0;
         });
 
@@ -778,7 +981,7 @@ export default function createStudyRouter(options = {}) {
         const weakAreas = concepts
           .filter(concept =>
             concept.mastery_state === 'needs_review' ||
-            (concept.total_attempts >= 2 && (concept.correct_attempts / concept.total_attempts) < 0.5)
+            (concept.total_attempts >= WEAK_AREA_MIN_ATTEMPTS && (concept.correct_attempts / concept.total_attempts) < WEAK_AREA_ACCURACY_THRESHOLD)
           )
           .map(concept => ({
             id: concept.id,
@@ -788,28 +991,33 @@ export default function createStudyRouter(options = {}) {
             accuracy: concept.total_attempts > 0
               ? Math.round((concept.correct_attempts / concept.total_attempts) * 100)
               : 0,
-            total_attempts: concept.total_attempts
+            total_attempts: concept.total_attempts,
+            course_id: concept.course_id || null,
+            course_name: concept.course_name || 'Unassigned Course'
           }))
           .sort((a, b) => a.accuracy - b.accuracy)
           .slice(0, 10); // Top 10 weak areas
 
         // 4. Fetch recent study sessions (limit to 10 for display)
+        const sessionFilters = buildFilters('ss');
         const sessionsResult = await client.query(
           `SELECT
-            id,
-            session_type,
-            chapter,
-            course_id,
-            total_check_ins,
-            correct_check_ins,
-            duration_minutes,
-            started_at,
-            completed_at
-           FROM study_sessions
-           WHERE ${whereClause}
-           ORDER BY started_at DESC
+            ss.id,
+            ss.session_type,
+            ss.chapter,
+            ss.course_id,
+            ss.total_check_ins,
+            ss.correct_check_ins,
+            ss.duration_minutes,
+            ss.started_at,
+            ss.completed_at,
+            COALESCE(crs.name, 'Unassigned Course') AS course_name
+           FROM study_sessions ss
+           LEFT JOIN courses crs ON ss.course_id = crs.id
+           WHERE ${sessionFilters.whereClause}
+           ORDER BY ss.started_at DESC
            LIMIT 10`,
-          params
+          sessionFilters.params
         );
 
         const studySessions = sessionsResult.rows.map(session => ({
@@ -817,6 +1025,7 @@ export default function createStudyRouter(options = {}) {
           session_type: session.session_type,
           chapter: session.chapter,
           course_id: session.course_id,
+          course_name: session.course_name,
           total_check_ins: session.total_check_ins,
           correct_check_ins: session.correct_check_ins,
           accuracy: session.total_check_ins > 0
@@ -828,15 +1037,16 @@ export default function createStudyRouter(options = {}) {
         }));
 
         // 5. Calculate study stats from ALL sessions (not just the 10 most recent)
+        const statsFilters = buildFilters('ss');
         const statsResult = await client.query(
           `SELECT
             COUNT(*) as total_sessions,
             COALESCE(SUM(total_check_ins), 0) as total_check_ins,
             COALESCE(SUM(correct_check_ins), 0) as total_correct,
             COALESCE(SUM(duration_minutes), 0) as total_minutes
-           FROM study_sessions
-           WHERE ${whereClause}`,
-          params
+           FROM study_sessions ss
+           WHERE ${statsFilters.whereClause}`,
+          statsFilters.params
         );
 
         const stats = statsResult.rows[0];
@@ -848,6 +1058,7 @@ export default function createStudyRouter(options = {}) {
         res.json({
           content_mastery: {
             by_chapter: byChapter,
+            by_course: byCourse,
             overall: overallPercentage,
             total_concepts: totalConcepts,
             mastered_concepts: masteredConcepts,

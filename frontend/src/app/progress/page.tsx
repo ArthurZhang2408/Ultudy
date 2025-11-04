@@ -24,6 +24,18 @@ type ChapterData = {
   percentage: number;
 };
 
+type CourseMastery = {
+  course_id: string | null;
+  course_name: string;
+  total: number;
+  mastered: number;
+  understood: number;
+  needs_review: number;
+  not_learned: number;
+  overall: number;
+  chapters: Record<string, ChapterData>;
+};
+
 type WeakArea = {
   id: string;
   name: string;
@@ -31,13 +43,16 @@ type WeakArea = {
   mastery_state: string;
   accuracy: number;
   total_attempts: number;
+  course_id: string | null;
+  course_name: string;
 };
 
 type StudySession = {
   id: string;
   session_type: string;
   chapter: string;
-  course_id: string;
+  course_id: string | null;
+  course_name: string;
   total_check_ins: number;
   correct_check_ins: number;
   accuracy: number;
@@ -48,6 +63,7 @@ type StudySession = {
 
 type ProgressData = {
   content_mastery: {
+    by_course?: Record<string, CourseMastery>;
     by_chapter: Record<string, ChapterData>;
     overall: number;
     total_concepts: number;
@@ -159,7 +175,16 @@ function ProgressContent() {
     return null;
   }
 
-  const chapters = Object.keys(progress.content_mastery.by_chapter).sort((a, b) => {
+  const courseEntries = progress.content_mastery.by_course
+    ? Object.entries(progress.content_mastery.by_course).map(([key, value]) => ({
+        key,
+        ...value
+      }))
+    : [];
+
+  courseEntries.sort((a, b) => a.course_name.localeCompare(b.course_name));
+
+  const fallbackChapters = Object.keys(progress.content_mastery.by_chapter).sort((a, b) => {
     if (a === 'Uncategorized') return 1;
     if (b === 'Uncategorized') return -1;
     return a.localeCompare(b, undefined, { numeric: true });
@@ -220,69 +245,177 @@ function ProgressContent() {
         </div>
       </div>
 
-      {/* Chapter-by-Chapter Progress */}
+      {/* Course-by-course Progress */}
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">Progress by Chapter</h2>
-        <div className="space-y-4">
-          {chapters.map((chapter) => {
-            const chapterData = progress.content_mastery.by_chapter[chapter];
-            return (
-              <div key={chapter} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium text-slate-900">
-                    {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
-                  </h3>
-                  <span className="text-sm font-semibold text-slate-900">
-                    {chapterData.percentage}%
-                  </span>
-                </div>
+        <h2 className="text-xl font-semibold text-slate-900 mb-4">Progress by Course</h2>
+        {courseEntries.length > 0 ? (
+          <div className="space-y-6">
+            {courseEntries.map((course) => {
+              const chapterNames = Object.keys(course.chapters || {}).sort((a, b) => {
+                if (a === 'Uncategorized') return 1;
+                if (b === 'Uncategorized') return -1;
+                return a.localeCompare(b, undefined, { numeric: true });
+              });
 
-                {/* Progress bar */}
-                <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                  <div
-                    className="bg-green-500"
-                    style={{ width: `${(chapterData.mastered / chapterData.total) * 100}%` }}
-                    title={`${chapterData.mastered} mastered`}
-                  />
-                  <div
-                    className="bg-blue-500"
-                    style={{ width: `${(chapterData.understood / chapterData.total) * 100}%` }}
-                    title={`${chapterData.understood} understood`}
-                  />
-                  <div
-                    className="bg-orange-500"
-                    style={{ width: `${(chapterData.needs_review / chapterData.total) * 100}%` }}
-                    title={`${chapterData.needs_review} needs review`}
-                  />
-                  <div
-                    className="bg-slate-300"
-                    style={{ width: `${(chapterData.not_learned / chapterData.total) * 100}%` }}
-                    title={`${chapterData.not_learned} not learned`}
-                  />
-                </div>
+              return (
+                <div key={course.key} className="space-y-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-slate-900">{course.course_name}</h3>
+                      <p className="text-sm text-slate-600">
+                        {course.total} concepts • {course.overall}% mastery
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-xs text-slate-600">
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-green-500 rounded" />
+                        {course.mastered} mastered
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-blue-500 rounded" />
+                        {course.understood} understood
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-orange-500 rounded" />
+                        {course.needs_review} needs review
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <div className="w-3 h-3 bg-slate-300 rounded" />
+                        {course.not_learned} not started
+                      </span>
+                    </div>
+                  </div>
 
-                <div className="flex gap-4 text-xs text-slate-600">
-                  <span className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-green-500 rounded" />
-                    {chapterData.mastered} mastered
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-blue-500 rounded" />
-                    {chapterData.understood} understood
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-orange-500 rounded" />
-                    {chapterData.needs_review} needs review
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <div className="w-3 h-3 bg-slate-300 rounded" />
-                    {chapterData.not_learned} not started
-                  </span>
+                  {chapterNames.length > 0 ? (
+                    <div className="space-y-4">
+                      {chapterNames.map((chapter) => {
+                        const chapterData = course.chapters[chapter];
+                        return (
+                          <div key={chapter} className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium text-slate-900">
+                                {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                              </h4>
+                              <span className="text-sm font-semibold text-slate-900">
+                                {chapterData.percentage}%
+                              </span>
+                            </div>
+
+                            <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex">
+                              <div
+                                className="bg-green-500"
+                                style={{ width: `${(chapterData.mastered / chapterData.total) * 100}%` }}
+                                title={`${chapterData.mastered} mastered`}
+                              />
+                              <div
+                                className="bg-blue-500"
+                                style={{ width: `${(chapterData.understood / chapterData.total) * 100}%` }}
+                                title={`${chapterData.understood} understood`}
+                              />
+                              <div
+                                className="bg-orange-500"
+                                style={{ width: `${(chapterData.needs_review / chapterData.total) * 100}%` }}
+                                title={`${chapterData.needs_review} needs review`}
+                              />
+                              <div
+                                className="bg-slate-300"
+                                style={{ width: `${(chapterData.not_learned / chapterData.total) * 100}%` }}
+                                title={`${chapterData.not_learned} not learned`}
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap gap-4 text-xs text-slate-600">
+                              <span className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-green-500 rounded" />
+                                {chapterData.mastered} mastered
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-blue-500 rounded" />
+                                {chapterData.understood} understood
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-orange-500 rounded" />
+                                {chapterData.needs_review} needs review
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-slate-300 rounded" />
+                                {chapterData.not_learned} not started
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      No chapter-level data yet for this course.
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {fallbackChapters.map((chapter) => {
+              const chapterData = progress.content_mastery.by_chapter[chapter];
+              return (
+                <div key={chapter} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-slate-900">
+                      {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                    </h3>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {chapterData.percentage}%
+                    </span>
+                  </div>
+
+                  <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex">
+                    <div
+                      className="bg-green-500"
+                      style={{ width: `${(chapterData.mastered / chapterData.total) * 100}%` }}
+                      title={`${chapterData.mastered} mastered`}
+                    />
+                    <div
+                      className="bg-blue-500"
+                      style={{ width: `${(chapterData.understood / chapterData.total) * 100}%` }}
+                      title={`${chapterData.understood} understood`}
+                    />
+                    <div
+                      className="bg-orange-500"
+                      style={{ width: `${(chapterData.needs_review / chapterData.total) * 100}%` }}
+                      title={`${chapterData.needs_review} needs review`}
+                    />
+                    <div
+                      className="bg-slate-300"
+                      style={{ width: `${(chapterData.not_learned / chapterData.total) * 100}%` }}
+                      title={`${chapterData.not_learned} not learned`}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-4 text-xs text-slate-600">
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-green-500 rounded" />
+                      {chapterData.mastered} mastered
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-blue-500 rounded" />
+                      {chapterData.understood} understood
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-orange-500 rounded" />
+                      {chapterData.needs_review} needs review
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-slate-300 rounded" />
+                      {chapterData.not_learned} not started
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Weak Areas */}
@@ -300,7 +433,9 @@ function ProgressContent() {
                 <div className="flex-1">
                   <div className="font-medium text-slate-900">{concept.name}</div>
                   <div className="text-sm text-slate-600">
-                    Chapter {concept.chapter} • {concept.total_attempts} attempts
+                    {concept.course_name}
+                    {concept.chapter ? ` • Chapter ${concept.chapter}` : ''}
+                    {` • ${concept.total_attempts} attempts`}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -335,6 +470,9 @@ function ProgressContent() {
                     {session.chapter && ` - Chapter ${session.chapter}`}
                   </div>
                   <div className="text-sm text-slate-600">
+                    {session.course_name}
+                  </div>
+                  <div className="text-xs text-slate-500">
                     {new Date(session.started_at).toLocaleDateString()} at{' '}
                     {new Date(session.started_at).toLocaleTimeString([], {
                       hour: '2-digit',
