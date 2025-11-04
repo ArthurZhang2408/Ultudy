@@ -457,7 +457,7 @@ function LearnPageContent() {
       return;
     }
 
-    const currentConcept = lesson.concepts[currentConceptIndex];
+    const currentConcept = lesson.concepts?.[currentConceptIndex];
     const mcqs = currentConcept?.check_ins || [];
     const question = mcqs[currentMCQIndex];
 
@@ -499,13 +499,15 @@ function LearnPageContent() {
       });
     }
 
-    void recordCheckIn({
-      wasCorrect,
-      selectedOption: selectedOptionData,
-      correctOption,
-      concept: currentConcept,
-      question
-    });
+    if (currentConcept) {
+      void recordCheckIn({
+        wasCorrect,
+        selectedOption: selectedOptionData,
+        correctOption,
+        concept: currentConcept,
+        question
+      });
+    }
   }
 
   async function handleNextMCQ() {
@@ -513,7 +515,7 @@ function LearnPageContent() {
       return;
     }
 
-    const currentConcept = lesson.concepts[currentConceptIndex];
+    const currentConcept = lesson.concepts?.[currentConceptIndex];
     const mcqs = currentConcept?.check_ins || [];
     const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
     const answered = answerHistory[key];
@@ -601,7 +603,7 @@ function LearnPageContent() {
     }
 
     if (currentConceptIndex > 0) {
-      const previousConcept = lesson.concepts[currentConceptIndex - 1];
+      const previousConcept = lesson.concepts?.[currentConceptIndex - 1];
       const previousTotal = previousConcept?.check_ins?.length || 0;
       setCurrentConceptIndex((prev) => prev - 1);
       setCurrentMCQIndex(previousTotal > 0 ? previousTotal - 1 : 0);
@@ -626,7 +628,7 @@ function LearnPageContent() {
     );
   }
 
-  const currentConcept = lesson.concepts[currentConceptIndex];
+  const currentConcept = lesson.concepts?.[currentConceptIndex];
   const totalConcepts = lesson.concepts.length;
   const currentMCQ = currentConcept?.check_ins?.[currentMCQIndex];
   const totalMCQsInConcept = currentConcept?.check_ins?.length || 0;
