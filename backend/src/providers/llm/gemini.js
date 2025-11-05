@@ -437,7 +437,12 @@ Return JSON in this EXACT structure:
       "mcqs": [
         {
           "question": "Integration question testing overall concept",
-          "options": [/* same structure */]
+          "options": [
+            {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+            {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct"},
+            {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+            {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
+          ]
         }
       ]
     },
@@ -450,7 +455,17 @@ Return JSON in this EXACT structure:
         "examples": [],
         "important_notes": []
       },
-      "mcqs": [/* 2 questions */]
+      "mcqs": [
+        {
+          "question": "Question testing understanding",
+          "options": [
+            {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+            {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct"},
+            {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+            {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
+          ]
+        }
+      ]
     }
   ]
 }
