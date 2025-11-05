@@ -59,6 +59,25 @@ export default async function createOpenAILLMProvider() {
           chunks
         })}`
       );
+    },
+    async generateText(prompt) {
+      // Generate text without JSON parsing for evaluation purposes
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are a helpful AI assistant.' },
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: 'json_object' }
+      });
+
+      const content = response.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('OpenAI LLM provider did not return textual output');
+      }
+
+      return content;
     }
   };
 }

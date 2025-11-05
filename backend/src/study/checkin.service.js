@@ -112,7 +112,7 @@ Evaluate the answer now:`;
  * - introduced: 1-2 attempts, <50% correct
  * - understood: 2+ attempts, 50-80% correct OR 1 consecutive correct
  * - needs_review: Was understood/mastered but recent incorrect answer
- * - mastered: 3+ consecutive correct OR 80%+ accuracy with 4+ attempts
+ * - mastered: 2+ consecutive correct OR 75%+ accuracy with 3+ attempts
  *
  * @param {Object} client - Database client
  * @param {Object} params
@@ -161,7 +161,7 @@ export async function updateConceptMastery(client, {
   // Determine new mastery state
   let newState;
 
-  if (consecutiveCorrect >= 3 || (accuracyPercent >= 80 && totalAttempts >= 4)) {
+  if (consecutiveCorrect >= 2 || (accuracyPercent >= 75 && totalAttempts >= 3)) {
     newState = 'mastered';
   } else if (accuracyPercent >= 50 && totalAttempts >= 2) {
     newState = 'understood';

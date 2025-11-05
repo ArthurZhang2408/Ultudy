@@ -27,6 +27,9 @@ export function createMemoryPool() {
   const documents = new Map();
   const chunks = [];
   const lessons = new Map();
+  const courses = new Map();
+  const concepts = new Map();
+  const studySessions = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -88,6 +91,30 @@ export function createMemoryPool() {
           user_tags: Array.isArray(userTags) ? userTags : [],
           course_id: courseId
         });
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('INSERT INTO courses')) {
+        const id = params[0] ?? randomUUID();
+        const ownerId = params[1];
+        const name = params[2] ?? 'Untitled Course';
+        const code = params[3] ?? null;
+        const term = params[4] ?? null;
+        const examDate = params[5] ?? null;
+
+        enforceRowLevelSecurity(state, ownerId, 'courses');
+
+        courses.set(id, {
+          id,
+          owner_id: ownerId,
+          name,
+          code,
+          term,
+          exam_date: examDate,
+          created_at: new Date(),
+          updated_at: new Date()
+        });
+
         return { rows: [] };
       }
 
@@ -172,7 +199,303 @@ export function createMemoryPool() {
       if (normalized.startsWith('INSERT INTO concepts')) {
         const ownerId = params[0];
         enforceRowLevelSecurity(state, ownerId, 'concepts');
+
+        const id = randomUUID();
+        const concept = {
+          id,
+          owner_id: ownerId,
+          name: params[1],
+          chapter: params[2] ?? null,
+          course_id: params[3] ?? null,
+          document_id: params[4] ?? null,
+          mastery_state: params[5] ?? 'not_learned',
+          total_attempts: params[6] ?? 0,
+          correct_attempts: params[7] ?? 0,
+          consecutive_correct: params[8] ?? 0,
+          last_reviewed_at: new Date(),
+          created_at: new Date(),
+          updated_at: new Date()
+        };
+
+        concepts.set(id, concept);
+
+        return { rows: [{ id }] };
+      }
+
+      if (normalized === 'SELECT * FROM concepts WHERE id = $1 AND owner_id = $2') {
+        const concept = concepts.get(params[0]);
+        if (
+          concept &&
+          concept.owner_id === params[1] &&
+          (!state?.currentUserId || state.currentUserId === concept.owner_id)
+        ) {
+          return { rows: [concept] };
+        }
+
         return { rows: [] };
+      }
+
+      if (normalized === 'SELECT * FROM concepts WHERE owner_id = $1 AND name = $2 AND chapter = $3') {
+        const ownerId = params[0];
+        const name = params[1];
+        const chapter = params[2];
+
+        const rows = Array.from(concepts.values()).filter((concept) => {
+          if (concept.owner_id !== ownerId) {
+            return false;
+          }
+
+          if (state?.currentUserId && state.currentUserId !== ownerId) {
+            return false;
+          }
+
+          return concept.name === name && concept.chapter === chapter;
+        });
+
+        return { rows };
+      }
+
+      if (normalized.startsWith('UPDATE concepts SET mastery_state')) {
+        const conceptId = params[4];
+        const concept = concepts.get(conceptId);
+
+        if (concept) {
+          concept.mastery_state = params[0];
+          concept.total_attempts = params[1];
+          concept.correct_attempts = params[2];
+          concept.consecutive_correct = params[3];
+          concept.last_reviewed_at = new Date();
+          concept.updated_at = new Date();
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith("SELECT cpt.id, cpt.name, cpt.chapter")) {
+        const ownerId = params[0];
+        const courseIdFilter = params[1];
+
+        const rows = Array.from(concepts.values())
+          .filter((concept) => {
+            if (concept.owner_id !== ownerId) {
+              return false;
+            }
+
+            if (state?.currentUserId && state.currentUserId !== ownerId) {
+              return false;
+            }
+
+            if (courseIdFilter) {
+              return concept.course_id === courseIdFilter;
+            }
+
+            return true;
+          })
+          .sort((a, b) => {
+            if (a.course_id && !b.course_id) {
+              return -1;
+            }
+            if (!a.course_id && b.course_id) {
+              return 1;
+            }
+            if (a.course_id && b.course_id) {
+              const courseCompare = a.course_id.localeCompare(b.course_id);
+              if (courseCompare !== 0) {
+                return courseCompare;
+              }
+            }
+
+            const chapterA = a.chapter || 'Uncategorized';
+            const chapterB = b.chapter || 'Uncategorized';
+            const chapterCompare = chapterA.localeCompare(chapterB, undefined, { numeric: true });
+            if (chapterCompare !== 0) {
+              return chapterCompare;
+            }
+
+            return a.name.localeCompare(b.name);
+          })
+          .map((concept) => ({
+            id: concept.id,
+            name: concept.name,
+            chapter: concept.chapter,
+            course_id: concept.course_id,
+            mastery_state: concept.mastery_state,
+            total_attempts: concept.total_attempts,
+            correct_attempts: concept.correct_attempts,
+            consecutive_correct: concept.consecutive_correct,
+            last_reviewed_at: concept.last_reviewed_at,
+            created_at: concept.created_at,
+            course_name: concept.course_id && courses.get(concept.course_id)
+              ? courses.get(concept.course_id).name
+              : 'Unassigned Course'
+          }));
+
+        return { rows };
+      }
+
+      if (normalized.startsWith('INSERT INTO study_sessions')) {
+        const ownerId = params[0];
+        enforceRowLevelSecurity(state, ownerId, 'study_sessions');
+
+        const id = randomUUID();
+        const session = {
+          id,
+          owner_id: ownerId,
+          session_type: params[1],
+          chapter: params[2] ?? null,
+          document_id: params[3] ?? null,
+          course_id: params[4] ?? null,
+          started_at: new Date(),
+          completed_at: null,
+          duration_minutes: null,
+          total_check_ins: 0,
+          correct_check_ins: 0,
+          concepts_covered: [],
+          problems_attempted: []
+        };
+
+        studySessions.set(id, session);
+
+        return { rows: [{ id, started_at: session.started_at }] };
+      }
+
+      if (normalized.startsWith('UPDATE study_sessions SET total_check_ins')) {
+        const sessionId = params[0];
+        const ownerId = params[1];
+        const increment = params[2] ?? 0;
+        const session = studySessions.get(sessionId);
+
+        if (
+          session &&
+          session.owner_id === ownerId &&
+          (!state?.currentUserId || state.currentUserId === ownerId)
+        ) {
+          session.total_check_ins += 1;
+          session.correct_check_ins += increment;
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('UPDATE study_sessions SET concepts_covered')) {
+        const conceptId = params[0];
+        const sessionId = params[1];
+        const ownerId = params[2];
+        const session = studySessions.get(sessionId);
+
+        if (
+          session &&
+          session.owner_id === ownerId &&
+          (!state?.currentUserId || state.currentUserId === ownerId)
+        ) {
+          if (!session.concepts_covered.includes(conceptId)) {
+            session.concepts_covered.push(conceptId);
+          }
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('UPDATE study_sessions SET completed_at = NOW()')) {
+        const sessionId = params[0];
+        const ownerId = params[1];
+        const session = studySessions.get(sessionId);
+
+        if (
+          !session ||
+          session.owner_id !== ownerId ||
+          (state?.currentUserId && state.currentUserId !== ownerId) ||
+          session.completed_at
+        ) {
+          return { rows: [] };
+        }
+
+        const completedAt = new Date();
+        session.completed_at = completedAt;
+        const durationMinutes = (completedAt - session.started_at) / 60000;
+        session.duration_minutes = durationMinutes;
+
+        return {
+          rows: [{
+            duration_minutes: durationMinutes,
+            total_check_ins: session.total_check_ins,
+            correct_check_ins: session.correct_check_ins
+          }]
+        };
+      }
+
+      if (normalized.startsWith('SELECT ss.id, ss.session_type')) {
+        const ownerId = params[0];
+        const courseIdFilter = params[1];
+
+        const rows = Array.from(studySessions.values())
+          .filter((session) => {
+            if (session.owner_id !== ownerId) {
+              return false;
+            }
+
+            if (state?.currentUserId && state.currentUserId !== ownerId) {
+              return false;
+            }
+
+            if (courseIdFilter) {
+              return session.course_id === courseIdFilter;
+            }
+
+            return true;
+          })
+          .sort((a, b) => b.started_at - a.started_at)
+          .slice(0, 10)
+          .map((session) => ({
+            id: session.id,
+            session_type: session.session_type,
+            chapter: session.chapter,
+            course_id: session.course_id,
+            total_check_ins: session.total_check_ins,
+            correct_check_ins: session.correct_check_ins,
+            duration_minutes: session.duration_minutes,
+            started_at: session.started_at,
+            completed_at: session.completed_at,
+            course_name: session.course_id && courses.get(session.course_id)
+              ? courses.get(session.course_id).name
+              : 'Unassigned Course'
+          }));
+
+        return { rows };
+      }
+
+      if (normalized.startsWith('SELECT COUNT(*) as total_sessions')) {
+        const ownerId = params[0];
+        const courseIdFilter = params[1];
+
+        const sessions = Array.from(studySessions.values()).filter((session) => {
+          if (session.owner_id !== ownerId) {
+            return false;
+          }
+
+          if (state?.currentUserId && state.currentUserId !== ownerId) {
+            return false;
+          }
+
+          if (courseIdFilter) {
+            return session.course_id === courseIdFilter;
+          }
+
+          return true;
+        });
+
+        const totalCheckIns = sessions.reduce((sum, session) => sum + session.total_check_ins, 0);
+        const totalCorrect = sessions.reduce((sum, session) => sum + session.correct_check_ins, 0);
+        const totalMinutes = sessions.reduce((sum, session) => sum + (session.duration_minutes ?? 0), 0);
+
+        return {
+          rows: [{
+            total_sessions: String(sessions.length),
+            total_check_ins: String(totalCheckIns),
+            total_correct: String(totalCorrect),
+            total_minutes: String(totalMinutes)
+          }]
+        };
       }
 
       if (normalized.startsWith('DELETE FROM documents')) {
@@ -278,6 +601,19 @@ export function createMemoryPool() {
               ]
             };
           }
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized === 'SELECT 1 FROM courses WHERE id = $1 AND owner_id = $2') {
+        const course = courses.get(params[0]);
+        if (
+          course &&
+          course.owner_id === params[1] &&
+          (!state?.currentUserId || state.currentUserId === params[1])
+        ) {
+          return { rows: [{ '?column?': 1 }] };
         }
 
         return { rows: [] };
