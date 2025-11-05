@@ -133,12 +133,18 @@ function LearnPageContent() {
       return null;
     }
 
-    const baseId = lessonData.id || lessonData.document_id || documentId;
-    if (!baseId) {
+    // Use document_id and chapter to ensure progress persists across lesson regenerations
+    const docId = lessonData.document_id || documentId;
+    const chapterVal = lessonData.chapter || chapter;
+
+    if (!docId) {
       return null;
     }
 
-    return `lesson-progress:${baseId}`;
+    // Include chapter in key to separate progress by chapter
+    return chapterVal
+      ? `lesson-progress:${docId}:${chapterVal}`
+      : `lesson-progress:${docId}`;
   }
 
   useEffect(() => {
