@@ -370,7 +370,7 @@ Extract and organize:
    - Why it matters / real-world relevance
    - What you'll be able to do after learning this
 
-2. **Concepts** (As many as needed to cover ALL material - typically 10-20 for a chapter):
+2. **Concepts** (6-10 key concepts that cover the most important testable material):
 
    **For Main Concepts** (broad topics that contain multiple sub-topics):
    - name: Main concept name
@@ -491,7 +491,7 @@ CRITICAL REMINDERS:
 - Extract ALL testable content - don't summarize away important details
 - Include ALL formulas with complete variable explanations
 - Provide concrete examples with specifics (numbers, scenarios)
-- Create enough concepts to cover the material thoroughly (10-20+ concepts typical)
+- Focus on 6-10 core concepts that capture the most testable material
 - Use sub_concepts when a topic naturally breaks into multiple parts
 - Every MCQ option needs a detailed explanation
 - Base everything on the provided content
