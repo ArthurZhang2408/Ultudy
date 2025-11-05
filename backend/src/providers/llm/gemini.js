@@ -235,9 +235,26 @@ function parseJsonOutput(rawText) {
     throw new Error('Gemini LLM provider returned an empty response');
   }
 
+  let jsonText = rawText.trim();
+
+  // Try to extract JSON from markdown code blocks
+  const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    jsonText = codeBlockMatch[1].trim();
+  }
+
+  // Try to find JSON object boundaries if there's surrounding text
+  const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    jsonText = jsonMatch[0];
+  }
+
   try {
-    return JSON.parse(rawText);
+    return JSON.parse(jsonText);
   } catch (error) {
+    // Log the actual response for debugging
+    console.error('[gemini] Failed to parse JSON. Raw response (first 500 chars):', rawText.substring(0, 500));
+    console.error('[gemini] Parse error:', error.message);
     throw new Error('Gemini LLM provider returned invalid JSON');
   }
 }
@@ -478,7 +495,9 @@ CRITICAL REMINDERS:
 - Use sub_concepts when a topic naturally breaks into multiple parts
 - Every MCQ option needs a detailed explanation
 - Base everything on the provided content
-- Test understanding, not memorization`;
+- Test understanding, not memorization
+- IMPORTANT: Return ONLY valid JSON, no markdown code blocks, no explanatory text before or after
+- Your entire response must be a single valid JSON object starting with { and ending with }`;
 
   return { systemInstruction, userPrompt };
 }
