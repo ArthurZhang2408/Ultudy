@@ -17,12 +17,21 @@ type MCQ = {
   hint?: string;
 };
 
+type Formula = {
+  formula: string;
+  variables: string;
+};
+
 type Concept = {
   id?: string;
   name: string;
   explanation: string;
   analogies?: string[];
   examples?: string[];
+  formulas?: Formula[];
+  important_notes?: string[];
+  is_main_concept?: boolean;
+  parent_concept?: string;
   check_ins?: MCQ[];
 };
 
@@ -838,6 +847,33 @@ function LearnPageContent() {
             <ul className="space-y-2 list-disc pl-5 text-indigo-800 text-sm leading-relaxed">
               {currentConcept.examples.map((example, index) => (
                 <li key={index}>{example}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {currentConcept.formulas && currentConcept.formulas.length > 0 && (
+          <div className="rounded-lg bg-purple-50 p-4 space-y-3">
+            <div className="text-sm font-semibold uppercase tracking-wide text-purple-900">Formulas & Equations</div>
+            {currentConcept.formulas.map((formulaObj, index) => (
+              <div key={index} className="space-y-1">
+                <div className="font-mono text-purple-900 bg-white p-3 rounded border border-purple-200">
+                  {formulaObj.formula}
+                </div>
+                <div className="text-xs text-purple-700 pl-3">
+                  {formulaObj.variables}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {currentConcept.important_notes && currentConcept.important_notes.length > 0 && (
+          <div className="rounded-lg bg-amber-50 p-4 space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-wide text-amber-900">Important Notes</div>
+            <ul className="space-y-2 list-disc pl-5 text-amber-800 text-sm leading-relaxed">
+              {currentConcept.important_notes.map((note, index) => (
+                <li key={index}>{note}</li>
               ))}
             </ul>
           </div>

@@ -311,13 +311,13 @@ Use only the given context and match the requested difficulty. Input data: ${JSO
 }
 
 function buildFullContextLessonPrompt({ title, full_text, chapter, include_check_ins }) {
-  const systemInstruction = `You are an expert educational content creator specializing in bite-sized, interactive learning. Your role is to:
-1. Read and understand full course materials
-2. Break down complex topics into digestible, focused concepts
-3. Create engaging, clear explanations (2-3 sentences max per concept)
-4. Generate multiple-choice questions with detailed explanations
+  const systemInstruction = `You are an expert educational content creator specializing in comprehensive, exam-focused learning. Your role is to:
+1. Extract ALL testable content from course materials (formulas, definitions, procedures, examples)
+2. Create detailed, hierarchical concept structures that preserve information depth
+3. Generate focused explanations with practical examples
+4. Create multiple-choice questions that test both understanding and application
 
-Always respond with valid JSON only. Keep explanations concise and avoid walls of text.`;
+Always respond with valid JSON only. Prioritize completeness and exam readiness over brevity.`;
 
   const userPrompt = `I'm studying from this material:
 
@@ -329,13 +329,22 @@ ${full_text}
 
 ---
 
-Create an interactive, concept-by-concept learning experience. Follow these principles:
+Create a comprehensive, interactive learning experience that prepares students for exams. Follow these principles:
 
 **PEDAGOGY:**
-- Progressive disclosure: One concept at a time
-- Concise explanations: 2-3 sentences max
-- Immediate application: MCQs right after each concept
-- Active learning: No passive reading
+- Information completeness: Capture ALL testable content (formulas, definitions, procedures)
+- Hierarchical structure: Main concepts with sub-concepts for nested topics
+- Progressive complexity: Build from fundamentals to advanced topics
+- Active learning: Test understanding at multiple levels
+
+**EXTRACTION PRIORITY:**
+Extract and organize:
+1. Definitions and terminology
+2. Formulas and equations (with variable explanations)
+3. Procedures and algorithms
+4. Examples and worked problems
+5. Comparisons and contrasts
+6. Edge cases and limitations
 
 **STRUCTURE:**
 
@@ -344,19 +353,38 @@ Create an interactive, concept-by-concept learning experience. Follow these prin
    - Why it matters / real-world relevance
    - What you'll be able to do after learning this
 
-2. **Concepts** (3-8 key concepts):
-   For each concept, provide:
-   - Short, focused explanation (2-3 sentences)
-   - ONE simple analogy or real-world example
-   - 3-4 MCQ questions testing understanding
+2. **Concepts** (As many as needed to cover ALL material - typically 10-20 for a chapter):
+
+   **For Main Concepts** (broad topics that contain multiple sub-topics):
+   - name: Main concept name
+   - explanation: 4-6 sentences covering the core idea
+   - key_details: Object containing:
+     * formulas: Array of {formula: "equation", variables: "what each variable means"}
+     * examples: Array of concrete examples or worked problems
+     * important_notes: Array of critical points, edge cases, or common misconceptions
+   - sub_concepts: Array of related sub-topics (2-4 sub-concepts if applicable)
+   - mcqs: 2-3 integration questions testing the overall concept
+
+   **For Sub-Concepts** (specific topics under a main concept):
+   - name: Sub-concept name
+   - explanation: 3-4 sentences focused on this specific aspect
+   - key_details: Object with relevant formulas/examples/notes
+   - mcqs: 1-2 targeted questions
+
+   **For Standalone Concepts** (single focused topics):
+   - name: Concept name
+   - explanation: 3-5 sentences
+   - key_details: Formulas/examples/notes as applicable
+   - mcqs: 2 questions testing understanding
 
 **MCQ REQUIREMENTS:**
 - 4 options (A, B, C, D) per question
 - ONE correct answer
 - Each option needs an explanation:
   * Correct: Why it's right + key insight
-  * Incorrect: Why it's wrong + common misconception addressed
-- Questions should test conceptual understanding, not memorization
+  * Incorrect: Why it's wrong + what misconception this addresses
+- Mix question types: definitional, conceptual, application, comparison
+- Include calculation questions when relevant
 
 Return JSON in this EXACT structure:
 {
@@ -368,47 +396,72 @@ Return JSON in this EXACT structure:
   },
   "concepts": [
     {
-      "name": "Concept Name",
-      "explanation": "2-3 sentence explanation. Be clear and concise.",
-      "analogy": "One simple, relatable analogy",
-      "mcqs": [
+      "name": "Main Concept Name",
+      "is_main_concept": true,
+      "explanation": "4-6 sentence comprehensive explanation with key terminology defined.",
+      "key_details": {
+        "formulas": [
+          {"formula": "E = mc²", "variables": "E=energy, m=mass, c=speed of light"}
+        ],
+        "examples": [
+          "Concrete example 1 with numbers/specifics",
+          "Concrete example 2 showing different application"
+        ],
+        "important_notes": [
+          "Critical limitation or edge case",
+          "Common misconception to avoid"
+        ]
+      },
+      "sub_concepts": [
         {
-          "question": "Clear question testing understanding",
-          "options": [
+          "name": "Sub-Concept Name",
+          "explanation": "3-4 sentences focused on this specific aspect.",
+          "key_details": {
+            "formulas": [],
+            "examples": ["Example specific to sub-concept"],
+            "important_notes": []
+          },
+          "mcqs": [
             {
-              "letter": "A",
-              "text": "Option text",
-              "correct": false,
-              "explanation": "Why this is wrong + what misconception this represents"
-            },
-            {
-              "letter": "B",
-              "text": "Option text",
-              "correct": true,
-              "explanation": "Why this is correct + key insight"
-            },
-            {
-              "letter": "C",
-              "text": "Option text",
-              "correct": false,
-              "explanation": "Why this is wrong"
-            },
-            {
-              "letter": "D",
-              "text": "Option text",
-              "correct": false,
-              "explanation": "Why this is wrong"
+              "question": "Question testing this sub-concept",
+              "options": [
+                {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+                {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct + insight"},
+                {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
+                {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
+              ]
             }
           ]
         }
+      ],
+      "mcqs": [
+        {
+          "question": "Integration question testing overall concept",
+          "options": [/* same structure */]
+        }
       ]
+    },
+    {
+      "name": "Standalone Concept",
+      "is_main_concept": false,
+      "explanation": "3-5 sentences.",
+      "key_details": {
+        "formulas": [],
+        "examples": [],
+        "important_notes": []
+      },
+      "mcqs": [/* 2 questions */]
     }
   ]
 }
 
 CRITICAL REMINDERS:
-- Keep explanations SHORT (2-3 sentences)
-- Every option needs an explanation
+- Extract ALL testable content - don't summarize away important details
+- Include ALL formulas with complete variable explanations
+- Provide concrete examples with specifics (numbers, scenarios)
+- Create enough concepts to cover the material thoroughly (10-20+ concepts typical)
+- Use sub_concepts when a topic naturally breaks into multiple parts
+- Every MCQ option needs a detailed explanation
 - Base everything on the provided content
 - Test understanding, not memorization`;
 
@@ -462,42 +515,30 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     })
     .join('\n\n');
 
-  // Process concepts with MCQs
-  const allCheckins = [];
-  const normalizedConcepts = concepts.map((concept, idx) => {
-    const name = requireString(concept?.name, `concept ${idx + 1} name`);
-    const conceptExplanation = requireString(concept?.explanation, `concept ${idx + 1} explanation`);
-
-    // Handle analogy (single string now, not array)
-    const analogy = typeof concept.analogy === 'string' && concept.analogy.trim()
-      ? concept.analogy.trim()
-      : '';
-    const analogies = analogy ? [analogy] : [];
-
-    // Process MCQs from this concept
-    const mcqs = Array.isArray(concept.mcqs) ? concept.mcqs : [];
-    const checkIns = mcqs.map((mcq, mcqIdx) => {
-      const question = requireString(mcq?.question, `concept ${idx + 1} MCQ ${mcqIdx + 1} question`);
+  // Helper function to process MCQs
+  function processMCQs(mcqs, contextLabel) {
+    return mcqs.map((mcq, mcqIdx) => {
+      const question = requireString(mcq?.question, `${contextLabel} MCQ ${mcqIdx + 1} question`);
       const options = Array.isArray(mcq?.options) ? mcq.options : [];
 
       if (options.length !== 4) {
-        throw new Error(`concept ${idx + 1} MCQ ${mcqIdx + 1} must have exactly 4 options`);
+        throw new Error(`${contextLabel} MCQ ${mcqIdx + 1} must have exactly 4 options`);
       }
 
       // Validate each option has required fields
       const normalizedOptions = options.map((opt, optIdx) => {
         return {
-          letter: requireString(opt?.letter, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} letter`),
-          text: requireString(opt?.text, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} text`),
+          letter: requireString(opt?.letter, `${contextLabel} MCQ ${mcqIdx + 1} option ${optIdx + 1} letter`),
+          text: requireString(opt?.text, `${contextLabel} MCQ ${mcqIdx + 1} option ${optIdx + 1} text`),
           correct: opt?.correct === true,
-          explanation: requireString(opt?.explanation, `concept ${idx + 1} MCQ ${mcqIdx + 1} option ${optIdx + 1} explanation`)
+          explanation: requireString(opt?.explanation, `${contextLabel} MCQ ${mcqIdx + 1} option ${optIdx + 1} explanation`)
         };
       });
 
       // Ensure exactly one correct answer
       const correctCount = normalizedOptions.filter(opt => opt.correct).length;
       if (correctCount !== 1) {
-        throw new Error(`concept ${idx + 1} MCQ ${mcqIdx + 1} must have exactly 1 correct answer, found ${correctCount}`);
+        throw new Error(`${contextLabel} MCQ ${mcqIdx + 1} must have exactly 1 correct answer, found ${correctCount}`);
       }
 
       const correctOption = normalizedOptions.find(opt => opt.correct);
@@ -509,8 +550,40 @@ function normalizeFullContextLessonPayload(payload, document_id) {
         hint: '' // MCQs don't need hints since options have explanations
       };
     });
+  }
 
-    // Add to flat checkins array for backward compatibility
+  // Helper function to extract key_details
+  function extractKeyDetails(concept) {
+    const keyDetails = concept?.key_details || {};
+    return {
+      formulas: Array.isArray(keyDetails.formulas) ? keyDetails.formulas : [],
+      examples: Array.isArray(keyDetails.examples) ? keyDetails.examples : [],
+      important_notes: Array.isArray(keyDetails.important_notes) ? keyDetails.important_notes : []
+    };
+  }
+
+  // Process concepts - flatten hierarchical structure
+  const allCheckins = [];
+  const normalizedConcepts = [];
+
+  concepts.forEach((concept, idx) => {
+    const name = requireString(concept?.name, `concept ${idx + 1} name`);
+    const conceptExplanation = requireString(concept?.explanation, `concept ${idx + 1} explanation`);
+
+    // Handle analogy (single string now, not array)
+    const analogy = typeof concept.analogy === 'string' && concept.analogy.trim()
+      ? concept.analogy.trim()
+      : '';
+    const analogies = analogy ? [analogy] : [];
+
+    // Extract key_details
+    const keyDetails = extractKeyDetails(concept);
+
+    // Process MCQs from main concept
+    const mcqs = Array.isArray(concept.mcqs) ? concept.mcqs : [];
+    const checkIns = processMCQs(mcqs, `concept ${idx + 1}`);
+
+    // Add main concept's check-ins to flat array
     checkIns.forEach(checkIn => {
       allCheckins.push({
         concept: name,
@@ -521,13 +594,54 @@ function normalizeFullContextLessonPayload(payload, document_id) {
       });
     });
 
-    return {
+    // Add main concept
+    normalizedConcepts.push({
       name,
       explanation: conceptExplanation,
       analogies,
-      examples: [], // No separate examples in new format
+      examples: keyDetails.examples,
+      formulas: keyDetails.formulas,
+      important_notes: keyDetails.important_notes,
+      is_main_concept: concept.is_main_concept === true,
       check_ins: checkIns
-    };
+    });
+
+    // Process sub_concepts if they exist
+    const subConcepts = Array.isArray(concept.sub_concepts) ? concept.sub_concepts : [];
+    subConcepts.forEach((subConcept, subIdx) => {
+      const subName = requireString(subConcept?.name, `concept ${idx + 1} sub-concept ${subIdx + 1} name`);
+      const subExplanation = requireString(subConcept?.explanation, `concept ${idx + 1} sub-concept ${subIdx + 1} explanation`);
+
+      const subKeyDetails = extractKeyDetails(subConcept);
+
+      // Process sub-concept MCQs
+      const subMcqs = Array.isArray(subConcept.mcqs) ? subConcept.mcqs : [];
+      const subCheckIns = processMCQs(subMcqs, `concept ${idx + 1} sub-concept ${subIdx + 1}`);
+
+      // Add sub-concept's check-ins to flat array
+      subCheckIns.forEach(checkIn => {
+        allCheckins.push({
+          concept: subName,
+          question: checkIn.question,
+          options: checkIn.options,
+          expected_answer: checkIn.expected_answer,
+          hint: checkIn.hint
+        });
+      });
+
+      // Add sub-concept as a regular concept (flattened)
+      normalizedConcepts.push({
+        name: subName,
+        explanation: subExplanation,
+        analogies: [], // Sub-concepts don't have analogies in new structure
+        examples: subKeyDetails.examples,
+        formulas: subKeyDetails.formulas,
+        important_notes: subKeyDetails.important_notes,
+        is_main_concept: false,
+        parent_concept: name, // Track which main concept this belongs to
+        check_ins: subCheckIns
+      });
+    });
   });
 
   return {
