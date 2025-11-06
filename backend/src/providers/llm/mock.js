@@ -369,6 +369,44 @@ function createMockLLMProvider() {
         keyPoints: ["Key concept 1", "Key concept 2"],
         misconceptions: correct ? [] : ["Common misconception addressed"]
       });
+    },
+    async generateRawCompletion({ systemInstruction, userPrompt, temperature = 0.4 } = {}) {
+      // Mock implementation for raw completion (e.g., for section extraction)
+      // Generates deterministic mock sections based on the prompt
+      const seedInput = userPrompt || 'section-extraction-default';
+      const rand = mulberry32(hashSeed(seedInput));
+
+      // Extract title from prompt if present
+      const titleMatch = userPrompt?.match(/\*\*Title:\*\*\s*(.+)/);
+      const docTitle = titleMatch ? titleMatch[1].trim() : 'Document';
+
+      // Generate 6-10 mock sections
+      const sectionCount = 6 + Math.floor(rand() * 5); // 6-10 sections
+      const sections = [];
+
+      const sectionTemplates = [
+        'Introduction',
+        'Fundamentals',
+        'Core Concepts',
+        'Advanced Topics',
+        'Practical Applications',
+        'Problem Solving Techniques',
+        'Case Studies',
+        'Best Practices',
+        'Common Pitfalls',
+        'Summary and Conclusions'
+      ];
+
+      for (let i = 0; i < sectionCount; i += 1) {
+        const template = sectionTemplates[i % sectionTemplates.length];
+        sections.push({
+          name: `${template} - ${docTitle}`,
+          description: `This section covers ${template.toLowerCase()} related to the main topic.`,
+          page_range: i === 0 ? '1-10' : `${i * 10 + 1}-${(i + 1) * 10}`
+        });
+      }
+
+      return JSON.stringify({ sections });
     }
   };
 }
