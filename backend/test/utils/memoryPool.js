@@ -205,23 +205,51 @@ export function createMemoryPool() {
         enforceRowLevelSecurity(state, ownerId, 'concepts');
 
         const id = randomUUID();
-        // Updated to include section_id as param[5], mastery_state is hardcoded in query
-        const concept = {
-          id,
-          owner_id: ownerId,
-          name: params[1],
-          chapter: params[2] ?? null,
-          course_id: params[3] ?? null,
-          document_id: params[4] ?? null,
-          section_id: params[5] ?? null,
-          mastery_state: 'not_learned', // Hardcoded in the query
-          total_attempts: 0,
-          correct_attempts: 0,
-          consecutive_correct: 0,
-          last_reviewed_at: new Date(),
-          created_at: new Date(),
-          updated_at: new Date()
-        };
+
+        // Handle two different INSERT formats:
+        // 1. New format: (owner_id, name, chapter, course_id, document_id, section_id, mastery_state='not_learned')
+        //    - 6 params, mastery_state hardcoded in query
+        // 2. Test format: (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
+        //    - 10 params, full mastery tracking
+
+        let concept;
+        if (params.length <= 6) {
+          // New format from lesson generation
+          concept = {
+            id,
+            owner_id: ownerId,
+            name: params[1],
+            chapter: params[2] ?? null,
+            course_id: params[3] ?? null,
+            document_id: params[4] ?? null,
+            section_id: params[5] ?? null,
+            mastery_state: 'not_learned',
+            total_attempts: 0,
+            correct_attempts: 0,
+            consecutive_correct: 0,
+            last_reviewed_at: new Date(),
+            created_at: new Date(),
+            updated_at: new Date()
+          };
+        } else {
+          // Test format with full mastery tracking (old schema without section_id)
+          concept = {
+            id,
+            owner_id: ownerId,
+            name: params[1],
+            chapter: params[2] ?? null,
+            course_id: params[3] ?? null,
+            document_id: params[4] ?? null,
+            section_id: null, // Not provided in old format
+            mastery_state: params[5] ?? 'not_learned',
+            total_attempts: params[6] ?? 0,
+            correct_attempts: params[7] ?? 0,
+            consecutive_correct: params[8] ?? 0,
+            last_reviewed_at: new Date(),
+            created_at: new Date(),
+            updated_at: new Date()
+          };
+        }
 
         concepts.set(id, concept);
 
