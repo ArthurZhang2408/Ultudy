@@ -141,9 +141,11 @@ export function createMemoryPool() {
 
         const id = randomUUID();
         const createdAt = new Date();
-        const examplesValue = params[6];
-        const analogiesValue = params[7];
-        const conceptsValue = params[8];
+        // Updated indices after adding section_id as param[4]
+        const sectionId = params[4] ?? null;
+        const examplesValue = params[7];
+        const analogiesValue = params[8];
+        const conceptsValue = params[9];
 
         const examples = typeof examplesValue === 'string'
           ? JSON.parse(examplesValue)
@@ -161,8 +163,9 @@ export function createMemoryPool() {
           document_id: params[1],
           course_id: params[2] ?? null,
           chapter: params[3] ?? null,
-          summary: params[4] ?? null,
-          explanation: params[5],
+          section_id: sectionId,
+          summary: params[5] ?? null,
+          explanation: params[6],
           examples,
           analogies,
           concepts,
@@ -180,6 +183,7 @@ export function createMemoryPool() {
               examples: lesson.examples,
               analogies: lesson.analogies,
               concepts: lesson.concepts,
+              section_id: lesson.section_id,
               created_at: lesson.created_at
             }
           ]
@@ -201,6 +205,7 @@ export function createMemoryPool() {
         enforceRowLevelSecurity(state, ownerId, 'concepts');
 
         const id = randomUUID();
+        // Updated to include section_id as param[5], mastery_state is hardcoded in query
         const concept = {
           id,
           owner_id: ownerId,
@@ -208,10 +213,11 @@ export function createMemoryPool() {
           chapter: params[2] ?? null,
           course_id: params[3] ?? null,
           document_id: params[4] ?? null,
-          mastery_state: params[5] ?? 'not_learned',
-          total_attempts: params[6] ?? 0,
-          correct_attempts: params[7] ?? 0,
-          consecutive_correct: params[8] ?? 0,
+          section_id: params[5] ?? null,
+          mastery_state: 'not_learned', // Hardcoded in the query
+          total_attempts: 0,
+          correct_attempts: 0,
+          consecutive_correct: 0,
           last_reviewed_at: new Date(),
           created_at: new Date(),
           updated_at: new Date()
