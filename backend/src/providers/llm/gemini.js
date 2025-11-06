@@ -327,7 +327,14 @@ function buildMCQPrompt({ topic, difficulty, hits, n }) {
 Use only the given context and match the requested difficulty. Input data: ${JSON.stringify(payload)}`;
 }
 
-function buildFullContextLessonPrompt({ title, full_text, chapter, include_check_ins }) {
+function buildFullContextLessonPrompt({
+  title,
+  full_text,
+  chapter,
+  include_check_ins,
+  section_name,
+  section_description
+}) {
   const systemInstruction = `You are an expert educational content creator specializing in comprehensive, exam-focused learning. Your role is to:
 1. Extract ALL testable content from course materials (formulas, definitions, procedures, examples)
 2. Create detailed, hierarchical concept structures that preserve information depth
@@ -336,10 +343,21 @@ function buildFullContextLessonPrompt({ title, full_text, chapter, include_check
 
 Always respond with valid JSON only. Prioritize completeness and exam readiness over brevity.`;
 
+  // Build context string with section info if provided
+  let contextString = `**Title:** ${title || 'Course Material'}`;
+  if (chapter) {
+    contextString += `\n**Chapter:** ${chapter}`;
+  }
+  if (section_name) {
+    contextString += `\n**Section:** ${section_name}`;
+    if (section_description) {
+      contextString += `\n**Section Overview:** ${section_description}`;
+    }
+  }
+
   const userPrompt = `I'm studying from this material:
 
-**Title:** ${title || 'Course Material'}
-${chapter ? `**Chapter:** ${chapter}` : ''}
+${contextString}
 
 **Full Content:**
 ${full_text}
@@ -773,6 +791,43 @@ export default async function createGeminiLLMProvider() {
       });
 
       return extractResponseText(response);
+    },
+    /**
+     * Raw completion with custom system instruction and temperature
+     * Used for section extraction and other specialized tasks
+     * Returns parsed JSON
+     */
+    async generateRawCompletion({
+      systemInstruction,
+      userPrompt,
+      temperature = 0.4
+    } = {}) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY environment variable is required');
+      }
+
+      const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
+
+      const GoogleGenerativeAI = await loadGoogleGenerativeAI();
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: systemInstruction || 'You are a helpful AI assistant.',
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature
+        }
+      });
+
+      const response = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ]
+      });
+
+      const rawText = extractResponseText(response);
+      return rawText; // Return raw text, caller will parse JSON
     }
   };
 }

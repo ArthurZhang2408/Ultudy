@@ -3,6 +3,7 @@ import createSearchService from '../search/service.js';
 import createStudyService from '../study/service.js';
 import { evaluateAnswer, updateConceptMastery } from '../study/checkin.service.js';
 import { createTenantHelpers } from '../db/tenant.js';
+import { extractSections, extractSectionText } from '../study/section.service.js';
 
 const DEFAULT_LESSON_K = 6;
 const DEFAULT_MCQ_COUNT = 5;
@@ -267,8 +268,9 @@ export default function createStudyRouter(options = {}) {
 
   // MVP v1.0: Full-context lesson generation from document
   // IMPORTANT: Generates lesson ONCE and persists it. No re-generation!
+  // Now supports section-scoped generation for multi-layer structure
   router.post('/lessons/generate', async (req, res) => {
-    const { document_id, chapter, include_check_ins = true } = req.body || {};
+    const { document_id, section_id, chapter, include_check_ins = true } = req.body || {};
     const ownerId = req.userId;
 
     if (!document_id) {
@@ -277,21 +279,36 @@ export default function createStudyRouter(options = {}) {
 
     try {
       const lesson = await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Step 1: Check if lesson already exists for this document
-        const { rows: existingLessons } = await client.query(
-          `SELECT id, summary, explanation, examples, analogies, concepts, created_at
-           FROM lessons
-           WHERE document_id = $1 AND owner_id = $2
-           LIMIT 1`,
-          [document_id, ownerId]
-        );
+        // Step 1: Check if lesson already exists
+        // If section_id provided, check for section-scoped lesson
+        // Otherwise, check for document-scoped lesson (old behavior)
+        let existingLessons;
+        if (section_id) {
+          const { rows } = await client.query(
+            `SELECT id, summary, explanation, examples, analogies, concepts, section_id, created_at
+             FROM lessons
+             WHERE section_id = $1 AND owner_id = $2
+             LIMIT 1`,
+            [section_id, ownerId]
+          );
+          existingLessons = rows;
+        } else {
+          const { rows } = await client.query(
+            `SELECT id, summary, explanation, examples, analogies, concepts, created_at
+             FROM lessons
+             WHERE document_id = $1 AND owner_id = $2 AND section_id IS NULL
+             LIMIT 1`,
+            [document_id, ownerId]
+          );
+          existingLessons = rows;
+        }
 
         if (existingLessons.length > 0) {
-          console.log(`[lessons/generate] Returning cached lesson for document ${document_id}`);
+          console.log(`[lessons/generate] Returning cached lesson for ${section_id ? `section ${section_id}` : `document ${document_id}`}`);
           return buildLessonResponse(existingLessons[0]);
         }
 
-        // Step 2: Load full document text
+        // Step 2: Load document and optionally section data
         const { rows } = await client.query(
           `SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id
            FROM documents
@@ -309,11 +326,52 @@ export default function createStudyRouter(options = {}) {
           throw new Error('Document does not have full text extracted');
         }
 
-        // Step 3: Generate lesson from full document text
-        console.log(`[lessons/generate] Generating new lesson for document ${document_id}`);
+        // Step 2b: If section_id provided, load section data and extract section text
+        let sectionData = null;
+        let textToProcess = document.full_text;
+        let allSections = [];
+
+        if (section_id) {
+          // Load the specific section
+          const { rows: sectionRows } = await client.query(
+            `SELECT id, section_number, name, description, page_start, page_end
+             FROM sections
+             WHERE id = $1 AND owner_id = $2`,
+            [section_id, ownerId]
+          );
+
+          if (sectionRows.length === 0) {
+            throw new Error('Section not found');
+          }
+
+          sectionData = sectionRows[0];
+
+          // Load all sections for context (needed for extractSectionText)
+          const { rows: allSectionRows } = await client.query(
+            `SELECT section_number, name, page_start, page_end
+             FROM sections
+             WHERE document_id = $1 AND owner_id = $2
+             ORDER BY section_number ASC`,
+            [document_id, ownerId]
+          );
+
+          allSections = allSectionRows;
+
+          // Extract text specific to this section
+          textToProcess = extractSectionText(document.full_text, sectionData, allSections);
+          console.log(`[lessons/generate] Extracted ${textToProcess.length} chars for section ${sectionData.name}`);
+        }
+
+        // Step 3: Generate lesson from document or section text
+        const logTarget = section_id ? `section ${section_id} (${sectionData.name})` : `document ${document_id}`;
+        console.log(`[lessons/generate] Generating new lesson for ${logTarget}`);
+
         const generatedLesson = await studyService.buildFullContextLesson(document, {
           chapter: chapter || document.doc_chapter,
-          include_check_ins
+          include_check_ins,
+          section_name: sectionData?.name,
+          section_description: sectionData?.description,
+          full_text_override: section_id ? textToProcess : undefined
         });
 
         const conceptsForStorage = attachCheckinsToConcepts(
@@ -321,16 +379,17 @@ export default function createStudyRouter(options = {}) {
           generatedLesson.checkins || []
         );
 
-        // Step 4: Persist lesson to database
+        // Step 4: Persist lesson to database (with optional section_id)
         const { rows: insertedLesson } = await client.query(
-          `INSERT INTO lessons (owner_id, document_id, course_id, chapter, summary, explanation, examples, analogies, concepts)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           RETURNING id, summary, explanation, examples, analogies, concepts, created_at`,
+          `INSERT INTO lessons (owner_id, document_id, course_id, chapter, section_id, summary, explanation, examples, analogies, concepts)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           RETURNING id, summary, explanation, examples, analogies, concepts, section_id, created_at`,
           [
             ownerId,
             document_id,
             document.course_id,
             chapter || document.doc_chapter,
+            section_id || null,
             generatedLesson.summary || null,
             generatedLesson.explanation,
             JSON.stringify(generatedLesson.examples || []),
@@ -344,18 +403,30 @@ export default function createStudyRouter(options = {}) {
           for (const conceptData of conceptsForStorage) {
             // Create concept record with not_learned state
             await client.query(
-              `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, mastery_state)
-               VALUES ($1, $2, $3, $4, $5, 'not_learned')
+              `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, section_id, mastery_state)
+               VALUES ($1, $2, $3, $4, $5, $6, 'not_learned')
                ON CONFLICT DO NOTHING`,
               [
                 ownerId,
                 conceptData.name || conceptData,
                 chapter || document.doc_chapter,
                 document.course_id,
-                document_id
+                document_id,
+                section_id || null
               ]
             );
           }
+        }
+
+        // Step 6: If this was a section-scoped generation, mark section as having concepts generated
+        if (section_id) {
+          await client.query(
+            `UPDATE sections
+             SET concepts_generated = true, updated_at = now()
+             WHERE id = $1 AND owner_id = $2`,
+            [section_id, ownerId]
+          );
+          console.log(`[lessons/generate] Marked section ${section_id} as concepts_generated`);
         }
 
         const formattedLesson = buildLessonResponse(insertedLesson[0], generatedLesson.checkins || []);
@@ -427,6 +498,120 @@ export default function createStudyRouter(options = {}) {
     } catch (error) {
       console.error('Failed to generate MCQs', error);
       res.status(500).json({ error: 'Failed to generate MCQs' });
+    }
+  });
+
+  // Multi-layer lesson structure: Generate sections for a document
+  router.post('/sections/generate', async (req, res) => {
+    const { document_id, chapter, force_llm = false } = req.body || {};
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const sections = await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Step 1: Check if sections already exist for this document
+        const { rows: existingSections } = await client.query(
+          `SELECT id, section_number, name, description, page_start, page_end, concepts_generated, created_at
+           FROM sections
+           WHERE document_id = $1 AND owner_id = $2
+           ORDER BY section_number ASC`,
+          [document_id, ownerId]
+        );
+
+        if (existingSections.length > 0) {
+          console.log(`[sections/generate] Returning ${existingSections.length} cached sections for document ${document_id}`);
+          return existingSections;
+        }
+
+        // Step 2: Load full document text
+        const { rows } = await client.query(
+          `SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id
+           FROM documents
+           WHERE id = $1 AND owner_id = $2`,
+          [document_id, ownerId]
+        );
+
+        if (rows.length === 0) {
+          throw new Error('Document not found');
+        }
+
+        const document = rows[0];
+
+        if (!document.full_text) {
+          throw new Error('Document does not have full text extracted');
+        }
+
+        // Step 3: Extract sections using service (TOC or LLM)
+        console.log(`[sections/generate] Extracting sections for document ${document_id}`);
+        const extractedSections = await extractSections({
+          full_text: document.full_text,
+          title: document.title,
+          material_type: document.material_type
+        }, { forceLLM: force_llm });
+
+        // Step 4: Persist sections to database
+        const insertedSections = [];
+        for (const section of extractedSections) {
+          const { rows: inserted } = await client.query(
+            `INSERT INTO sections (owner_id, document_id, course_id, chapter, section_number, name, description, page_start, page_end, concepts_generated)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+             RETURNING id, section_number, name, description, page_start, page_end, concepts_generated, created_at`,
+            [
+              ownerId,
+              document_id,
+              document.course_id,
+              chapter || document.doc_chapter,
+              section.section_number,
+              section.name,
+              section.description,
+              section.page_start,
+              section.page_end
+            ]
+          );
+          insertedSections.push(inserted[0]);
+        }
+
+        console.log(`[sections/generate] Created ${insertedSections.length} sections`);
+        return insertedSections;
+      });
+
+      res.json({ sections });
+    } catch (error) {
+      console.error('[sections/generate] Error:', error);
+      const errorMessage = error.message || 'Failed to generate sections';
+      const statusCode = error.message?.includes('not found') ? 404 : 500;
+      res.status(statusCode).json({ error: errorMessage });
+    }
+  });
+
+  // Get sections for a document
+  router.get('/sections', async (req, res) => {
+    const { document_id } = req.query;
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const sections = await tenantHelpers.withTenant(ownerId, async (client) => {
+        const { rows } = await client.query(
+          `SELECT id, section_number, name, description, page_start, page_end, concepts_generated, created_at
+           FROM sections
+           WHERE document_id = $1 AND owner_id = $2
+           ORDER BY section_number ASC`,
+          [document_id, ownerId]
+        );
+        return rows;
+      });
+
+      res.json({ sections });
+    } catch (error) {
+      console.error('[sections/get] Error:', error);
+      res.status(500).json({ error: 'Failed to retrieve sections' });
     }
   });
 

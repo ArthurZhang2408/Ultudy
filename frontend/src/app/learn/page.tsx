@@ -35,11 +35,23 @@ type Concept = {
   check_ins?: MCQ[];
 };
 
+type Section = {
+  id: string;
+  section_number: number;
+  name: string;
+  description: string | null;
+  page_start: number | null;
+  page_end: number | null;
+  concepts_generated: boolean;
+  created_at: string;
+};
+
 type Lesson = {
   id?: string;
   document_id?: string;
   course_id?: string | null;
   chapter?: string | null;
+  section_id?: string | null;
   topic?: string;
   summary?: string;
   explanation?: string;
@@ -116,9 +128,18 @@ function LearnPageContent() {
   const documentId = searchParams.get('document_id');
   const chapter = searchParams.get('chapter');
 
+  // Section-related state
+  const [sections, setSections] = useState<Section[]>([]);
+  const [loadingSections, setLoadingSections] = useState(true);
+  const [generatingSections, setGeneratingSections] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<Section | null>(null);
+  const [generatingLesson, setGeneratingLesson] = useState(false);
+
+  // Lesson and learning state
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [showingSummary, setShowingSummary] = useState(true);
+  const [showingSections, setShowingSections] = useState(false);
   const [currentConceptIndex, setCurrentConceptIndex] = useState(0);
   const [currentMCQIndex, setCurrentMCQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -156,21 +177,82 @@ function LearnPageContent() {
       : `lesson-progress:${docId}`;
   }
 
+  // Load sections on mount
   useEffect(() => {
     if (documentId && !hasGeneratedRef.current) {
       hasGeneratedRef.current = true;
-      generateLesson();
+      loadOrGenerateSections();
     }
   }, [documentId]);
 
-  async function generateLesson() {
-    setLoading(true);
+  // New multi-layer flow: Load or generate sections first
+  async function loadOrGenerateSections() {
+    setLoadingSections(true);
+    try {
+      // Try to load existing sections
+      const res = await fetch(`/api/sections?document_id=${documentId}`);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sections && data.sections.length > 0) {
+          setSections(data.sections);
+          setLoadingSections(false);
+          setShowingSections(true);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // No sections found, generate them
+      await generateSections();
+    } catch (error) {
+      console.error('Failed to load sections:', error);
+      setLoadingSections(false);
+      setLoading(false);
+    }
+  }
+
+  async function generateSections() {
+    setGeneratingSections(true);
+    try {
+      const res = await fetch('/api/sections/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          chapter: chapter || undefined
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSections(data.sections || []);
+        setShowingSections(true);
+        setLoading(false);
+      } else {
+        const error = await res.json();
+        alert(`Failed to generate sections: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to generate sections:', error);
+      alert('Failed to generate sections. Please try again.');
+    } finally {
+      setGeneratingSections(false);
+      setLoadingSections(false);
+    }
+  }
+
+  // Generate lesson for a specific section
+  async function generateLessonForSection(section: Section) {
+    setGeneratingLesson(true);
+    setSelectedSection(section);
     try {
       const res = await fetch('/api/lessons/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           document_id: documentId,
+          section_id: section.id,
           chapter: chapter || undefined,
           include_check_ins: true
         })
@@ -182,6 +264,15 @@ function LearnPageContent() {
         const normalizedLesson = normalizeLesson(rawData);
         console.log('[learn] Normalized lesson:', normalizedLesson);
         setLesson(normalizedLesson);
+
+        // Update section to mark concepts as generated
+        setSections(prev => prev.map(s =>
+          s.id === section.id ? { ...s, concepts_generated: true } : s
+        ));
+
+        // Show summary screen
+        setShowingSections(false);
+        setShowingSummary(true);
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.details
@@ -193,7 +284,7 @@ function LearnPageContent() {
       console.error('Failed to generate lesson:', error);
       alert('Failed to generate lesson. Please check your connection and try again.');
     } finally {
-      setLoading(false);
+      setGeneratingLesson(false);
     }
   }
 
@@ -625,8 +716,106 @@ function LearnPageContent() {
     }
   }
 
-  if (loading) {
+  // Show loading state
+  if (loading || loadingSections) {
     return <LearnPageFallback />;
+  }
+
+  // Show section selection screen
+  if (showingSections && sections.length > 0) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <button
+            onClick={() => router.push('/courses')}
+            className="text-sm text-slate-600 hover:text-slate-900"
+          >
+            ← Back to courses
+          </button>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Select a Section to Study
+            </h1>
+            <p className="mt-2 text-slate-600">
+              This document has been divided into {sections.length} major sections.
+              Click on a section to generate concepts and start learning.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {sections.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => generateLessonForSection(section)}
+                disabled={generatingLesson}
+                className={`
+                  relative rounded-lg border-2 p-6 text-left transition-all
+                  ${section.concepts_generated
+                    ? 'border-green-300 bg-green-50 hover:bg-green-100'
+                    : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}
+                  ${generatingLesson ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                `}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <span className="inline-block rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
+                    Section {section.section_number}
+                  </span>
+                  {section.concepts_generated && (
+                    <span className="text-green-600 text-sm font-medium">✓ Ready</span>
+                  )}
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                  {section.name}
+                </h3>
+                {section.description && (
+                  <p className="text-sm text-slate-600 mb-3">
+                    {section.description}
+                  </p>
+                )}
+                {section.page_start && section.page_end && (
+                  <p className="text-xs text-slate-500">
+                    Pages {section.page_start}-{section.page_end}
+                  </p>
+                )}
+                <div className="mt-4">
+                  <span className={`
+                    text-sm font-medium
+                    ${section.concepts_generated ? 'text-green-700' : 'text-blue-600'}
+                  `}>
+                    {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {generatingLesson && selectedSection && (
+            <div className="rounded-lg bg-blue-50 p-4 text-center">
+              <p className="text-blue-900 font-medium">
+                Generating concepts for "{selectedSection.name}"...
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                This usually takes 10-20 seconds
+              </p>
+            </div>
+          )}
+
+          {generatingSections && (
+            <div className="rounded-lg bg-blue-50 p-4 text-center">
+              <p className="text-blue-900 font-medium">
+                Analyzing document structure...
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                Extracting major sections from the document
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
@@ -752,13 +941,25 @@ function LearnPageContent() {
   if (showingSummary) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        <div>
+        <div className="flex items-center justify-between">
           <button
-            onClick={() => router.push('/courses')}
+            onClick={() => {
+              if (sections.length > 0) {
+                setShowingSummary(false);
+                setShowingSections(true);
+              } else {
+                router.push('/courses');
+              }
+            }}
             className="text-sm text-slate-600 hover:text-slate-900"
           >
-            ← Back to courses
+            ← {sections.length > 0 ? 'Back to sections' : 'Back to courses'}
           </button>
+          {selectedSection && (
+            <span className="text-sm text-slate-600">
+              Section {selectedSection.section_number}: {selectedSection.name}
+            </span>
+          )}
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">

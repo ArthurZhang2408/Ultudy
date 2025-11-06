@@ -36,28 +36,38 @@ export function createStudyService(options = {}) {
 
   /**
    * MVP v1.0: Generate lesson from full document context
+   * Now supports section-scoped generation
    * @param {Object} document - Document with full_text
-   * @param {Object} options - Generation options (chapter, include_check_ins)
+   * @param {Object} options - Generation options (chapter, include_check_ins, section_name, full_text_override)
    */
   async function buildFullContextLesson(document, options = {}) {
     const provider = await resolveProvider();
-    const { chapter, include_check_ins = true } = options;
+    const {
+      chapter,
+      include_check_ins = true,
+      section_name,
+      section_description,
+      full_text_override
+    } = options;
 
-    // Prepare the full text (potentially filtered by chapter if needed in future)
-    const fullText = document.full_text || '';
+    // Use override text if provided (for section-scoped generation)
+    // Otherwise use full document text
+    const fullText = full_text_override || document.full_text || '';
 
     if (fullText.length === 0) {
       throw new Error('Document has no text content');
     }
 
-    // Call LLM provider with full document context
+    // Call LLM provider with document/section context
     return provider.generateFullContextLesson({
       document_id: document.id,
       title: document.title,
       full_text: fullText,
       material_type: document.material_type,
       chapter,
-      include_check_ins
+      include_check_ins,
+      section_name,
+      section_description
     });
   }
 
