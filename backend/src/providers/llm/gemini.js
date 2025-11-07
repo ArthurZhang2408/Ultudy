@@ -355,9 +355,41 @@ Always respond with valid JSON only. Prioritize completeness and exam readiness 
     }
   }
 
+  // Build topic instruction based on whether this is section-scoped
+  let scopeInstruction = '';
+  if (section_name) {
+    scopeInstruction = `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CRITICAL SCOPE REQUIREMENT ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This is a SECTION-SCOPED lesson generation.
+
+**Section:** "${section_name}"
+${section_description ? `**Description:** ${section_description}` : ''}
+
+YOU MUST:
+1. Set "topic" field to EXACTLY: "${section_name}"
+2. Generate concepts ONLY from content related to "${section_name}"
+3. IGNORE content from other sections or the broader chapter
+4. Focus on concepts specifically mentioned in this section's text
+
+YOU MUST NOT:
+- Generate concepts from the entire chapter/document
+- Include concepts that belong to other sections
+- Create generic concepts that apply to the whole document
+
+If the section text is too short or unclear, generate 3-5 focused concepts
+based strictly on what's present in this section's content.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+
   const userPrompt = `I'm studying from this material:
 
-${contextString}
+${contextString}${scopeInstruction}
 
 **Full Content:**
 ${full_text}
@@ -367,7 +399,7 @@ ${full_text}
 Create a comprehensive, interactive learning experience that prepares students for exams. Follow these principles:
 
 **PEDAGOGY:**
-- Information completeness: Capture ALL testable content (formulas, definitions, procedures)
+- Information completeness: Capture ALL testable content (formulas, definitions, procedures) ${section_name ? `FROM THIS SECTION ONLY` : ''}
 - Hierarchical structure: Main concepts with sub-concepts for nested topics
 - Progressive complexity: Build from fundamentals to advanced topics
 - Active learning: Test understanding at multiple levels
@@ -734,7 +766,9 @@ export default async function createGeminiLLMProvider() {
       full_text,
       material_type,
       chapter,
-      include_check_ins = true
+      include_check_ins = true,
+      section_name,
+      section_description
     } = {}) {
       if (!full_text || full_text.trim().length === 0) {
         throw new Error('Full text is required for lesson generation');
@@ -744,7 +778,9 @@ export default async function createGeminiLLMProvider() {
         title,
         full_text,
         chapter,
-        include_check_ins
+        include_check_ins,
+        section_name,
+        section_description
       });
 
       try {
