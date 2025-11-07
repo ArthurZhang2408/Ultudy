@@ -59,6 +59,16 @@ def count_rich_content(vision_result):
 
 def estimate_cost(page_count, dpi=150):
     """Estimate API cost for vision-based extraction."""
+    # Handle zero pages gracefully
+    if page_count <= 0:
+        return {
+            'page_count': 0,
+            'total_tokens': 0,
+            'cost_usd': 0.0,
+            'cost_per_page': 0.0,
+            'error': 'No pages to process'
+        }
+
     # Rough estimation based on Gemini 2.0 Flash pricing
     # 150 DPI page ≈ 1,500 vision tokens
     # $0.000002625 per vision token (as of Jan 2025)
@@ -128,10 +138,18 @@ def main():
 
     # Run both extractions
     print("Running text-only extraction...")
-    text_result = extract_text_only(pdf_path)
+    try:
+        text_result = extract_text_only(pdf_path)
+    except Exception as e:
+        print(f"❌ Text extraction failed: {e}")
+        text_result = {"pages": [], "error": str(e)}
 
     print("Running vision-based extraction (may take longer)...")
-    vision_result = extract_vision(pdf_path)
+    try:
+        vision_result = extract_vision(pdf_path)
+    except Exception as e:
+        print(f"❌ Vision extraction failed: {e}")
+        vision_result = {"pages": [], "error": str(e)}
 
     print()
     print("=" * 80)
@@ -144,7 +162,11 @@ def main():
 
     print(f"\nDocument: {pdf_path}")
     print(f"Pages extracted (text-only): {text_pages}")
+    if text_result.get('error'):
+        print(f"  ⚠️  Error: {text_result['error']}")
     print(f"Pages extracted (vision): {vision_pages}")
+    if vision_result.get('error'):
+        print(f"  ⚠️  Error: {vision_result['error']}")
 
     # Rich content counts
     rich_counts = count_rich_content(vision_result)
@@ -157,35 +179,47 @@ def main():
     # Cost estimation
     cost = estimate_cost(vision_pages)
     print(f"\n💰 Cost Estimation (Vision-Based):")
-    print(f"  - Total tokens: {cost['total_tokens']:,}")
-    print(f"  - Total cost: ${cost['cost_usd']}")
-    print(f"  - Per page: ${cost['cost_per_page']}")
+    if cost.get('error'):
+        print(f"  ⚠️  {cost['error']}")
+    else:
+        print(f"  - Total tokens: {cost['total_tokens']:,}")
+        print(f"  - Total cost: ${cost['cost_usd']}")
+        print(f"  - Per page: ${cost['cost_per_page']}")
 
-    # Page-by-page comparison
+    # Page-by-page comparison (use zip to safely handle mismatched lengths)
     print(f"\n📄 Page-by-Page Comparison:")
     print("-" * 80)
 
-    for i in range(min(3, len(text_result.get('pages', [])))):  # First 3 pages
-        text_page = text_result['pages'][i]
-        vision_page = vision_result['pages'][i]
+    text_pages_list = text_result.get('pages', [])
+    vision_pages_list = vision_result.get('pages', [])
 
-        comparison = compare_page_content(text_page, vision_page)
+    # Compare only pages that exist in both results (up to 3 pages)
+    pages_to_compare = min(3, len(text_pages_list), len(vision_pages_list))
 
-        print(f"\nPage {comparison['page']}:")
-        print(f"  Text-only: {comparison['text_only']['text_length']} chars")
-        print(f"  Vision: {comparison['vision']['text_length']} chars")
-        print(f"    + {comparison['vision']['tables_found']} tables")
-        print(f"    + {comparison['vision']['images_found']} images")
-        print(f"    + {comparison['vision']['formulas_found']} formulas")
-        print(f"    + {comparison['vision']['code_blocks_found']} code blocks")
+    if pages_to_compare == 0:
+        print("\n⚠️  No pages to compare (one or both extractions failed)")
+    else:
+        for i in range(pages_to_compare):
+            text_page = text_pages_list[i]
+            vision_page = vision_pages_list[i]
 
-        if comparison['vision'].get('sample_table'):
-            table = comparison['vision']['sample_table']
-            print(f"  Sample table: {table['caption']} ({table['row_count']} rows)")
+            comparison = compare_page_content(text_page, vision_page)
 
-        if comparison['vision'].get('sample_image'):
-            img = comparison['vision']['sample_image']
-            print(f"  Sample image: {img['type']} - {img['description']}")
+            print(f"\nPage {comparison['page']}:")
+            print(f"  Text-only: {comparison['text_only']['text_length']} chars")
+            print(f"  Vision: {comparison['vision']['text_length']} chars")
+            print(f"    + {comparison['vision']['tables_found']} tables")
+            print(f"    + {comparison['vision']['images_found']} images")
+            print(f"    + {comparison['vision']['formulas_found']} formulas")
+            print(f"    + {comparison['vision']['code_blocks_found']} code blocks")
+
+            if comparison['vision'].get('sample_table'):
+                table = comparison['vision']['sample_table']
+                print(f"  Sample table: {table['caption']} ({table['row_count']} rows)")
+
+            if comparison['vision'].get('sample_image'):
+                img = comparison['vision']['sample_image']
+                print(f"  Sample image: {img['type']} - {img['description']}")
 
     # Recommendations
     print()
