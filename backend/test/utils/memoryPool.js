@@ -593,7 +593,7 @@ export function createMemoryPool() {
         return { rows };
       }
 
-      if (normalized.startsWith('SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id FROM documents WHERE id = $1 AND owner_id = $2')) {
+      if (normalized.startsWith('SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id') && normalized.includes('FROM documents WHERE id = $1 AND owner_id = $2')) {
         const documentId = params[0];
         const ownerId = params[1];
         const doc = documents.get(documentId);
@@ -605,7 +605,8 @@ export function createMemoryPool() {
               full_text: doc.full_text,
               material_type: doc.material_type || null,
               doc_chapter: doc.chapter || null,
-              course_id: doc.course_id || null
+              course_id: doc.course_id || null,
+              pages: doc.pages || 1
             }]
           };
         }
