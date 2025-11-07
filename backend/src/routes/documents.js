@@ -41,6 +41,32 @@ export default function createDocumentsRouter(options = {}) {
     }
   });
 
+  router.get('/:id', async (req, res) => {
+    const ownerId = req.userId;
+    const { id } = req.params;
+
+    try {
+      const document = await tenantHelpers.withTenant(ownerId, async (client) => {
+        const query = `
+          SELECT id, title, pages, created_at as uploaded_at, material_type, chapter, user_tags, course_id
+          FROM documents
+          WHERE id = $1 AND owner_id = $2
+        `;
+        const { rows } = await client.query(query, [id, ownerId]);
+        return rows.length > 0 ? rows[0] : null;
+      });
+
+      if (!document) {
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      res.json(document);
+    } catch (error) {
+      console.error('Failed to fetch document', error);
+      res.status(500).json({ error: 'Failed to fetch document' });
+    }
+  });
+
   router.post('/:id/metadata', async (req, res) => {
     const ownerId = req.userId;
     const { id } = req.params;

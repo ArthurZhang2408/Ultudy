@@ -78,6 +78,26 @@ export default async function createOpenAILLMProvider() {
       }
 
       return content;
+    },
+    async generateRawCompletion({ systemInstruction, userPrompt, temperature = 0.4 } = {}) {
+      // Raw completion with custom system instruction (e.g., for section extraction)
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemInstruction || 'You are a helpful AI assistant.' },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature
+      });
+
+      const content = response.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('OpenAI LLM provider did not return textual output');
+      }
+
+      return content;
     }
   };
 }
