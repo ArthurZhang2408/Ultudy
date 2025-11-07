@@ -310,7 +310,7 @@ export default function createStudyRouter(options = {}) {
 
         // Step 2: Load document and optionally section data
         const { rows } = await client.query(
-          `SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id
+          `SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id, pages
            FROM documents
            WHERE id = $1 AND owner_id = $2`,
           [document_id, ownerId]
@@ -358,7 +358,7 @@ export default function createStudyRouter(options = {}) {
           allSections = allSectionRows;
 
           // Extract text specific to this section
-          textToProcess = extractSectionText(document.full_text, sectionData, allSections);
+          textToProcess = extractSectionText(document.full_text, sectionData, allSections, document.pages);
           console.log(`[lessons/generate] Extracted ${textToProcess.length} chars for section ${sectionData.name}`);
         }
 
