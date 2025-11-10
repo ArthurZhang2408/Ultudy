@@ -321,11 +321,16 @@ def extract_text(pdf_path: str) -> List[Dict[str, Any]]:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Missing PDF path"}))
-        sys.exit(1)
+    import argparse
 
-    pdf_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Extract rich content from PDF')
+    parser.add_argument('pdf_path', help='Path to PDF file')
+    parser.add_argument('--format', choices=['json', 'markdown'], default='json',
+                       help='Output format: json (default) or markdown')
+    args = parser.parse_args()
+
+    pdf_path = args.pdf_path
+    output_format = args.format
 
     if not os.path.exists(pdf_path):
         print(json.dumps({"error": f"File not found: {pdf_path}"}))
@@ -399,8 +404,22 @@ def main():
         else:
             print("\\n⏭️  Skipping post-processing (SKIP_POSTPROCESSING=1)", file=sys.stderr)
 
-        # Output JSON
-        print(json.dumps(result, indent=2))
+        # Output in requested format
+        if output_format == 'markdown':
+            print("\\n📝 Converting to Markdown...", file=sys.stderr)
+            try:
+                sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+                from ingestion.markdown_converter import convert_to_markdown
+                markdown = convert_to_markdown(result)
+                print("   ✅ Markdown conversion complete", file=sys.stderr)
+                print(markdown)
+            except ImportError as e:
+                print(f"   ⚠️  Markdown converter not available: {e}", file=sys.stderr)
+                print("   Falling back to JSON output", file=sys.stderr)
+                print(json.dumps(result, indent=2))
+        else:
+            # JSON output (default)
+            print(json.dumps(result, indent=2))
 
     except Exception as exc:
         print(json.dumps({"error": str(exc)}), file=sys.stderr)
