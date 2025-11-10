@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { apiFetch } from '../../lib/api';
+import { FormattedText } from '../../components/FormattedText';
 
 type LessonSource = {
   document_id: string;
@@ -175,48 +176,60 @@ export default function StudyPage() {
             <article className="space-y-4 rounded border border-slate-200 bg-white p-6 shadow-sm">
               <header>
                 <h3 className="text-lg font-semibold text-slate-900">{lesson.topic}</h3>
-                <p className="text-sm text-slate-600">{lesson.summary}</p>
+                <FormattedText className="text-sm text-slate-600">
+                  {lesson.summary}
+                </FormattedText>
               </header>
               {lesson.analogies?.length ? (
                 <div>
                   <h4 className="font-semibold text-slate-800">Analogies</h4>
-                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                  <div className="mt-2 space-y-1 pl-5 text-sm text-slate-700">
                     {lesson.analogies.map((analogy, index) => (
-                      <li key={`${analogy}-${index}`}>{analogy}</li>
+                      <FormattedText key={`${analogy}-${index}`}>
+                        {analogy}
+                      </FormattedText>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               ) : null}
               {lesson.example ? (
                 <div className="space-y-2">
                   <h4 className="font-semibold text-slate-800">Example</h4>
-                  <p className="text-sm text-slate-700">{lesson.example.setup}</p>
-                  <pre className="overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{lesson.example.workedSteps}</pre>
+                  <FormattedText className="text-sm text-slate-700">
+                    {lesson.example.setup}
+                  </FormattedText>
+                  <FormattedText className="overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                    {lesson.example.workedSteps}
+                  </FormattedText>
                 </div>
               ) : null}
               {lesson.checkins?.length ? (
                 <div>
                   <h4 className="font-semibold text-slate-800">Check-ins</h4>
-                  <ul className="mt-2 space-y-2 pl-5 text-sm text-slate-700">
+                  <div className="mt-2 space-y-2 pl-5 text-sm text-slate-700">
                     {lesson.checkins.map((checkin, index) => {
                       if (typeof checkin === 'string') {
                         return (
-                          <li key={`${checkin}-${index}`} className="list-disc">
+                          <FormattedText key={`${checkin}-${index}`} className="list-disc">
                             {checkin}
-                          </li>
+                          </FormattedText>
                         );
                       }
 
                       return (
-                        <li key={`${checkin.question}-${index}`} className="list-disc space-y-1">
-                          <p className="font-medium text-slate-800">{checkin.question}</p>
+                        <div key={`${checkin.question}-${index}`} className="list-disc space-y-1">
+                          <FormattedText className="font-medium text-slate-800">
+                            {checkin.question}
+                          </FormattedText>
                           {checkin.answer ? (
-                            <p className="text-slate-600">{checkin.answer}</p>
+                            <FormattedText className="text-slate-600">
+                              {checkin.answer}
+                            </FormattedText>
                           ) : null}
-                        </li>
+                        </div>
                       );
                     })}
-                  </ul>
+                  </div>
                 </div>
               ) : null}
               {lesson.sources?.length ? (
@@ -310,16 +323,22 @@ export default function StudyPage() {
               <ol className="list-decimal space-y-4 pl-5">
                 {mcq.items.map((item, index) => (
                   <li key={`${item.question}-${index}`} className="space-y-2">
-                    <h4 className="font-medium text-slate-800">{item.question}</h4>
-                    <ul className="list-disc space-y-1 pl-6 text-sm text-slate-700">
+                    <FormattedText className="font-medium text-slate-800">
+                      {item.question}
+                    </FormattedText>
+                    <div className="space-y-1 pl-6 text-sm text-slate-700">
                       {item.choices.map((choice, choiceIndex) => (
-                        <li key={`${choice}-${choiceIndex}`}>{choice}</li>
+                        <FormattedText key={`${choice}-${choiceIndex}`}>
+                          {choice}
+                        </FormattedText>
                       ))}
-                    </ul>
+                    </div>
                     <p className="text-sm text-green-700">
                       Correct answer: choice {item.correctIndex + 1}
                     </p>
-                    <p className="text-sm text-slate-600">{item.rationale}</p>
+                    <FormattedText className="text-sm text-slate-600">
+                      {item.rationale}
+                    </FormattedText>
                     {item.source ? (
                       <p className="text-xs text-slate-500">
                         Source:{' '}

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { FormattedText } from '../../components/FormattedText';
 
 type MCQOption = {
   letter: string;
@@ -1192,9 +1193,9 @@ function LearnPageContent() {
 
           {lesson.summary && (
             <div className="prose prose-slate max-w-none">
-              <div className="whitespace-pre-wrap text-slate-700 text-lg leading-relaxed">
+              <FormattedText className="text-slate-700 text-lg leading-relaxed">
                 {lesson.summary}
-              </div>
+              </FormattedText>
             </div>
           )}
 
@@ -1248,17 +1249,17 @@ function LearnPageContent() {
       <div ref={activeConceptRef} className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-4">
         <h2 className="text-2xl font-bold text-slate-900">{currentConcept.name}</h2>
 
-        <div className="text-slate-700 text-base leading-relaxed">
+        <FormattedText className="text-slate-700 text-base leading-relaxed">
           {currentConcept.explanation}
-        </div>
+        </FormattedText>
 
         {currentConcept.analogies && currentConcept.analogies.length > 0 && (
           <div className="rounded-lg bg-green-50 p-4 mt-4">
             <div className="flex items-start gap-2">
               <span className="text-green-700 font-semibold">💡</span>
-              <div className="text-green-800 text-sm">
+              <FormattedText className="text-green-800 text-sm flex-1">
                 {currentConcept.analogies[0]}
-              </div>
+              </FormattedText>
             </div>
           </div>
         )}
@@ -1266,11 +1267,13 @@ function LearnPageContent() {
         {currentConcept.examples && currentConcept.examples.length > 0 && (
           <div className="rounded-lg bg-indigo-50 p-4 space-y-2">
             <div className="text-sm font-semibold uppercase tracking-wide text-indigo-900">Examples</div>
-            <ul className="space-y-2 list-disc pl-5 text-indigo-800 text-sm leading-relaxed">
+            <div className="space-y-2 text-indigo-800 text-sm leading-relaxed">
               {currentConcept.examples.map((example, index) => (
-                <li key={index}>{example}</li>
+                <FormattedText key={index} className="pl-5">
+                  {example}
+                </FormattedText>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
@@ -1279,12 +1282,14 @@ function LearnPageContent() {
             <div className="text-sm font-semibold uppercase tracking-wide text-purple-900">Formulas & Equations</div>
             {currentConcept.formulas.map((formulaObj, index) => (
               <div key={index} className="space-y-1">
-                <div className="font-mono text-purple-900 bg-white p-3 rounded border border-purple-200">
-                  {formulaObj.formula}
+                <div className="text-purple-900 bg-white p-3 rounded border border-purple-200">
+                  <FormattedText>
+                    {formulaObj.formula}
+                  </FormattedText>
                 </div>
-                <div className="text-xs text-purple-700 pl-3">
+                <FormattedText className="text-xs text-purple-700 pl-3">
                   {formulaObj.variables}
-                </div>
+                </FormattedText>
               </div>
             ))}
           </div>
@@ -1293,11 +1298,13 @@ function LearnPageContent() {
         {currentConcept.important_notes && currentConcept.important_notes.length > 0 && (
           <div className="rounded-lg bg-amber-50 p-4 space-y-2">
             <div className="text-sm font-semibold uppercase tracking-wide text-amber-900">Important Notes</div>
-            <ul className="space-y-2 list-disc pl-5 text-amber-800 text-sm leading-relaxed">
+            <div className="space-y-2 text-amber-800 text-sm leading-relaxed">
               {currentConcept.important_notes.map((note, index) => (
-                <li key={index}>{note}</li>
+                <FormattedText key={index} className="pl-5">
+                  {note}
+                </FormattedText>
               ))}
-            </ul>
+            </div>
           </div>
         )}
       </div>
@@ -1312,7 +1319,9 @@ function LearnPageContent() {
             </span>
           </div>
 
-          <p className="text-base text-slate-900">{currentMCQ.question}</p>
+          <FormattedText className="text-base text-slate-900">
+            {currentMCQ.question}
+          </FormattedText>
 
           <div className="space-y-3">
             {currentMCQ.options.map((option) => {
@@ -1345,14 +1354,16 @@ function LearnPageContent() {
                       }`}>
                         {option.letter}.
                       </span>
-                      <span className={`flex-1 ${
+                      <div className={`flex-1 ${
                         showAsCorrect ? 'text-green-900' :
                         showAsWrong ? 'text-red-900' :
                         isSelected ? 'text-blue-900' :
                         'text-slate-900'
                       }`}>
-                        {option.text}
-                      </span>
+                        <FormattedText>
+                          {option.text}
+                        </FormattedText>
+                      </div>
                       {showAsCorrect && <span className="text-green-600 text-xl">✓</span>}
                       {showAsWrong && <span className="text-red-600 text-xl">✗</span>}
                     </div>
@@ -1365,7 +1376,9 @@ function LearnPageContent() {
                       <span className="font-semibold">
                         {isCorrect ? 'Why this is correct: ' : 'Why not: '}
                       </span>
-                      {option.explanation}
+                      <FormattedText className="inline">
+                        {option.explanation}
+                      </FormattedText>
                     </div>
                   )}
                 </div>

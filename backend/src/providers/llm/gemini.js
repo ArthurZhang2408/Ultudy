@@ -398,6 +398,17 @@ ${full_text}
 
 Create a comprehensive, interactive learning experience that prepares students for exams. Follow these principles:
 
+**FORMATTING:**
+- Use **Markdown formatting** for all text fields (explanations, examples, notes, MCQ text, etc.)
+- Use **bold** for key terms and important concepts
+- Use *italic* for emphasis and definitions
+- Use \`inline code\` for variable names, function names, or short code snippets
+- Use **LaTeX** for mathematical formulas:
+  - Inline math: $x^2 + y^2 = z^2$
+  - Display math: $$E = mc^2$$
+- Format formulas as LaTeX in the "formula" field
+- DO NOT use plain text for formulas - always use proper LaTeX notation
+
 **PEDAGOGY:**
 - Information completeness: Capture ALL testable content (formulas, definitions, procedures) ${section_name ? `FROM THIS SECTION ONLY` : ''}
 - Hierarchical structure: Main concepts with sub-concepts for nested topics
@@ -465,18 +476,18 @@ Return JSON in this EXACT structure:
     {
       "name": "Main Concept Name",
       "is_main_concept": true,
-      "explanation": "4-6 sentence comprehensive explanation with key terminology defined.",
+      "explanation": "4-6 sentence comprehensive explanation with **key terminology** *defined* and `variables` highlighted using Markdown formatting.",
       "key_details": {
         "formulas": [
-          {"formula": "E = mc²", "variables": "E=energy, m=mass, c=speed of light"}
+          {"formula": "$$E = mc^2$$", "variables": "$E$ is energy (joules), $m$ is mass (kg), $c$ is speed of light"}
         ],
         "examples": [
-          "Concrete example 1 with numbers/specifics",
-          "Concrete example 2 showing different application"
+          "**Example 1:** If mass $m = 2$ kg, then energy $E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17}$ J",
+          "**Example 2:** This shows *exponential* relationship between mass and energy"
         ],
         "important_notes": [
-          "Critical limitation or edge case",
-          "Common misconception to avoid"
+          "**Critical:** This only applies in *relativistic* contexts where $v \\approx c$",
+          "**Common mistake:** Don't confuse rest mass with relativistic mass"
         ]
       },
       "sub_concepts": [
