@@ -365,7 +365,7 @@ def main():
         print(f"   Code blocks: {len(code_blocks)}", file=sys.stderr)
         print(f"   Pages: {len(pages)}", file=sys.stderr)
 
-        # Output JSON
+        # Combine raw extraction result
         result = {
             "pages": pages,
             "tables": tables,
@@ -382,6 +382,22 @@ def main():
             }
         }
 
+        # Apply post-processing (Phase 1: cleaning and enhancement)
+        print("\\n✨ Applying post-processing...", file=sys.stderr)
+        try:
+            import sys
+            import os
+            # Add parent directory to path to import postprocessor
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+            from ingestion.postprocessor import postprocess_extraction
+            result = postprocess_extraction(result)
+            print("   ✅ Post-processing complete", file=sys.stderr)
+        except ImportError as e:
+            print(f"   ⚠️  Post-processing not available: {e}", file=sys.stderr)
+            print("   Outputting raw extraction (install postprocessor for enhanced results)", file=sys.stderr)
+
+        # Output JSON
         print(json.dumps(result, indent=2))
 
     except Exception as exc:
