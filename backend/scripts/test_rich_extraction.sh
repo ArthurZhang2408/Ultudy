@@ -41,42 +41,31 @@ if ! python3 -c "import fitz" 2>/dev/null; then
 fi
 echo "✅ PyMuPDF installed"
 
-if ! python3 -c "from PIL import Image" 2>/dev/null; then
-    echo "❌ Pillow not installed"
-    echo "   Install: pip3 install Pillow"
-    exit 1
-fi
-echo "✅ Pillow installed"
+# Check optional dependencies
+PDFPLUMBER_AVAILABLE=0
+PIX2TEXT_AVAILABLE=0
 
-if ! python3 -c "import google.generativeai" 2>/dev/null; then
-    echo "⚠️  google-generativeai not installed"
-    echo "   Install: pip3 install google-generativeai"
-    echo ""
-    echo "   You can still test text-only extraction without it."
-    echo ""
-    VISION_AVAILABLE=0
+if python3 -c "import pdfplumber" 2>/dev/null; then
+    echo "✅ pdfplumber installed (table extraction)"
+    PDFPLUMBER_AVAILABLE=1
 else
-    echo "✅ google-generativeai installed"
-    VISION_AVAILABLE=1
+    echo "⚠️  pdfplumber not installed (table extraction will be skipped)"
+    echo "   Install: pip3 install pdfplumber"
 fi
 
-echo ""
-
-# Check API key
-if [ -z "$GEMINI_API_KEY" ]; then
-    echo "⚠️  GEMINI_API_KEY not set"
-    echo ""
-    echo "   Vision extraction requires an API key."
-    echo "   Get one free at: https://aistudio.google.com/app/apikey"
-    echo ""
-    echo "   Then set it:"
-    echo "   export GEMINI_API_KEY='your-key-here'"
-    echo ""
-    echo "   You can still test text-only extraction without it."
-    echo ""
-    VISION_AVAILABLE=0
+if python3 -c "from pix2text import Pix2Text" 2>/dev/null; then
+    echo "✅ pix2text installed (formula extraction)"
+    PIX2TEXT_AVAILABLE=1
 else
-    echo "✅ GEMINI_API_KEY is set"
+    echo "⚠️  pix2text not installed (formula extraction will be skipped)"
+    echo "   Install: pip3 install pix2text"
+fi
+
+if python3 -c "from pygments.lexers import guess_lexer" 2>/dev/null; then
+    echo "✅ pygments installed (code detection)"
+else
+    echo "⚠️  pygments not installed (code detection will be skipped)"
+    echo "   Install: pip3 install pygments"
 fi
 
 echo ""
@@ -102,82 +91,62 @@ else
     exit 1
 fi
 
-# Test vision extraction if available
-if [ $VISION_AVAILABLE -eq 1 ]; then
+# Test deterministic extraction
+echo ""
+echo "2️⃣  Testing DETERMINISTIC extraction..."
+echo "   (Free, fast, structure-preserving)"
+echo ""
+
+if python3 extract_text_deterministic.py "$PDF_FILE" > /tmp/deterministic_result.json 2>&1; then
+    DET_PAGES=$(python3 -c "import json; data=json.load(open('/tmp/deterministic_result.json')); print(len(data.get('pages', [])))")
+    echo "✅ Deterministic extraction succeeded: $DET_PAGES pages"
+
+    # Count rich content
+    TABLES=$(python3 -c "import json; data=json.load(open('/tmp/deterministic_result.json')); print(len(data.get('tables', [])))")
+    IMAGES=$(python3 -c "import json; data=json.load(open('/tmp/deterministic_result.json')); print(len(data.get('images', [])))")
+    FORMULAS=$(python3 -c "import json; data=json.load(open('/tmp/deterministic_result.json')); print(len(data.get('formulas', [])))")
+    CODE=$(python3 -c "import json; data=json.load(open('/tmp/deterministic_result.json')); print(len(data.get('code_blocks', [])))")
+
     echo ""
-    echo "2️⃣  Testing VISION-BASED extraction..."
-    echo "   (This may take 1-2 seconds per page)"
-    echo ""
+    echo "📊 Rich content detected:"
+    echo "   - Tables: $TABLES"
+    echo "   - Images: $IMAGES"
+    echo "   - Formulas: $FORMULAS"
+    echo "   - Code blocks: $CODE"
 
-    if python3 extract_text_vision.py "$PDF_FILE" > /tmp/vision_result.json 2>&1; then
-        VISION_PAGES=$(python3 -c "import json; data=json.load(open('/tmp/vision_result.json')); print(len(data.get('pages', [])))")
-        echo "✅ Vision extraction succeeded: $VISION_PAGES pages"
-
-        # Count rich content
-        TABLES=$(python3 -c "import json; data=json.load(open('/tmp/vision_result.json')); print(sum(len(p.get('tables', [])) for p in data.get('pages', [])))")
-        IMAGES=$(python3 -c "import json; data=json.load(open('/tmp/vision_result.json')); print(sum(len(p.get('images', [])) for p in data.get('pages', [])))")
-        FORMULAS=$(python3 -c "import json; data=json.load(open('/tmp/vision_result.json')); print(sum(len(p.get('formulas', [])) for p in data.get('pages', [])))")
-        CODE=$(python3 -c "import json; data=json.load(open('/tmp/vision_result.json')); print(sum(len(p.get('code_blocks', [])) for p in data.get('pages', [])))")
-
+    # Show sample table if present
+    if [ "$TABLES" -gt 0 ]; then
         echo ""
-        echo "📊 Rich content detected:"
-        echo "   - Tables: $TABLES"
-        echo "   - Images: $IMAGES"
-        echo "   - Formulas: $FORMULAS"
-        echo "   - Code blocks: $CODE"
-
-        # Show sample table if present
-        if [ "$TABLES" -gt 0 ]; then
-            echo ""
-            echo "Sample table (first found):"
-            python3 -c "
+        echo "Sample table (first found):"
+        python3 -c "
 import json
-data = json.load(open('/tmp/vision_result.json'))
-for page in data.get('pages', []):
-    if page.get('tables'):
-        table = page['tables'][0]
-        print(f\"   Caption: {table.get('caption', 'N/A')}\")
-        print(f\"   Headers: {table.get('headers', [])}\")
-        print(f\"   Rows: {len(table.get('rows', []))} rows\")
-        break
+data = json.load(open('/tmp/deterministic_result.json'))
+tables = data.get('tables', [])
+if tables:
+    table = tables[0]
+    print(f\"   Page: {table.get('page', '?')}\")
+    print(f\"   Method: {table.get('extraction_method', 'unknown')}\")
+    print(f\"   Headers: {table.get('headers', [])}\")
+    print(f\"   Rows: {table.get('row_count', 0)} x {table.get('col_count', 0)}\")
 "
-        fi
-
-        # Estimate cost
-        COST=$(python3 -c "print(round($VISION_PAGES * 0.004, 4))")
-        echo ""
-        echo "💰 Estimated cost: \$$COST (at \$0.004/page)"
-
-    else
-        echo "❌ Vision extraction failed"
-        echo ""
-        echo "Error output:"
-        cat /tmp/vision_result.json | sed 's/^/   /'
     fi
 
-    # Run comparison
-    echo ""
-    echo "3️⃣  Running full comparison..."
-    echo ""
-    python3 compare_extraction.py "$PDF_FILE"
-
 else
+    echo "❌ Deterministic extraction failed"
     echo ""
-    echo "⏭️  Skipping vision extraction (dependencies not available)"
-    echo ""
-    echo "To test vision extraction:"
-    echo "  1. pip3 install google-generativeai"
-    echo "  2. export GEMINI_API_KEY='your-key'"
-    echo "  3. Run this script again"
+    echo "Error output:"
+    cat /tmp/deterministic_result.json | sed 's/^/   /'
 fi
 
+# Run full comparison if user wants
 echo ""
 echo "================================"
-echo "✅ Testing complete!"
+echo "✅ Basic testing complete!"
 echo ""
 echo "Results saved to:"
 echo "  - Text-only: /tmp/text_result.json"
-if [ $VISION_AVAILABLE -eq 1 ]; then
-    echo "  - Vision: /tmp/vision_result.json"
-fi
+echo "  - Deterministic: /tmp/deterministic_result.json"
+echo ""
+echo "💡 For detailed three-way comparison (text vs deterministic vs vision):"
+echo "   python3 compare_extraction.py \"$PDF_FILE\""
 echo ""

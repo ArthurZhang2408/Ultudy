@@ -1,16 +1,19 @@
 """
-Comparison script: Text-only vs Vision-based extraction
+Comparison script: Text-only vs Deterministic vs Vision extraction
 
-This script demonstrates the difference between current text-only extraction
-and the proposed vision-based approach.
+This script compares three extraction approaches:
+1. Text-only (current) - Fast but loses structure
+2. Deterministic (recommended) - Fast, free, preserves structure
+3. Vision-based (deprecated) - Slow, expensive, AI overkill
 
 Usage:
     python compare_extraction.py <pdf_path>
 
 Output:
-    - Side-by-side comparison of extracted content
-    - Quality metrics (tables found, images described, formulas extracted)
-    - Cost estimation for vision-based approach
+    - Three-way comparison of extracted content
+    - Quality metrics (tables found, images extracted, formulas recognized)
+    - Cost and speed comparisons
+    - Recommendations based on content type
 """
 
 import sys
@@ -29,8 +32,18 @@ def extract_text_only(pdf_path):
     return json.loads(result.stdout)
 
 
+def extract_deterministic(pdf_path):
+    """Run deterministic extraction (recommended)."""
+    result = subprocess.run(
+        ['python3', 'extract_text_deterministic.py', pdf_path],
+        capture_output=True,
+        text=True
+    )
+    return json.loads(result.stdout)
+
+
 def extract_vision(pdf_path):
-    """Run vision-based extraction."""
+    """Run vision-based extraction (deprecated)."""
     result = subprocess.run(
         ['python3', 'extract_text_vision.py', pdf_path],
         capture_output=True,
@@ -39,7 +52,7 @@ def extract_vision(pdf_path):
     return json.loads(result.stdout)
 
 
-def count_rich_content(vision_result):
+def count_rich_content(result):
     """Count rich content elements extracted."""
     counts = {
         'tables': 0,
@@ -48,11 +61,20 @@ def count_rich_content(vision_result):
         'code_blocks': 0
     }
 
-    for page in vision_result.get('pages', []):
-        counts['tables'] += len(page.get('tables', []))
-        counts['images'] += len(page.get('images', []))
-        counts['formulas'] += len(page.get('formulas', []))
-        counts['code_blocks'] += len(page.get('code_blocks', []))
+    # Check if result uses top-level arrays (deterministic) or page-level (vision)
+    if 'tables' in result:
+        # Deterministic format
+        counts['tables'] = len(result.get('tables', []))
+        counts['images'] = len(result.get('images', []))
+        counts['formulas'] = len(result.get('formulas', []))
+        counts['code_blocks'] = len(result.get('code_blocks', []))
+    else:
+        # Vision format (page-level)
+        for page in result.get('pages', []):
+            counts['tables'] += len(page.get('tables', []))
+            counts['images'] += len(page.get('images', []))
+            counts['formulas'] += len(page.get('formulas', []))
+            counts['code_blocks'] += len(page.get('code_blocks', []))
 
     return counts
 
@@ -132,23 +154,33 @@ def main():
     pdf_path = sys.argv[1]
 
     print("=" * 80)
-    print("EXTRACTION COMPARISON: Text-Only vs Vision-Based")
+    print("EXTRACTION COMPARISON: Text-Only vs Deterministic vs Vision-Based")
     print("=" * 80)
     print()
 
-    # Run both extractions
-    print("Running text-only extraction...")
+    # Run all three extractions
+    print("1️⃣  Running text-only extraction...")
     try:
         text_result = extract_text_only(pdf_path)
+        print("   ✅ Text-only complete")
     except Exception as e:
-        print(f"❌ Text extraction failed: {e}")
+        print(f"   ❌ Text extraction failed: {e}")
         text_result = {"pages": [], "error": str(e)}
 
-    print("Running vision-based extraction (may take longer)...")
+    print("\n2️⃣  Running deterministic extraction...")
+    try:
+        deterministic_result = extract_deterministic(pdf_path)
+        print("   ✅ Deterministic complete")
+    except Exception as e:
+        print(f"   ❌ Deterministic extraction failed: {e}")
+        deterministic_result = {"pages": [], "error": str(e)}
+
+    print("\n3️⃣  Running vision-based extraction (may take longer)...")
     try:
         vision_result = extract_vision(pdf_path)
+        print("   ✅ Vision complete")
     except Exception as e:
-        print(f"❌ Vision extraction failed: {e}")
+        print(f"   ❌ Vision extraction failed: {e}")
         vision_result = {"pages": [], "error": str(e)}
 
     print()
@@ -158,68 +190,96 @@ def main():
 
     # Page counts
     text_pages = len(text_result.get('pages', []))
+    deterministic_pages = len(deterministic_result.get('pages', []))
     vision_pages = len(vision_result.get('pages', []))
 
     print(f"\nDocument: {pdf_path}")
-    print(f"Pages extracted (text-only): {text_pages}")
+    print(f"\nPages extracted:")
+    print(f"  - Text-only: {text_pages}")
     if text_result.get('error'):
-        print(f"  ⚠️  Error: {text_result['error']}")
-    print(f"Pages extracted (vision): {vision_pages}")
+        print(f"    ⚠️  Error: {text_result['error']}")
+    print(f"  - Deterministic: {deterministic_pages}")
+    if deterministic_result.get('error'):
+        print(f"    ⚠️  Error: {deterministic_result['error']}")
+    print(f"  - Vision: {vision_pages}")
     if vision_result.get('error'):
-        print(f"  ⚠️  Error: {vision_result['error']}")
+        print(f"    ⚠️  Error: {vision_result['error']}")
 
     # Rich content counts
-    rich_counts = count_rich_content(vision_result)
     print(f"\n📊 Rich Content Detected:")
-    print(f"  - Tables: {rich_counts['tables']}")
-    print(f"  - Images/Diagrams: {rich_counts['images']}")
-    print(f"  - Mathematical Formulas: {rich_counts['formulas']}")
-    print(f"  - Code Blocks: {rich_counts['code_blocks']}")
-
-    # Cost estimation
-    cost = estimate_cost(vision_pages)
-    print(f"\n💰 Cost Estimation (Vision-Based):")
-    if cost.get('error'):
-        print(f"  ⚠️  {cost['error']}")
-    else:
-        print(f"  - Total tokens: {cost['total_tokens']:,}")
-        print(f"  - Total cost: ${cost['cost_usd']}")
-        print(f"  - Per page: ${cost['cost_per_page']}")
-
-    # Page-by-page comparison (use zip to safely handle mismatched lengths)
-    print(f"\n📄 Page-by-Page Comparison:")
     print("-" * 80)
 
-    text_pages_list = text_result.get('pages', [])
-    vision_pages_list = vision_result.get('pages', [])
+    deterministic_counts = count_rich_content(deterministic_result)
+    vision_counts = count_rich_content(vision_result)
 
-    # Compare only pages that exist in both results (up to 3 pages)
-    pages_to_compare = min(3, len(text_pages_list), len(vision_pages_list))
+    print(f"\n{'Content Type':<25} {'Deterministic':<15} {'Vision':<15}")
+    print("-" * 55)
+    print(f"{'Tables':<25} {deterministic_counts['tables']:<15} {vision_counts['tables']:<15}")
+    print(f"{'Images':<25} {deterministic_counts['images']:<15} {vision_counts['images']:<15}")
+    print(f"{'Formulas':<25} {deterministic_counts['formulas']:<15} {vision_counts['formulas']:<15}")
+    print(f"{'Code Blocks':<25} {deterministic_counts['code_blocks']:<15} {vision_counts['code_blocks']:<15}")
+    print("-" * 55)
+    print(f"{'TOTAL':<25} {sum(deterministic_counts.values()):<15} {sum(vision_counts.values()):<15}")
 
-    if pages_to_compare == 0:
-        print("\n⚠️  No pages to compare (one or both extractions failed)")
-    else:
-        for i in range(pages_to_compare):
-            text_page = text_pages_list[i]
-            vision_page = vision_pages_list[i]
+    # Performance & Cost comparison
+    print(f"\n💰 Performance & Cost Comparison:")
+    print("-" * 80)
 
-            comparison = compare_page_content(text_page, vision_page)
+    cost = estimate_cost(vision_pages)
 
-            print(f"\nPage {comparison['page']}:")
-            print(f"  Text-only: {comparison['text_only']['text_length']} chars")
-            print(f"  Vision: {comparison['vision']['text_length']} chars")
-            print(f"    + {comparison['vision']['tables_found']} tables")
-            print(f"    + {comparison['vision']['images_found']} images")
-            print(f"    + {comparison['vision']['formulas_found']} formulas")
-            print(f"    + {comparison['vision']['code_blocks_found']} code blocks")
+    print(f"\n{'Metric':<30} {'Text-Only':<15} {'Deterministic':<15} {'Vision':<15}")
+    print("-" * 75)
+    print(f"{'Speed (est.)':<30} {'<0.1s/page':<15} {'0.1-0.6s/page':<15} {'1-2s/page':<15}")
+    print(f"{'Cost per page':<30} {'$0.00':<15} {'$0.00':<15} {'$0.004':<15}")
 
-            if comparison['vision'].get('sample_table'):
-                table = comparison['vision']['sample_table']
-                print(f"  Sample table: {table['caption']} ({table['row_count']} rows)")
+    if not cost.get('error'):
+        total_cost = cost['cost_usd']
+        print(f"{'Total cost (this doc)':<30} {'$0.00':<15} {'$0.00':<15} ${total_cost:<14}")
 
-            if comparison['vision'].get('sample_image'):
-                img = comparison['vision']['sample_image']
-                print(f"  Sample image: {img['type']} - {img['description']}")
+    print(f"{'Offline capable':<30} {'Yes':<15} {'Yes':<15} {'No':<15}")
+    print(f"{'Preserves structure':<30} {'No':<15} {'Yes':<15} {'Yes':<15}")
+
+    # Sample content from deterministic extraction
+    print(f"\n📄 Sample Extracted Content (Deterministic):")
+    print("-" * 80)
+
+    if deterministic_counts['tables'] > 0:
+        tables = deterministic_result.get('tables', [])
+        if tables:
+            table = tables[0]
+            print(f"\n✅ Sample Table (Page {table.get('page', '?')}):")
+            print(f"   Method: {table.get('extraction_method', 'unknown')}")
+            print(f"   Headers: {table.get('headers', [])}")
+            print(f"   Rows: {table.get('row_count', 0)} x {table.get('col_count', 0)}")
+            if table.get('rows') and len(table['rows']) > 0:
+                print(f"   First row: {table['rows'][0]}")
+
+    if deterministic_counts['images'] > 0:
+        images = deterministic_result.get('images', [])
+        if images:
+            img = images[0]
+            print(f"\n✅ Sample Image (Page {img.get('page', '?')}):")
+            print(f"   Format: {img.get('format', 'unknown')}")
+            print(f"   Size: {img.get('width', '?')}x{img.get('height', '?')}")
+            print(f"   Bytes: {img.get('size_bytes', 0):,}")
+
+    if deterministic_counts['formulas'] > 0:
+        formulas = deterministic_result.get('formulas', [])
+        if formulas:
+            formula = formulas[0]
+            print(f"\n✅ Sample Formula (Page {formula.get('page', '?')}):")
+            print(f"   LaTeX: {formula.get('latex', 'N/A')}")
+
+    if deterministic_counts['code_blocks'] > 0:
+        code_blocks = deterministic_result.get('code_blocks', [])
+        if code_blocks:
+            code = code_blocks[0]
+            print(f"\n✅ Sample Code Block (Page {code.get('page', '?')}):")
+            print(f"   Language: {code.get('language', 'unknown')}")
+            print(f"   Lines: {code.get('line_count', 0)}")
+            code_preview = code.get('code', '')[:150]
+            if code_preview:
+                print(f"   Preview: {code_preview}...")
 
     # Recommendations
     print()
@@ -227,24 +287,44 @@ def main():
     print("RECOMMENDATIONS")
     print("=" * 80)
 
-    total_rich = sum(rich_counts.values())
-    if total_rich > 0:
-        print(f"\n✅ This document contains {total_rich} rich content elements.")
-        print("   Vision-based extraction is RECOMMENDED for:")
-        if rich_counts['tables'] > 0:
-            print(f"   - {rich_counts['tables']} tables with structured data")
-        if rich_counts['images'] > 0:
-            print(f"   - {rich_counts['images']} diagrams/charts that need description")
-        if rich_counts['formulas'] > 0:
-            print(f"   - {rich_counts['formulas']} mathematical formulas")
-        if rich_counts['code_blocks'] > 0:
-            print(f"   - {rich_counts['code_blocks']} code blocks with syntax")
+    total_rich_deterministic = sum(deterministic_counts.values())
+    total_rich_vision = sum(vision_counts.values())
 
-        print(f"\n   Estimated cost: ${cost['cost_usd']} (acceptable for educational content)")
+    if total_rich_deterministic > 0:
+        print(f"\n✅ This document contains {total_rich_deterministic} rich content elements (deterministic).")
+        print("\n🎯 RECOMMENDED APPROACH: Deterministic Extraction")
+        print("\nReasons:")
+        print("  ✅ FREE - Zero API costs")
+        print("  ✅ FAST - 3-10x faster than vision")
+        print("  ✅ ACCURATE - Purpose-built libraries for each content type")
+        print("  ✅ OFFLINE - No internet required")
+        print("  ✅ DETERMINISTIC - Same input = same output")
+
+        print("\nDetected content:")
+        if deterministic_counts['tables'] > 0:
+            print(f"  - {deterministic_counts['tables']} tables (pdfplumber/camelot)")
+        if deterministic_counts['images'] > 0:
+            print(f"  - {deterministic_counts['images']} images (PyMuPDF)")
+        if deterministic_counts['formulas'] > 0:
+            print(f"  - {deterministic_counts['formulas']} formulas (Pix2Text → LaTeX)")
+        if deterministic_counts['code_blocks'] > 0:
+            print(f"  - {deterministic_counts['code_blocks']} code blocks (Pygments)")
+
+        if not cost.get('error'):
+            vision_cost = cost['cost_usd']
+            print(f"\n💰 Cost savings: ${vision_cost} per document")
+            print(f"   (Vision would cost ${vision_cost}, Deterministic is FREE)")
     else:
         print("\n❌ No rich content detected.")
         print("   Text-only extraction may be sufficient.")
         print("   However, this might be a false negative - manual review recommended.")
+
+    print("\n" + "=" * 80)
+    print("\n💡 Next Steps:")
+    print("   1. Review sample content above")
+    print("   2. Check if tables/formulas/images are extracted correctly")
+    print("   3. If quality is good, integrate deterministic extraction")
+    print("   4. Reserve AI (Gemini) for lesson generation, NOT structure parsing")
 
     print()
     print("=" * 80)
