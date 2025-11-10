@@ -4,6 +4,9 @@
 # PDF processing
 PyMuPDF>=1.23.0  # Used for both text and vision-based extraction
 
+# PDF to Markdown (Marker - optional alternative)
+# marker-pdf>=1.10.0  # AI-powered PDF to Markdown conversion (uncomment to use)
+
 # Vision-based extraction (optional)
-google-generativeai>=0.3.0  # Gemini Vision API
+google-generativeapi>=0.3.0  # Gemini Vision API
 Pillow>=10.0.0  # Image processing for PDF page conversion
