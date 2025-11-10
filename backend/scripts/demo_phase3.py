@@ -275,12 +275,59 @@ def main():
     print("=" * 80)
     print()
 
-    # Show JSON structure sample
-    print("💡 TIP: To see the full JSON structure with layout data:")
-    print(f"   python3 backend/scripts/extract_text_deterministic.py {pdf_path} | jq '.layout'")
+    # Generate and save Markdown output
+    print("=" * 80)
+    print("MARKDOWN OUTPUT")
+    print("=" * 80)
     print()
-    print("💡 TIP: To see the Markdown output with proper headings:")
-    print(f"   python3 backend/scripts/extract_text_deterministic.py {pdf_path} --format markdown | less")
+    print("Generating Markdown output...")
+
+    result = subprocess.run(
+        ['python3', 'backend/scripts/extract_text_deterministic.py', pdf_path, '--format', 'markdown'],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode == 0:
+        markdown = result.stdout
+        output_file = 'output.md'
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(markdown)
+
+        print(f"✅ Markdown saved to: {output_file}")
+        print()
+
+        # Show preview
+        lines = markdown.split('\n')
+        print("Preview (first 30 lines):")
+        print("-" * 80)
+        for line in lines[:30]:
+            print(line)
+        if len(lines) > 30:
+            print("...")
+            print(f"({len(lines) - 30} more lines)")
+        print("-" * 80)
+        print()
+        print(f"📄 Full output in: {output_file}")
+        print(f"   View with: cat {output_file} | less")
+        print(f"   Or open in editor: open {output_file}")
+    else:
+        print("⚠️  Failed to generate Markdown")
+        print(result.stderr)
+
+    print()
+    print("=" * 80)
+    print()
+
+    # Show JSON structure sample
+    print("💡 MORE COMMANDS:")
+    print()
+    print("  View full JSON structure with layout data:")
+    print(f"    python3 backend/scripts/extract_text_deterministic.py {pdf_path} | jq '.layout'")
+    print()
+    print("  Test positioning and duplicates:")
+    print(f"    python3 backend/scripts/test_positioning.py {pdf_path}")
     print()
 
 
