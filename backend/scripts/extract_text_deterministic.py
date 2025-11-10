@@ -361,6 +361,19 @@ def main():
         print("\n📄 Extracting text...", file=sys.stderr)
         pages = extract_text(pdf_path)
 
+        print("\n📐 Analyzing layout...", file=sys.stderr)
+        layout_analysis = None
+        try:
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            from ingestion.layout_analyzer import analyze_layout
+            layout_analysis = analyze_layout(pdf_path)
+            print(f"   ✅ Layout: {layout_analysis['layout_type']}", file=sys.stderr)
+            print(f"   Headings detected: {len(layout_analysis['headings'])}", file=sys.stderr)
+        except ImportError as e:
+            print(f"   ⚠️  Layout analysis not available: {e}", file=sys.stderr)
+        except Exception as e:
+            print(f"   ⚠️  Layout analysis failed: {e}", file=sys.stderr)
+
         # Combine results
         print("\n" + "=" * 80, file=sys.stderr)
         print(f"✅ Extraction complete!", file=sys.stderr)
@@ -386,6 +399,12 @@ def main():
                 "total_code_blocks": len(code_blocks)
             }
         }
+
+        # Add layout analysis if available
+        if layout_analysis:
+            result["layout"] = layout_analysis
+            result["summary"]["layout_type"] = layout_analysis["layout_type"]
+            result["summary"]["total_headings"] = len(layout_analysis["headings"])
 
         # Apply post-processing (Phase 1: cleaning and enhancement)
         # Can be disabled with SKIP_POSTPROCESSING=1 env var (for testing)
