@@ -20,37 +20,23 @@ from typing import Dict, Any
 
 def extract_without_postprocessing(pdf_path: str) -> Dict[str, Any]:
     """
-    Extract PDF without post-processing (disable the module).
+    Extract PDF without post-processing.
 
-    This temporarily patches the extraction script to skip post-processing.
+    Uses a special environment variable to disable post-processing.
     """
     script_path = os.path.join(os.path.dirname(__file__), 'extract_text_deterministic.py')
 
-    # Read the script
-    with open(script_path, 'r') as f:
-        script_content = f.read()
-
-    # Create temporary version without post-processing
-    temp_script = script_content.replace(
-        'from ingestion.postprocessor import postprocess_extraction',
-        '# DISABLED: from ingestion.postprocessor import postprocess_extraction'
-    ).replace(
-        'result = postprocess_extraction(result)',
-        '# DISABLED: result = postprocess_extraction(result)'
-    )
-
-    # Write temporary script
-    temp_path = '/tmp/extract_no_postprocess.py'
-    with open(temp_path, 'w') as f:
-        f.write(temp_script)
-
-    # Run extraction
+    # Run extraction with post-processing disabled via env var
     try:
+        env = os.environ.copy()
+        env['SKIP_POSTPROCESSING'] = '1'  # Signal to skip post-processing
+
         result = subprocess.run(
-            ['python3', temp_path, pdf_path],
+            ['python3', script_path, pdf_path],
             capture_output=True,
             text=True,
-            timeout=300
+            timeout=300,
+            env=env
         )
 
         if result.returncode != 0:
