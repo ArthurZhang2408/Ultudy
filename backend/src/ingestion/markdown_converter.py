@@ -124,67 +124,181 @@ class MarkdownConverter:
         images: List[Dict]
     ) -> List[str]:
         """
-        Build page sections using layout analysis for proper ordering.
+        Build page sections using layout analysis with bbox-based positioning.
 
-        Uses text blocks from layout analysis which are already in correct
-        reading order and include heading information.
+        Merges text blocks with tables/formulas/code based on vertical position
+        to preserve original document layout.
         """
-        # Group rich content by page for easy lookup
-        content_by_page = self._group_content_by_page(
-            tables, formulas, code_blocks, images
-        )
-
         sections = []
 
         for page_data in layout['pages']:
             page_num = page_data['page']
-            page_md = []
 
-            # Page heading
-            page_md.append(f"## Page {page_num}")
+            # Get all content for this page with bbox coordinates
+            content_items = self._merge_content_by_position(
+                page_data,
+                [t for t in tables if t.get('page') == page_num or t.get('page_start') == page_num],
+                [f for f in formulas if f.get('page') == page_num],
+                [c for c in code_blocks if c.get('page') == page_num],
+                [i for i in images if i.get('page') == page_num]
+            )
 
-            # Get text blocks in reading order
-            blocks = page_data.get('blocks', [])
+            # Build markdown
+            page_md = [f"## Page {page_num}"]
 
-            # Build content from ordered blocks
-            for block in blocks:
-                text = block.get('text', '').strip()
-                if not text:
-                    continue
-
-                # Add heading marker if this is a heading
-                if block.get('is_heading'):
-                    level = block.get('heading_level', 0)
-                    if level == 1:
-                        page_md.append(f"# {text}")
-                    elif level == 2:
-                        page_md.append(f"## {text}")
-                    elif level == 3:
-                        page_md.append(f"### {text}")
-                    else:
-                        page_md.append(text)
-                else:
-                    page_md.append(text)
-
-            # Add tables, formulas, code blocks, images for this page
-            # (These will be at the end for now until we have bbox-based insertion)
-            page_content = content_by_page.get(page_num, {})
-
-            for table in page_content.get('tables', []):
-                page_md.append(self._table_to_markdown(table))
-
-            for formula in page_content.get('formulas', []):
-                page_md.append(self._formula_to_markdown(formula))
-
-            for code in page_content.get('code_blocks', []):
-                page_md.append(self._code_to_markdown(code))
-
-            for image in page_content.get('images', []):
-                page_md.append(self._image_to_markdown(image))
+            for item in content_items:
+                page_md.append(item['markdown'])
 
             sections.append("\n\n".join(page_md))
 
         return sections
+
+    def _merge_content_by_position(
+        self,
+        page_data: Dict,
+        tables: List[Dict],
+        formulas: List[Dict],
+        code_blocks: List[Dict],
+        images: List[Dict]
+    ) -> List[Dict]:
+        """
+        Merge all content types and sort by vertical position (bbox).
+
+        Returns list of content items with their markdown representation,
+        sorted in reading order (column-aware for multi-column layouts).
+        """
+        content_items = []
+
+        # Get text blocks from layout
+        blocks = page_data.get('blocks', [])
+
+        # Create lookup sets for table/formula/code regions to avoid duplicates
+        table_regions = set()
+        for table in tables:
+            if 'bbox' in table:
+                bbox = table['bbox']
+                # Create a region key (rounded to avoid floating point issues)
+                region = (round(bbox[1], 1), round(bbox[3], 1))  # (top, bottom)
+                table_regions.add(region)
+
+        # Add text blocks (filtered to avoid table regions)
+        for block in blocks:
+            text = block.get('text', '').strip()
+            if not text:
+                continue
+
+            bbox = block.get('bbox', [0, 0, 0, 0])
+            y_pos = bbox[1]  # Top y-coordinate
+
+            # Check if this text block overlaps with a table region
+            block_region = (round(bbox[1], 1), round(bbox[3], 1))
+            is_in_table = any(
+                abs(block_region[0] - tr[0]) < 5 and abs(block_region[1] - tr[1]) < 5
+                for tr in table_regions
+            )
+
+            if is_in_table:
+                # Skip text blocks that are inside table regions
+                continue
+
+            # Format text with heading markers if applicable
+            if block.get('is_heading'):
+                level = block.get('heading_level', 0)
+                if level == 1:
+                    markdown = f"# {text}"
+                elif level == 2:
+                    markdown = f"## {text}"
+                elif level == 3:
+                    markdown = f"### {text}"
+                else:
+                    markdown = text
+            else:
+                markdown = text
+
+            content_items.append({
+                'type': 'text',
+                'y_pos': y_pos,
+                'column': block.get('column', 0),
+                'reading_order': block.get('reading_order', 0),
+                'markdown': markdown
+            })
+
+        # Add tables at their correct positions
+        for table in tables:
+            bbox = table.get('bbox')
+            if bbox:
+                y_pos = bbox[1]
+            else:
+                # Fallback: place at end if no bbox
+                y_pos = 9999
+
+            content_items.append({
+                'type': 'table',
+                'y_pos': y_pos,
+                'column': 0,  # Tables typically span columns
+                'reading_order': 9999,  # Default high value
+                'markdown': self._table_to_markdown(table)
+            })
+
+        # Add formulas at their correct positions
+        for formula in formulas:
+            bbox = formula.get('bbox')
+            if bbox:
+                y_pos = bbox[1] if isinstance(bbox, (list, tuple)) else bbox.get('y0', 9999)
+            else:
+                y_pos = 9999
+
+            markdown = self._formula_to_markdown(formula)
+            if markdown:
+                content_items.append({
+                    'type': 'formula',
+                    'y_pos': y_pos,
+                    'column': 0,
+                    'reading_order': 9999,
+                    'markdown': markdown
+                })
+
+        # Add code blocks at their correct positions
+        for code in code_blocks:
+            bbox = code.get('bbox')
+            if bbox:
+                y_pos = bbox[1] if isinstance(bbox, (list, tuple)) else bbox.get('y0', 9999)
+            else:
+                y_pos = 9999
+
+            markdown = self._code_to_markdown(code)
+            if markdown:
+                content_items.append({
+                    'type': 'code',
+                    'y_pos': y_pos,
+                    'column': 0,
+                    'reading_order': 9999,
+                    'markdown': markdown
+                })
+
+        # Add images at their correct positions
+        for image in images:
+            bbox = image.get('bbox')
+            if bbox:
+                y_pos = bbox[1] if isinstance(bbox, (list, tuple)) else bbox.get('y0', 9999)
+            else:
+                y_pos = 9999
+
+            markdown = self._image_to_markdown(image)
+            if markdown:
+                content_items.append({
+                    'type': 'image',
+                    'y_pos': y_pos,
+                    'column': 0,
+                    'reading_order': 9999,
+                    'markdown': markdown
+                })
+
+        # Sort by reading_order (which accounts for columns and y-position)
+        # For items without explicit reading_order, use y_pos as fallback
+        content_items.sort(key=lambda x: (x['reading_order'], x['y_pos']))
+
+        return content_items
 
     def _table_to_markdown(self, table: Dict) -> str:
         """

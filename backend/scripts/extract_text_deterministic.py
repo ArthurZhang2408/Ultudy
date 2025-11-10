@@ -43,7 +43,9 @@ def extract_tables_pdfplumber(pdf_path: str) -> List[Dict[str, Any]]:
     try:
         with pdfplumber.open(pdf_path) as pdf:
             for page_num, page in enumerate(pdf.pages):
+                # Extract tables with bbox information
                 page_tables = page.extract_tables()
+                table_settings = page.find_tables()
 
                 for table_index, table in enumerate(page_tables):
                     if not table or len(table) == 0:
@@ -57,7 +59,14 @@ def extract_tables_pdfplumber(pdf_path: str) -> List[Dict[str, Any]]:
                     headers = [str(h) if h is not None else "" for h in headers]
                     rows = [[str(cell) if cell is not None else "" for cell in row] for row in rows]
 
-                    tables.append({
+                    # Get bbox from table settings if available
+                    bbox = None
+                    if table_index < len(table_settings):
+                        table_obj = table_settings[table_index]
+                        if hasattr(table_obj, 'bbox'):
+                            bbox = table_obj.bbox  # (x0, y0, x1, y1)
+
+                    table_dict = {
                         "page": page_num + 1,
                         "table_index": table_index,
                         "caption": f"Table {len(tables) + 1}",  # Auto-generated
@@ -66,7 +75,12 @@ def extract_tables_pdfplumber(pdf_path: str) -> List[Dict[str, Any]]:
                         "row_count": len(rows),
                         "col_count": len(headers),
                         "extraction_method": "pdfplumber"
-                    })
+                    }
+
+                    if bbox:
+                        table_dict["bbox"] = bbox
+
+                    tables.append(table_dict)
 
         print(f"✅ pdfplumber: Found {len(tables)} tables", file=sys.stderr)
     except Exception as e:
