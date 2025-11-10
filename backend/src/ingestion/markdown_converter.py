@@ -58,14 +58,21 @@ class MarkdownConverter:
         """
         Build Markdown sections with embedded tables, formulas, etc.
 
-        Strategy: Insert rich content inline with page text based on page numbers.
+        Strategy: Use layout analysis blocks if available for proper ordering,
+        otherwise fall back to appending rich content after page text.
         """
         pages = result.get('pages', [])
         tables = result.get('tables', [])
         formulas = result.get('formulas', [])
         code_blocks = result.get('code_blocks', [])
         images = result.get('images', [])
+        layout = result.get('layout')
 
+        # If layout analysis is available, use ordered blocks
+        if layout and 'pages' in layout:
+            return self._build_with_layout(layout, tables, formulas, code_blocks, images)
+
+        # Fall back to original approach
         # Group rich content by page
         content_by_page = self._group_content_by_page(
             tables, formulas, code_blocks, images
@@ -101,6 +108,77 @@ class MarkdownConverter:
                 page_md.append(self._code_to_markdown(code))
 
             # Images (as references)
+            for image in page_content.get('images', []):
+                page_md.append(self._image_to_markdown(image))
+
+            sections.append("\n\n".join(page_md))
+
+        return sections
+
+    def _build_with_layout(
+        self,
+        layout: Dict,
+        tables: List[Dict],
+        formulas: List[Dict],
+        code_blocks: List[Dict],
+        images: List[Dict]
+    ) -> List[str]:
+        """
+        Build page sections using layout analysis for proper ordering.
+
+        Uses text blocks from layout analysis which are already in correct
+        reading order and include heading information.
+        """
+        # Group rich content by page for easy lookup
+        content_by_page = self._group_content_by_page(
+            tables, formulas, code_blocks, images
+        )
+
+        sections = []
+
+        for page_data in layout['pages']:
+            page_num = page_data['page']
+            page_md = []
+
+            # Page heading
+            page_md.append(f"## Page {page_num}")
+
+            # Get text blocks in reading order
+            blocks = page_data.get('blocks', [])
+
+            # Build content from ordered blocks
+            for block in blocks:
+                text = block.get('text', '').strip()
+                if not text:
+                    continue
+
+                # Add heading marker if this is a heading
+                if block.get('is_heading'):
+                    level = block.get('heading_level', 0)
+                    if level == 1:
+                        page_md.append(f"# {text}")
+                    elif level == 2:
+                        page_md.append(f"## {text}")
+                    elif level == 3:
+                        page_md.append(f"### {text}")
+                    else:
+                        page_md.append(text)
+                else:
+                    page_md.append(text)
+
+            # Add tables, formulas, code blocks, images for this page
+            # (These will be at the end for now until we have bbox-based insertion)
+            page_content = content_by_page.get(page_num, {})
+
+            for table in page_content.get('tables', []):
+                page_md.append(self._table_to_markdown(table))
+
+            for formula in page_content.get('formulas', []):
+                page_md.append(self._formula_to_markdown(formula))
+
+            for code in page_content.get('code_blocks', []):
+                page_md.append(self._code_to_markdown(code))
+
             for image in page_content.get('images', []):
                 page_md.append(self._image_to_markdown(image))
 
@@ -189,8 +267,9 @@ class MarkdownConverter:
 
         Uses fenced code blocks with language hints for proper highlighting.
         """
-        language = code.get('language', '').lower()
-        code_text = code.get('code', '').strip()
+        # Normalize to empty string if None to prevent AttributeError
+        language = (code.get('language') or '').lower()
+        code_text = (code.get('code') or '').strip()
 
         if not code_text:
             return ""
@@ -272,7 +351,7 @@ class MarkdownConverter:
         ]
 
         if summary.get('postprocessed'):
-            lines.append("- **Post-processed**: Yes (cleaned and enhanced)")
+            lines.append("- Post-processed: Yes (cleaned and enhanced)")
 
         return "\n".join(lines)
 
