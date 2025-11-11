@@ -23,6 +23,7 @@ export default function CoursesPage() {
     exam_date: ''
   });
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCourses();
@@ -45,6 +46,7 @@ export default function CoursesPage() {
   async function handleCreateCourse(e: React.FormEvent) {
     e.preventDefault();
     setCreating(true);
+    setCreateError(null);
 
     try {
       const res = await fetch('/api/courses', {
@@ -56,14 +58,15 @@ export default function CoursesPage() {
       if (res.ok) {
         setFormData({ name: '', code: '', term: '', exam_date: '' });
         setShowCreateForm(false);
+        setCreateError(null);
         fetchCourses();
       } else {
-        const error = await res.json();
-        alert(`Failed to create course: ${error.error}`);
+        const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+        setCreateError(error.error || 'Failed to create course');
       }
     } catch (error) {
       console.error('Failed to create course:', error);
-      alert('Failed to create course');
+      setCreateError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
     } finally {
       setCreating(false);
     }
@@ -82,7 +85,10 @@ export default function CoursesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-semibold text-slate-900">My Courses</h1>
         <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
+          onClick={() => {
+            setShowCreateForm(!showCreateForm);
+            setCreateError(null);
+          }}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
           {showCreateForm ? 'Cancel' : 'Create Course'}
@@ -92,6 +98,11 @@ export default function CoursesPage() {
       {showCreateForm && (
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Create New Course</h2>
+          {createError && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {createError}
+            </div>
+          )}
           <form onSubmit={handleCreateCourse} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-700">
@@ -144,7 +155,10 @@ export default function CoursesPage() {
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setCreateError(null);
+                }}
                 className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cancel

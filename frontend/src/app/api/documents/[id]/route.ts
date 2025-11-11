@@ -38,3 +38,36 @@ export async function GET(
     );
   }
 }
+
+// DELETE /api/documents/:id - Delete document and all related content
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const token = await getBackendToken();
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const backendResponse = await fetch(
+      `${getBackendUrl()}/documents/${params.id}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return createProxyResponse(backendResponse);
+  } catch (error) {
+    console.error('[api/documents/[id]] DELETE proxy failed:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: 'proxy_failed', detail: message },
+      { status: 500 }
+    );
+  }
+}

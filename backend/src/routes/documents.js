@@ -1,10 +1,17 @@
 import express from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTenantHelpers } from '../db/tenant.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
 
 export default function createDocumentsRouter(options = {}) {
   const router = express.Router();
   const pool = options.pool;
   const tenantHelpers = options.tenantHelpers || (pool ? createTenantHelpers(pool) : null);
+  const storageDir = options.storageDir ?? DEFAULT_STORAGE_DIR;
 
   if (!pool || !tenantHelpers) {
     throw new Error('Database pool and tenant helpers are required for documents route');
@@ -156,6 +163,106 @@ export default function createDocumentsRouter(options = {}) {
     } catch (error) {
       console.error('Failed to update document metadata', error);
       res.status(500).json({ error: 'Failed to update document metadata' });
+    }
+  });
+
+  router.delete('/:id', async (req, res) => {
+    const ownerId = req.userId;
+    const { id } = req.params;
+
+    // Validate document ID format (UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !uuidRegex.test(id)) {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
+
+    try {
+      const result = await tenantHelpers.withTenant(ownerId, async (client) => {
+        // 1. Check if document exists and user owns it
+        const { rows: docRows } = await client.query(
+          'SELECT id, title FROM documents WHERE id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        if (docRows.length === 0) {
+          return { success: false, error: 'Document not found or access denied' };
+        }
+
+        const document = docRows[0];
+
+        // 2. Delete all related data (withTenant already provides a transaction)
+        // Delete chunks
+        const { rowCount: chunksDeleted } = await client.query(
+          'DELETE FROM chunks WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        // Delete sections
+        const { rowCount: sectionsDeleted } = await client.query(
+          'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        // Delete lessons/study sessions
+        const { rowCount: lessonsDeleted } = await client.query(
+          'DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        // Delete study sessions
+        const { rowCount: sessionsDeleted } = await client.query(
+          'DELETE FROM study_sessions WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        // Delete document
+        await client.query(
+          'DELETE FROM documents WHERE id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        console.log(`[documents] Deleted document ${id}:`, {
+          title: document.title,
+          chunks: chunksDeleted,
+          sections: sectionsDeleted,
+          lessons: lessonsDeleted,
+          sessions: sessionsDeleted
+        });
+
+        return {
+          success: true,
+          deleted: {
+            document: document.title,
+            chunks: chunksDeleted,
+            sections: sectionsDeleted,
+            lessons: lessonsDeleted,
+            sessions: sessionsDeleted
+          }
+        };
+      });
+
+      if (!result.success) {
+        return res.status(404).json({ error: result.error });
+      }
+
+      // 3. Delete PDF file from storage (outside transaction)
+      try {
+        const pdfPath = path.join(storageDir, ownerId, `${id}.pdf`);
+        await fs.rm(pdfPath, { force: true });
+        console.log(`[documents] Deleted PDF file: ${pdfPath}`);
+      } catch (fileError) {
+        console.warn(`[documents] Failed to delete PDF file for ${id}:`, fileError.message);
+        // Continue even if file deletion fails - file may not exist
+      }
+
+      res.json({
+        success: true,
+        message: 'Document and all related content deleted successfully',
+        deleted: result.deleted
+      });
+    } catch (error) {
+      console.error('Failed to delete document', error);
+      res.status(500).json({ error: 'Failed to delete document' });
     }
   });
 
