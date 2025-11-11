@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
+import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 
 type Course = {
   id: string;
@@ -21,6 +22,17 @@ type Document = {
   uploaded_at: string;
 };
 
+type SectionWithMastery = {
+  id: string;
+  section_number: number;
+  name: string;
+  description: string | null;
+  mastery_level: MasteryLevel;
+  concepts_generated: boolean;
+  page_start: number | null;
+  page_end: number | null;
+};
+
 export default function CoursePage() {
   const params = useParams();
   const courseId = params.id as string;
@@ -29,6 +41,7 @@ export default function CoursePage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
 
   useEffect(() => {
     if (courseId) {
@@ -49,7 +62,41 @@ export default function CoursePage() {
       const docsRes = await fetch(`/api/documents?course_id=${courseId}`);
       if (docsRes.ok) {
         const docsData = await docsRes.json();
-        setDocuments(docsData.documents || []);
+        const docs = docsData.documents || [];
+        setDocuments(docs);
+
+        // Fetch section mastery data for each document
+        const sectionPromises = docs.map(async (doc: Document) => {
+          try {
+            const masteryUrl = doc.chapter
+              ? `/api/sections/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+              : `/api/sections/mastery?document_id=${doc.id}`;
+
+            const res = await fetch(masteryUrl);
+            if (res.ok) {
+              const data = await res.json();
+              const chapterKey = doc.chapter || 'Uncategorized';
+              return { chapterKey, sections: data.sections || [] };
+            }
+          } catch (error) {
+            console.error(`Failed to fetch mastery for document ${doc.id}:`, error);
+          }
+          return null;
+        });
+
+        const sectionResults = await Promise.all(sectionPromises);
+        const sectionsMap: Record<string, SectionWithMastery[]> = {};
+
+        for (const result of sectionResults) {
+          if (result) {
+            if (!sectionsMap[result.chapterKey]) {
+              sectionsMap[result.chapterKey] = [];
+            }
+            sectionsMap[result.chapterKey].push(...result.sections);
+          }
+        }
+
+        setSectionsByChapter(sectionsMap);
       }
     } catch (error) {
       console.error('Failed to fetch course data:', error);
@@ -192,12 +239,44 @@ export default function CoursePage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {chapters.map((chapter) => (
-            <div key={chapter} className="space-y-3">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
-              </h2>
-              <div className="grid gap-3">
+          {chapters.map((chapter) => {
+            const chapterSections = sectionsByChapter[chapter] || [];
+            const skills: SkillSquare[] = chapterSections.map((section) => ({
+              id: section.id,
+              name: section.name,
+              masteryLevel: section.mastery_level,
+              sectionNumber: section.section_number,
+              description: section.description || undefined,
+              onClick: () => {
+                // Find the document for this chapter
+                const doc = documentsByChapter[chapter]?.[0];
+                if (doc) {
+                  handleStartStudy(doc.id, doc.chapter);
+                }
+              }
+            }));
+
+            return (
+              <div key={chapter} className="space-y-6">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                </h2>
+
+                {/* Mastery Grid */}
+                {skills.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                    <MasteryGrid
+                      title={`Progress Overview`}
+                      skills={skills}
+                      columns={8}
+                    />
+                  </div>
+                )}
+
+                {/* Documents List */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-slate-700">Materials</h3>
+                  <div className="grid gap-3">
                 {documentsByChapter[chapter].map((doc) => (
                   <div
                     key={doc.id}
@@ -232,9 +311,11 @@ export default function CoursePage() {
                     </div>
                   </div>
                 ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
