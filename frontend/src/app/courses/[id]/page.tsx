@@ -257,6 +257,7 @@ export default function CoursePage() {
               name: concept.name,
               masteryLevel: concept.mastery_level,
               sectionNumber: concept.section_number || undefined,
+              sectionName: concept.section_name || undefined,
               conceptNumber: concept.concept_number,
               description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
               onClick: () => {
