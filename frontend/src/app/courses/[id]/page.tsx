@@ -277,6 +277,18 @@ export default function CoursePage() {
         <div className="space-y-8">
           {chapters.map((chapter) => {
             const chapterConcepts = conceptsByChapter[chapter] || [];
+
+            // Log concepts to see what section numbers they have
+            console.log(`[Course Page] Chapter "${chapter}" - Raw concepts:`,
+              chapterConcepts.map(c => ({
+                id: c.id,
+                name: c.name,
+                section_id: c.section_id,
+                section_number: c.section_number,
+                section_name: c.section_name
+              }))
+            );
+
             const skills: SkillSquare[] = chapterConcepts.map((concept) => ({
               id: concept.id,
               name: concept.name,
@@ -299,11 +311,14 @@ export default function CoursePage() {
               }
             }));
 
-            console.log(`[Course Page] Chapter "${chapter}":`, {
-              chapterConcepts,
-              skills,
-              willShowGrid: skills.length > 0
-            });
+            console.log(`[Course Page] Chapter "${chapter}" - Skills for grid:`,
+              skills.map(s => ({
+                id: s.id,
+                name: s.name,
+                sectionNumber: s.sectionNumber,
+                sectionName: s.sectionName
+              }))
+            );
 
             return (
               <div key={chapter} className="space-y-6">

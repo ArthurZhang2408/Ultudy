@@ -84,28 +84,31 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
       {/* Grids grouped by section */}
       <div className="space-y-6">
-        {Object.entries(groupedSkills).sort(([a], [b]) => Number(a) - Number(b)).map(([sectionNum, sectionSkills], idx) => {
-          const sectionName = sectionSkills[0]?.sectionName || `Section ${sectionNum}`;
+        {Object.entries(groupedSkills)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .filter(([sectionNum]) => Number(sectionNum) > 0) // Skip section 0 (concepts without section)
+          .map(([sectionNum, sectionSkills], idx) => {
+            const sectionName = sectionSkills[0]?.sectionName || `Section ${sectionNum}`;
 
-          return (
-            <div key={sectionNum}>
-              {showSectionDividers && Number(sectionNum) > 0 && (
-                <div className="mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-semibold text-slate-900">
-                      Section {sectionNum}: {sectionName}
-                    </div>
-                    <div className="flex-1 h-px bg-slate-300"></div>
-                    <div className="text-xs text-slate-500">
-                      {sectionSkills.length} {sectionSkills.length === 1 ? 'concept' : 'concepts'}
+            return (
+              <div key={sectionNum}>
+                {showSectionDividers && (
+                  <div className="mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-semibold text-slate-900">
+                        Section {sectionNum}: {sectionName}
+                      </div>
+                      <div className="flex-1 h-px bg-slate-300"></div>
+                      <div className="text-xs text-slate-500">
+                        {sectionSkills.length} {sectionSkills.length === 1 ? 'concept' : 'concepts'}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
             {/* Grid of skill squares */}
             <div
-              className={`grid gap-1.5 ${showSectionDividers && Number(sectionNum) > 0 ? 'p-3 rounded-lg bg-slate-50 border border-slate-200' : ''}`}
+              className={`grid gap-1.5 ${showSectionDividers ? 'p-3 rounded-lg bg-slate-50 border border-slate-200' : ''}`}
               style={{
                 gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                 maxWidth: `${columns * 56}px`
