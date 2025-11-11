@@ -72,11 +72,18 @@ export default function CoursePage() {
               ? `/api/sections/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
               : `/api/sections/mastery?document_id=${doc.id}`;
 
+            console.log(`[Course Page] Fetching mastery from: ${masteryUrl}`);
             const res = await fetch(masteryUrl);
+            console.log(`[Course Page] Mastery response status: ${res.status}`);
+
             if (res.ok) {
               const data = await res.json();
+              console.log(`[Course Page] Mastery data for doc ${doc.id}:`, data);
               const chapterKey = doc.chapter || 'Uncategorized';
               return { chapterKey, sections: data.sections || [] };
+            } else {
+              const errorText = await res.text();
+              console.error(`[Course Page] Mastery fetch failed (${res.status}):`, errorText);
             }
           } catch (error) {
             console.error(`Failed to fetch mastery for document ${doc.id}:`, error);
@@ -96,6 +103,7 @@ export default function CoursePage() {
           }
         }
 
+        console.log('[Course Page] Sections by chapter:', sectionsMap);
         setSectionsByChapter(sectionsMap);
       }
     } catch (error) {
@@ -255,6 +263,12 @@ export default function CoursePage() {
                 }
               }
             }));
+
+            console.log(`[Course Page] Chapter "${chapter}":`, {
+              chapterSections,
+              skills,
+              willShowGrid: skills.length > 0
+            });
 
             return (
               <div key={chapter} className="space-y-6">
