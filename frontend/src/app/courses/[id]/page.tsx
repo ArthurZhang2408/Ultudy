@@ -61,6 +61,32 @@ export default function CoursePage() {
     router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}`);
   }
 
+  async function handleDeleteDocument(documentId: string, title: string) {
+    if (!confirm(`Are you sure you want to delete "${title}"?\n\nThis will permanently delete:\n• The document\n• All sections\n• All generated lessons\n• The PDF file\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/documents/${documentId}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to delete document');
+      }
+
+      const result = await res.json();
+      console.log('Document deleted:', result);
+
+      // Refresh the documents list
+      fetchCourseData();
+    } catch (error) {
+      console.error('Failed to delete document:', error);
+      alert(error instanceof Error ? error.message : 'Failed to delete document');
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -166,12 +192,21 @@ export default function CoursePage() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleStartStudy(doc.id, doc.chapter)}
-                      className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      Study
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleStartStudy(doc.id, doc.chapter)}
+                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      >
+                        Study
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                        className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                        title="Delete document"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
