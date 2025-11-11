@@ -22,15 +22,18 @@ type Document = {
   uploaded_at: string;
 };
 
-type SectionWithMastery = {
+type ConceptWithMastery = {
   id: string;
-  section_number: number;
   name: string;
-  description: string | null;
+  chapter: string;
+  section_id: string | null;
+  section_number: number | null;
+  section_name: string | null;
+  concept_number: number;
   mastery_level: MasteryLevel;
-  concepts_generated: boolean;
-  page_start: number | null;
-  page_end: number | null;
+  accuracy: number;
+  total_attempts: number;
+  correct_attempts: number;
 };
 
 export default function CoursePage() {
@@ -41,7 +44,7 @@ export default function CoursePage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
+  const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
 
   useEffect(() => {
     if (courseId) {
@@ -65,46 +68,46 @@ export default function CoursePage() {
         const docs = docsData.documents || [];
         setDocuments(docs);
 
-        // Fetch section mastery data for each document
-        const sectionPromises = docs.map(async (doc: Document) => {
+        // Fetch concept mastery data for each document
+        const conceptPromises = docs.map(async (doc: Document) => {
           try {
             const masteryUrl = doc.chapter
-              ? `/api/sections/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
-              : `/api/sections/mastery?document_id=${doc.id}`;
+              ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+              : `/api/concepts/mastery?document_id=${doc.id}`;
 
-            console.log(`[Course Page] Fetching mastery from: ${masteryUrl}`);
+            console.log(`[Course Page] Fetching concept mastery from: ${masteryUrl}`);
             const res = await fetch(masteryUrl);
-            console.log(`[Course Page] Mastery response status: ${res.status}`);
+            console.log(`[Course Page] Concept mastery response status: ${res.status}`);
 
             if (res.ok) {
               const data = await res.json();
-              console.log(`[Course Page] Mastery data for doc ${doc.id}:`, data);
+              console.log(`[Course Page] Concept mastery data for doc ${doc.id}:`, data);
               const chapterKey = doc.chapter || 'Uncategorized';
-              return { chapterKey, sections: data.sections || [] };
+              return { chapterKey, concepts: data.concepts || [] };
             } else {
               const errorText = await res.text();
-              console.error(`[Course Page] Mastery fetch failed (${res.status}):`, errorText);
+              console.error(`[Course Page] Concept mastery fetch failed (${res.status}):`, errorText);
             }
           } catch (error) {
-            console.error(`Failed to fetch mastery for document ${doc.id}:`, error);
+            console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
           }
           return null;
         });
 
-        const sectionResults = await Promise.all(sectionPromises);
-        const sectionsMap: Record<string, SectionWithMastery[]> = {};
+        const conceptResults = await Promise.all(conceptPromises);
+        const conceptsMap: Record<string, ConceptWithMastery[]> = {};
 
-        for (const result of sectionResults) {
+        for (const result of conceptResults) {
           if (result) {
-            if (!sectionsMap[result.chapterKey]) {
-              sectionsMap[result.chapterKey] = [];
+            if (!conceptsMap[result.chapterKey]) {
+              conceptsMap[result.chapterKey] = [];
             }
-            sectionsMap[result.chapterKey].push(...result.sections);
+            conceptsMap[result.chapterKey].push(...result.concepts);
           }
         }
 
-        console.log('[Course Page] Sections by chapter:', sectionsMap);
-        setSectionsByChapter(sectionsMap);
+        console.log('[Course Page] Concepts by chapter:', conceptsMap);
+        setConceptsByChapter(conceptsMap);
       }
     } catch (error) {
       console.error('Failed to fetch course data:', error);
@@ -248,24 +251,30 @@ export default function CoursePage() {
       ) : (
         <div className="space-y-8">
           {chapters.map((chapter) => {
-            const chapterSections = sectionsByChapter[chapter] || [];
-            const skills: SkillSquare[] = chapterSections.map((section) => ({
-              id: section.id,
-              name: section.name,
-              masteryLevel: section.mastery_level,
-              sectionNumber: section.section_number,
-              description: section.description || undefined,
+            const chapterConcepts = conceptsByChapter[chapter] || [];
+            const skills: SkillSquare[] = chapterConcepts.map((concept) => ({
+              id: concept.id,
+              name: concept.name,
+              masteryLevel: concept.mastery_level,
+              sectionNumber: concept.section_number || undefined,
+              conceptNumber: concept.concept_number,
+              description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
               onClick: () => {
                 // Find the document for this chapter
                 const doc = documentsByChapter[chapter]?.[0];
                 if (doc) {
-                  handleStartStudy(doc.id, doc.chapter);
+                  // Navigate to the specific section if available
+                  if (concept.section_id) {
+                    router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}`);
+                  } else {
+                    handleStartStudy(doc.id, doc.chapter);
+                  }
                 }
               }
             }));
 
             console.log(`[Course Page] Chapter "${chapter}":`, {
-              chapterSections,
+              chapterConcepts,
               skills,
               willShowGrid: skills.length > 0
             });
@@ -276,13 +285,14 @@ export default function CoursePage() {
                   {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                 </h2>
 
-                {/* Mastery Grid */}
+                {/* Concept Mastery Grid */}
                 {skills.length > 0 && (
                   <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                     <MasteryGrid
-                      title="Progress Overview"
+                      title="Concept Progress"
                       skills={skills}
-                      columns={10}
+                      columns={15}
+                      showSectionDividers={true}
                     />
                   </div>
                 )}
