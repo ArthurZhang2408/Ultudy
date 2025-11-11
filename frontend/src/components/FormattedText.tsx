@@ -1,9 +1,11 @@
 'use client';
 
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
+import rehypeSanitize from 'rehype-sanitize';
 import 'katex/dist/katex.min.css';
 
 type FormattedTextProps = {
@@ -29,7 +31,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
     <div className={`formatted-text ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeKatex, rehypeSanitize]}
         components={{
           // Style paragraph elements
           p: ({ node, ...props }) => (
@@ -40,7 +42,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
             <pre className="my-3 p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto" {...props} />
           ),
           // Style inline code and code blocks
-          code: ({ node, className, children, ...props }: any) => {
+          code: ({ className, children, ...props }) => {
             // Code blocks have a language- className, inline code doesn't
             const isCodeBlock = className && className.startsWith('language-');
 

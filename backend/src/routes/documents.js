@@ -170,6 +170,12 @@ export default function createDocumentsRouter(options = {}) {
     const ownerId = req.userId;
     const { id } = req.params;
 
+    // Validate document ID format (UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !uuidRegex.test(id)) {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
+
     try {
       const result = await tenantHelpers.withTenant(ownerId, async (client) => {
         // 1. Check if document exists and user owns it
@@ -184,64 +190,55 @@ export default function createDocumentsRouter(options = {}) {
 
         const document = docRows[0];
 
-        // 2. Delete all related data in a transaction
-        await client.query('BEGIN');
+        // 2. Delete all related data (withTenant already provides a transaction)
+        // Delete chunks
+        const { rowCount: chunksDeleted } = await client.query(
+          'DELETE FROM chunks WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
 
-        try {
-          // Delete chunks
-          const { rowCount: chunksDeleted } = await client.query(
-            'DELETE FROM chunks WHERE document_id = $1 AND owner_id = $2',
-            [id, ownerId]
-          );
+        // Delete sections
+        const { rowCount: sectionsDeleted } = await client.query(
+          'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
 
-          // Delete sections
-          const { rowCount: sectionsDeleted } = await client.query(
-            'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
-            [id, ownerId]
-          );
+        // Delete lessons/study sessions
+        const { rowCount: lessonsDeleted } = await client.query(
+          'DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
 
-          // Delete lessons/study sessions
-          const { rowCount: lessonsDeleted } = await client.query(
-            'DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2',
-            [id, ownerId]
-          );
+        // Delete study sessions
+        const { rowCount: sessionsDeleted } = await client.query(
+          'DELETE FROM study_sessions WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
 
-          // Delete study sessions
-          const { rowCount: sessionsDeleted } = await client.query(
-            'DELETE FROM study_sessions WHERE document_id = $1 AND owner_id = $2',
-            [id, ownerId]
-          );
+        // Delete document
+        await client.query(
+          'DELETE FROM documents WHERE id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
 
-          // Delete document
-          await client.query(
-            'DELETE FROM documents WHERE id = $1 AND owner_id = $2',
-            [id, ownerId]
-          );
+        console.log(`[documents] Deleted document ${id}:`, {
+          title: document.title,
+          chunks: chunksDeleted,
+          sections: sectionsDeleted,
+          lessons: lessonsDeleted,
+          sessions: sessionsDeleted
+        });
 
-          await client.query('COMMIT');
-
-          console.log(`[documents] Deleted document ${id}:`, {
-            title: document.title,
+        return {
+          success: true,
+          deleted: {
+            document: document.title,
             chunks: chunksDeleted,
             sections: sectionsDeleted,
             lessons: lessonsDeleted,
             sessions: sessionsDeleted
-          });
-
-          return {
-            success: true,
-            deleted: {
-              document: document.title,
-              chunks: chunksDeleted,
-              sections: sectionsDeleted,
-              lessons: lessonsDeleted,
-              sessions: sessionsDeleted
-            }
-          };
-        } catch (error) {
-          await client.query('ROLLBACK');
-          throw error;
-        }
+          }
+        };
       });
 
       if (!result.success) {
@@ -255,7 +252,7 @@ export default function createDocumentsRouter(options = {}) {
         console.log(`[documents] Deleted PDF file: ${pdfPath}`);
       } catch (fileError) {
         console.warn(`[documents] Failed to delete PDF file for ${id}:`, fileError.message);
-        // Continue even if file deletion fails
+        // Continue even if file deletion fails - file may not exist
       }
 
       res.json({

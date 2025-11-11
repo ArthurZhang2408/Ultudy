@@ -28,6 +28,7 @@ export default function CoursePage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (courseId) {
@@ -66,13 +67,15 @@ export default function CoursePage() {
       return;
     }
 
+    setDeleteError(null);
+
     try {
       const res = await fetch(`/api/documents/${documentId}`, {
         method: 'DELETE'
       });
 
       if (!res.ok) {
-        const error = await res.json();
+        const error = await res.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(error.error || 'Failed to delete document');
       }
 
@@ -83,7 +86,7 @@ export default function CoursePage() {
       fetchCourseData();
     } catch (error) {
       console.error('Failed to delete document:', error);
-      alert(error instanceof Error ? error.message : 'Failed to delete document');
+      setDeleteError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
     }
   }
 
@@ -153,6 +156,26 @@ export default function CoursePage() {
           </Link>
         </div>
       </div>
+
+      {deleteError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Delete Failed</h3>
+              <p className="mt-1 text-sm text-red-700">{deleteError}</p>
+            </div>
+            <button
+              onClick={() => setDeleteError(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <span className="sr-only">Dismiss</span>
+              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {documents.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">

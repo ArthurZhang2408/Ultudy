@@ -149,6 +149,7 @@ function LearnPageContent() {
 
   // Error state
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
 
   // Lesson and learning state
   const [lesson, setLesson] = useState<Lesson | null>(null);
@@ -1126,6 +1127,11 @@ function LearnPageContent() {
               <p className="mt-4 text-sm text-amber-700">
                 Note: This will delete the cached lesson and generate a new one (takes ~10 seconds).
               </p>
+              {regenerateError && (
+                <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {regenerateError}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-3">
@@ -1139,6 +1145,8 @@ function LearnPageContent() {
               onClick={async () => {
                 if (!confirm('Regenerate this lesson with the new format?')) return;
 
+                setRegenerateError(null);
+
                 // Delete the cached lesson first
                 try {
                   const deleteRes = await fetch(`/api/lessons/${lesson.id}`, {
@@ -1146,7 +1154,8 @@ function LearnPageContent() {
                   });
 
                   if (!deleteRes.ok) {
-                    alert('Failed to delete cached lesson. Please try again.');
+                    const error = await deleteRes.json().catch(() => ({ error: 'Unknown error' }));
+                    setRegenerateError(error.error || 'Failed to delete cached lesson. Please try again.');
                     return;
                   }
 
@@ -1154,7 +1163,7 @@ function LearnPageContent() {
                   window.location.reload();
                 } catch (error) {
                   console.error('Failed to delete lesson:', error);
-                  alert('Failed to delete cached lesson. Please try again.');
+                  setRegenerateError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
                 }
               }}
               className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
