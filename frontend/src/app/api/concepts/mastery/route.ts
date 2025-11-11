@@ -109,16 +109,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    console.log('[concepts/mastery] Total concepts found:', concepts.length);
+    console.log('[concepts/mastery] Section map:', sectionMap);
+    console.log('[concepts/mastery] First concept section_id:', concepts[0]?.section_id);
+
     // Attach section info to concepts
-    const conceptsWithSections = concepts.map(concept => ({
-      ...concept,
-      section_number: concept.section_id && sectionMap[concept.section_id]
-        ? sectionMap[concept.section_id].section_number
-        : null,
-      section_name: concept.section_id && sectionMap[concept.section_id]
-        ? sectionMap[concept.section_id].name
-        : null
-    }));
+    const conceptsWithSections = concepts.map(concept => {
+      const hasSection = concept.section_id && sectionMap[concept.section_id];
+      return {
+        ...concept,
+        section_number: hasSection ? sectionMap[concept.section_id].section_number : null,
+        section_name: hasSection ? sectionMap[concept.section_id].name : null
+      };
+    });
+
+    console.log('[concepts/mastery] First concept with section:', conceptsWithSections[0]);
 
     // Sort by chapter, section_number, then by concept name
     conceptsWithSections.sort((a, b) => {

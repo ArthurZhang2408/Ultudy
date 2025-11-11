@@ -1016,6 +1016,7 @@ export default function createStudyRouter(options = {}) {
             cpt.name,
             cpt.chapter,
             cpt.course_id,
+            cpt.section_id,
             cpt.mastery_state,
             cpt.total_attempts,
             cpt.correct_attempts,
@@ -1087,6 +1088,7 @@ export default function createStudyRouter(options = {}) {
           byChapter[chapter].concepts.push({
             id: concept.id,
             name: concept.name,
+            section_id: concept.section_id,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,
@@ -1125,6 +1127,7 @@ export default function createStudyRouter(options = {}) {
           chapterEntry.concepts.push({
             id: concept.id,
             name: concept.name,
+            section_id: concept.section_id,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,

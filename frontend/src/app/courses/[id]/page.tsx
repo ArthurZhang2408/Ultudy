@@ -97,16 +97,41 @@ export default function CoursePage() {
         const conceptResults = await Promise.all(conceptPromises);
         const conceptsMap: Record<string, ConceptWithMastery[]> = {};
 
+        // Deduplicate concepts by ID
+        const seenConceptIds = new Set<string>();
+
         for (const result of conceptResults) {
           if (result) {
             if (!conceptsMap[result.chapterKey]) {
               conceptsMap[result.chapterKey] = [];
             }
-            conceptsMap[result.chapterKey].push(...result.concepts);
+
+            // Only add concepts we haven't seen before
+            for (const concept of result.concepts) {
+              if (!seenConceptIds.has(concept.id)) {
+                seenConceptIds.add(concept.id);
+                conceptsMap[result.chapterKey].push(concept);
+              }
+            }
           }
         }
 
-        console.log('[Course Page] Concepts by chapter:', conceptsMap);
+        // Sort concepts within each chapter
+        for (const chapter of Object.keys(conceptsMap)) {
+          conceptsMap[chapter].sort((a, b) => {
+            // First by section number
+            const sectionA = a.section_number || 999;
+            const sectionB = b.section_number || 999;
+            if (sectionA !== sectionB) {
+              return sectionA - sectionB;
+            }
+            // Then by concept number
+            return (a.concept_number || 0) - (b.concept_number || 0);
+          });
+        }
+
+        console.log('[Course Page] Concepts by chapter (deduplicated):', conceptsMap);
+        console.log('[Course Page] Total unique concepts:', seenConceptIds.size);
         setConceptsByChapter(conceptsMap);
       }
     } catch (error) {
