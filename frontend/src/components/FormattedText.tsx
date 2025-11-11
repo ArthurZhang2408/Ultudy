@@ -35,17 +35,33 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
           p: ({ node, ...props }) => (
             <p className="mb-2 last:mb-0" {...props} />
           ),
-          // Style inline code
-          code: ({ node, inline, ...props }) => (
-            inline ? (
-              <code className="px-1.5 py-0.5 bg-slate-100 text-slate-900 rounded text-sm font-mono" {...props} />
-            ) : (
-              <code className="block px-4 py-3 bg-slate-100 text-slate-900 rounded text-sm font-mono overflow-x-auto" {...props} />
-            )
+          // Style code blocks (wrapped in pre tags)
+          pre: ({ node, ...props }) => (
+            <pre className="my-3 p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto" {...props} />
           ),
+          // Style inline code and code blocks
+          code: ({ node, className, children, ...props }: any) => {
+            // Code blocks have a language- className, inline code doesn't
+            const isCodeBlock = className && className.startsWith('language-');
+
+            if (isCodeBlock) {
+              return (
+                <code className="text-sm font-mono" {...props}>
+                  {children}
+                </code>
+              );
+            }
+
+            // Inline code
+            return (
+              <code className="px-1.5 py-0.5 bg-slate-100 text-slate-900 rounded text-sm font-mono" {...props}>
+                {children}
+              </code>
+            );
+          },
           // Style strong (bold) elements
           strong: ({ node, ...props }) => (
-            <strong className="font-semibold text-slate-900" {...props} />
+            <strong className="font-bold text-slate-900" {...props} />
           ),
           // Style emphasis (italic) elements
           em: ({ node, ...props }) => (

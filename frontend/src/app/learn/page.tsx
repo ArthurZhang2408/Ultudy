@@ -178,15 +178,23 @@ function LearnPageContent() {
       return null;
     }
 
-    // Use document_id and chapter to ensure progress persists across lesson regenerations
+    // Use document_id, chapter, and section_id to ensure each section has separate progress
     const docId = lessonData.document_id || documentId;
     const chapterVal = lessonData.chapter || chapter;
+    const sectionId = lessonData.section_id || selectedSection?.id;
 
     if (!docId) {
       return null;
     }
 
-    // Include chapter in key to separate progress by chapter
+    // Include section_id in key to separate progress by section
+    if (sectionId) {
+      return chapterVal
+        ? `lesson-progress:${docId}:${chapterVal}:${sectionId}`
+        : `lesson-progress:${docId}:${sectionId}`;
+    }
+
+    // Fallback to chapter-level key if no section_id
     return chapterVal
       ? `lesson-progress:${docId}:${chapterVal}`
       : `lesson-progress:${docId}`;
@@ -1177,9 +1185,9 @@ function LearnPageContent() {
           >
             ← {sections.length > 0 ? 'Back to sections' : 'Back to courses'}
           </button>
-          {selectedSection && (
+          {chapter && (
             <span className="text-sm text-slate-600">
-              Section {selectedSection.section_number}: {selectedSection.name}
+              Chapter {chapter}
             </span>
           )}
         </div>
@@ -1187,7 +1195,9 @@ function LearnPageContent() {
         <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">
-              {lesson.topic || (chapter ? `Chapter ${chapter}` : 'Lesson')}
+              {selectedSection
+                ? `Section ${selectedSection.section_number}: ${selectedSection.name}`
+                : (lesson.topic || 'Lesson')}
             </h1>
           </div>
 
