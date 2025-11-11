@@ -69,6 +69,10 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
       }, {} as Record<number, SkillSquare[]>)
     : { 0: skills };
 
+  console.log('[MasteryGrid] showSectionDividers:', showSectionDividers);
+  console.log('[MasteryGrid] groupedSkills:', groupedSkills);
+  console.log('[MasteryGrid] first skill:', skills[0]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
