@@ -278,11 +278,11 @@ export default function CoursePage() {
 
                 {/* Mastery Grid */}
                 {skills.length > 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                     <MasteryGrid
-                      title={`Progress Overview`}
+                      title="Progress Overview"
                       skills={skills}
-                      columns={8}
+                      columns={10}
                     />
                   </div>
                 )}

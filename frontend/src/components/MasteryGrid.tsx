@@ -61,30 +61,31 @@ export function MasteryGrid({ title, skills, columns = 8 }: MasteryGridProps) {
   }, {} as Record<MasteryLevel, number>);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-        <span className="text-sm text-slate-600">
+        <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+        <span className="text-xs text-slate-600">
           {skills.length} {skills.length === 1 ? 'section' : 'sections'}
         </span>
       </div>
 
       {/* Grid of skill squares */}
       <div
-        className="grid gap-2"
+        className="grid gap-1.5"
         style={{
-          gridTemplateColumns: `repeat(${Math.min(columns, skills.length)}, minmax(0, 1fr))`
+          gridTemplateColumns: `repeat(${Math.min(columns, skills.length)}, minmax(0, 1fr))`,
+          maxWidth: `${Math.min(columns, skills.length) * 56}px`
         }}
       >
         {skills.map((skill) => (
           <div key={skill.id} className="relative">
             <button
               className={`
-                w-full aspect-square rounded-lg transition-all duration-200
+                w-12 h-12 rounded-md transition-all duration-200
                 ${getMasteryColor(skill.masteryLevel)}
                 ${skill.onClick ? 'cursor-pointer' : 'cursor-default'}
                 flex items-center justify-center
-                text-white font-semibold text-sm
+                text-white font-bold text-xs
                 shadow-sm
               `}
               onClick={skill.onClick}
@@ -97,19 +98,19 @@ export function MasteryGrid({ title, skills, columns = 8 }: MasteryGridProps) {
 
             {/* Hover tooltip */}
             {hoveredSkill === skill.id && (
-              <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64">
-                <div className="bg-slate-900 text-white text-sm rounded-lg p-3 shadow-xl">
-                  <div className="font-semibold mb-1">{skill.name}</div>
+              <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 pointer-events-none">
+                <div className="bg-slate-900 text-white text-xs rounded-md p-2.5 shadow-xl">
+                  <div className="font-semibold mb-1 text-sm">{skill.name}</div>
                   {skill.description && (
-                    <div className="text-slate-300 text-xs mb-2">{skill.description}</div>
+                    <div className="text-slate-300 text-xs mb-1.5 line-clamp-2">{skill.description}</div>
                   )}
-                  <div className="flex items-center gap-2 text-xs">
-                    <div className={`w-3 h-3 rounded ${getMasteryColor(skill.masteryLevel).split(' ')[0]}`} />
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <div className={`w-2.5 h-2.5 rounded-sm ${getMasteryColor(skill.masteryLevel).split(' ')[0]}`} />
                     <span>{getMasteryLabel(skill.masteryLevel)}</span>
                   </div>
                   {/* Arrow */}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                    <div className="w-2 h-2 bg-slate-900 rotate-45" />
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-0.5">
+                    <div className="w-1.5 h-1.5 bg-slate-900 rotate-45" />
                   </div>
                 </div>
               </div>
@@ -119,15 +120,15 @@ export function MasteryGrid({ title, skills, columns = 8 }: MasteryGridProps) {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-slate-600 pt-2 border-t border-slate-200">
+      <div className="flex flex-wrap gap-3 text-xs text-slate-600 pt-2">
         {(['mastered', 'proficient', 'understood', 'introduced', 'not_started'] as MasteryLevel[]).map((level) => {
           const count = counts[level] || 0;
           if (count === 0) return null;
 
           return (
-            <div key={level} className="flex items-center gap-2">
-              <div className={`w-4 h-4 rounded ${getMasteryColor(level).split(' ')[0]}`} />
-              <span>
+            <div key={level} className="flex items-center gap-1.5">
+              <div className={`w-3 h-3 rounded-sm ${getMasteryColor(level).split(' ')[0]}`} />
+              <span className="text-xs">
                 {getMasteryLabel(level)} ({count})
               </span>
             </div>
