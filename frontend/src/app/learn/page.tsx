@@ -1449,27 +1449,29 @@ function LearnPageContent() {
         <div className="flex gap-2">
           {lesson.concepts.map((_, i) => {
             const status = conceptProgress.get(i);
+            const isCurrent = i === currentConceptIndex;
+
             return (
               <div
                 key={i}
                 className={`h-2 flex-1 rounded-full ${
-                  i === currentConceptIndex
-                    ? 'bg-blue-500'
+                  isCurrent
+                    ? 'bg-yellow-500'
                     : status === 'completed'
                     ? 'bg-green-500'
                     : status === 'wrong'
-                    ? 'bg-orange-500'
+                    ? 'bg-red-500'
                     : status === 'skipped'
-                    ? 'bg-slate-400'
-                    : 'bg-slate-200'
+                    ? 'bg-slate-300'
+                    : 'bg-slate-300'
                 }`}
                 title={
-                  i === currentConceptIndex
-                    ? 'Current'
+                  isCurrent
+                    ? 'Current / In Progress'
                     : status === 'completed'
-                    ? 'Completed'
+                    ? 'All check-ins correct'
                     : status === 'wrong'
-                    ? 'Needs review'
+                    ? 'Incorrect answers'
                     : status === 'skipped'
                     ? 'Skipped'
                     : 'Not started'
