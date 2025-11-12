@@ -29,7 +29,7 @@ type ConceptWithMastery = {
   section_id: string | null;
   section_number: number | null;
   section_name: string | null;
-  concept_number: number;
+  concept_number: number | null;
   mastery_level: MasteryLevel;
   accuracy: number;
   total_attempts: number;
@@ -256,6 +256,22 @@ export default function CoursePage() {
           {chapters.map((chapter) => {
             const chapterConcepts = conceptsByChapter[chapter] || [];
 
+            const orderedConcepts = [...chapterConcepts].sort((a, b) => {
+              const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
+              const sectionB = b.section_number ?? Number.MAX_SAFE_INTEGER;
+              if (sectionA !== sectionB) {
+                return sectionA - sectionB;
+              }
+
+              const conceptA = a.concept_number ?? Number.MAX_SAFE_INTEGER;
+              const conceptB = b.concept_number ?? Number.MAX_SAFE_INTEGER;
+              if (conceptA !== conceptB) {
+                return conceptA - conceptB;
+              }
+
+              return a.name.localeCompare(b.name);
+            });
+
             // Log concepts to see what section numbers they have
             console.log(`[Course Page] Chapter "${chapter}" - Raw concepts:`,
               chapterConcepts.map(c => ({
@@ -268,14 +284,14 @@ export default function CoursePage() {
             );
 
             // Convert concepts to skills for the mastery grid
-            const skills: SkillSquare[] = chapterConcepts.map((concept) => {
+            const skills: SkillSquare[] = orderedConcepts.map((concept) => {
               return {
                 id: concept.id,
                 name: concept.name,
                 masteryLevel: concept.mastery_level,
                 sectionNumber: concept.section_number || undefined,
                 sectionName: concept.section_name || undefined,
-                conceptNumber: concept.concept_number,
+                conceptNumber: concept.concept_number ?? undefined,
                 description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
                 onClick: () => {
                   // Find the document for this chapter
