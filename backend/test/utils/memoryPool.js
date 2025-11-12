@@ -207,13 +207,13 @@ export function createMemoryPool() {
         const id = randomUUID();
 
         // Handle two different INSERT formats:
-        // 1. New format: (owner_id, name, chapter, course_id, document_id, section_id, mastery_state='not_learned')
-        //    - 6 params, mastery_state hardcoded in query
+        // 1. New format: (owner_id, name, chapter, course_id, document_id, section_id, concept_number, mastery_state='not_learned')
+        //    - 7 params, mastery_state hardcoded in query
         // 2. Test format: (owner_id, name, chapter, course_id, document_id, mastery_state, total_attempts, correct_attempts, consecutive_correct, last_reviewed_at)
         //    - 10 params, full mastery tracking
 
         let concept;
-        if (params.length <= 6) {
+        if (params.length <= 7) {
           // New format from lesson generation
           concept = {
             id,
@@ -223,6 +223,7 @@ export function createMemoryPool() {
             course_id: params[3] ?? null,
             document_id: params[4] ?? null,
             section_id: params[5] ?? null,
+            concept_number: params[6] ?? null,
             mastery_state: 'not_learned',
             total_attempts: 0,
             correct_attempts: 0,
@@ -289,6 +290,35 @@ export function createMemoryPool() {
         return { rows };
       }
 
+      if (normalized === 'SELECT id FROM concepts WHERE owner_id = $1 AND name = $2 AND document_id = $3 AND (section_id = $4 OR (section_id IS NULL AND $4 IS NULL))') {
+        const ownerId = params[0];
+        const name = params[1];
+        const documentId = params[2];
+        const sectionId = params[3];
+
+        const rows = Array.from(concepts.values()).filter((concept) => {
+          if (concept.owner_id !== ownerId) {
+            return false;
+          }
+
+          if (state?.currentUserId && state.currentUserId !== ownerId) {
+            return false;
+          }
+
+          if (concept.name !== name || concept.document_id !== documentId) {
+            return false;
+          }
+
+          // Match section_id = $4 OR (section_id IS NULL AND $4 IS NULL)
+          if (sectionId === null) {
+            return concept.section_id === null;
+          }
+          return concept.section_id === sectionId;
+        }).map(concept => ({ id: concept.id }));
+
+        return { rows };
+      }
+
       if (normalized.startsWith('UPDATE concepts SET mastery_state')) {
         const conceptId = params[4];
         const concept = concepts.get(conceptId);
@@ -299,6 +329,20 @@ export function createMemoryPool() {
           concept.correct_attempts = params[2];
           concept.consecutive_correct = params[3];
           concept.last_reviewed_at = new Date();
+          concept.updated_at = new Date();
+        }
+
+        return { rows: [] };
+      }
+
+      if (normalized === 'UPDATE concepts SET concept_number = $1, chapter = $2, course_id = $3 WHERE id = $4') {
+        const conceptId = params[3];
+        const concept = concepts.get(conceptId);
+
+        if (concept) {
+          concept.concept_number = params[0];
+          concept.chapter = params[1];
+          concept.course_id = params[2];
           concept.updated_at = new Date();
         }
 
