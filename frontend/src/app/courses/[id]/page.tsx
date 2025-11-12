@@ -75,18 +75,12 @@ export default function CoursePage() {
               ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
               : `/api/concepts/mastery?document_id=${doc.id}`;
 
-            console.log(`[Course Page] Fetching concept mastery from: ${masteryUrl}`);
             const res = await fetch(masteryUrl);
-            console.log(`[Course Page] Concept mastery response status: ${res.status}`);
 
             if (res.ok) {
               const data = await res.json();
-              console.log(`[Course Page] Concept mastery data for doc ${doc.id}:`, data);
               const chapterKey = doc.chapter || 'Uncategorized';
               return { chapterKey, concepts: data.concepts || [] };
-            } else {
-              const errorText = await res.text();
-              console.error(`[Course Page] Concept mastery fetch failed (${res.status}):`, errorText);
             }
           } catch (error) {
             console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
@@ -116,22 +110,6 @@ export default function CoursePage() {
           }
         }
 
-        // Sort concepts within each chapter
-        for (const chapter of Object.keys(conceptsMap)) {
-          conceptsMap[chapter].sort((a, b) => {
-            // First by section number
-            const sectionA = a.section_number || 999;
-            const sectionB = b.section_number || 999;
-            if (sectionA !== sectionB) {
-              return sectionA - sectionB;
-            }
-            // Then by concept number
-            return (a.concept_number || 0) - (b.concept_number || 0);
-          });
-        }
-
-        console.log('[Course Page] Concepts by chapter (deduplicated):', conceptsMap);
-        console.log('[Course Page] Total unique concepts:', seenConceptIds.size);
         setConceptsByChapter(conceptsMap);
       }
     } catch (error) {
@@ -289,27 +267,31 @@ export default function CoursePage() {
               }))
             );
 
-            const skills: SkillSquare[] = chapterConcepts.map((concept) => ({
-              id: concept.id,
-              name: concept.name,
-              masteryLevel: concept.mastery_level,
-              sectionNumber: concept.section_number || undefined,
-              sectionName: concept.section_name || undefined,
-              conceptNumber: concept.concept_number,
-              description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
-              onClick: () => {
-                // Find the document for this chapter
-                const doc = documentsByChapter[chapter]?.[0];
-                if (doc) {
-                  // Navigate to the specific section if available
-                  if (concept.section_id) {
-                    router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}`);
-                  } else {
-                    handleStartStudy(doc.id, doc.chapter);
+            // Convert concepts to skills for the mastery grid
+            const skills: SkillSquare[] = chapterConcepts.map((concept) => {
+              return {
+                id: concept.id,
+                name: concept.name,
+                masteryLevel: concept.mastery_level,
+                sectionNumber: concept.section_number || undefined,
+                sectionName: concept.section_name || undefined,
+                conceptNumber: concept.concept_number,
+                description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
+                onClick: () => {
+                  // Find the document for this chapter
+                  const doc = documentsByChapter[chapter]?.[0];
+                  if (doc) {
+                    // Navigate to the specific concept using concept name (more robust than index)
+                    if (concept.section_id) {
+                      console.log(`[Course Page] Navigating to section ${concept.section_id}, concept "${concept.name}"`);
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
+                    } else {
+                      handleStartStudy(doc.id, doc.chapter);
+                    }
                   }
                 }
-              }
-            }));
+              };
+            });
 
             console.log(`[Course Page] Chapter "${chapter}" - Skills for grid:`,
               skills.map(s => ({
@@ -322,9 +304,22 @@ export default function CoursePage() {
 
             return (
               <div key={chapter} className="space-y-6">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      const doc = documentsByChapter[chapter]?.[0];
+                      if (doc) {
+                        handleStartStudy(doc.id, doc.chapter);
+                      }
+                    }}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Study
+                  </button>
+                </div>
 
                 {/* Concept Mastery Grid */}
                 {skills.length > 0 && (
@@ -359,21 +354,13 @@ export default function CoursePage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleStartStudy(doc.id, doc.chapter)}
-                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                      >
-                        Study
-                      </button>
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                        className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                        title="Delete document"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      title="Delete document"
+                    >
+                      Delete
+                    </button>
                   </div>
                 ))}
                   </div>

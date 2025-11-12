@@ -84,10 +84,7 @@ class MarkdownConverter:
             page_num = page['page']
             page_md = []
 
-            # Page heading
-            page_md.append(f"## Page {page_num}")
-
-            # Main text content
+            # Main text content (NO page heading marker)
             text = page.get('text', '').strip()
             if text:
                 page_md.append(text)
@@ -143,8 +140,8 @@ class MarkdownConverter:
                 [i for i in images if i.get('page') == page_num]
             )
 
-            # Build markdown
-            page_md = [f"## Page {page_num}"]
+            # Build markdown (NO page heading marker)
+            page_md = []
 
             for item in content_items:
                 page_md.append(item['markdown'])
@@ -213,7 +210,12 @@ class MarkdownConverter:
                 else:
                     markdown = text
             else:
-                markdown = text
+                # Apply bold formatting to non-heading bold text
+                font_weight = block.get('font_weight', 'normal')
+                if font_weight == 'bold':
+                    markdown = f"**{text}**"
+                else:
+                    markdown = text
 
             content_items.append({
                 'type': 'text',

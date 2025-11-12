@@ -128,6 +128,43 @@ function normalizeSources(values) {
   });
 }
 
+/**
+ * Process code block tags in examples
+ * Converts <cb lang="language">code</cb> tags to markdown code blocks
+ */
+function processCodeBlocks(examples) {
+  if (!Array.isArray(examples)) {
+    return [];
+  }
+
+  return examples.map((ex, idx) => {
+    if (typeof ex !== 'string') {
+      console.warn(`[processCodeBlocks] Example ${idx + 1} is not a string:`, typeof ex);
+      return String(ex || '');
+    }
+
+    // Check if this example contains a <cb> tag
+    const cbRegex = /<cb\s+lang="([^"]+)">(.+?)<\/cb>/s;
+    const match = ex.match(cbRegex);
+
+    if (match) {
+      const language = match[1];
+      const code = match[2];
+
+      // Replace \n with actual newlines
+      const processedCode = code.replace(/\\n/g, '\n');
+
+      console.log(`[processCodeBlocks] Example ${idx + 1}: Found code block (${language}, ${processedCode.length} chars)`);
+
+      // Convert to markdown code block
+      return `\`\`\`${language}\n${processedCode}\n\`\`\``;
+    }
+
+    // No code block tag, return as-is
+    return ex;
+  });
+}
+
 function normalizeLessonPayload(payload) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Gemini LLM provider returned an invalid lesson payload');
@@ -259,7 +296,7 @@ function parseJsonOutput(rawText) {
   }
 }
 
-async function callModel(systemPrompt, userPrompt) {
+async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRetries = 3) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is required when using the gemini LLM provider');
@@ -271,21 +308,56 @@ async function callModel(systemPrompt, userPrompt) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelName,
-    systemInstruction: systemPrompt,
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.4
+    systemInstruction: systemPrompt
+  });
+
+  const generationConfig = {
+    responseMimeType: 'application/json',
+    temperature: 0.4
+  };
+
+  // Add response schema if provided
+  if (responseSchema) {
+    generationConfig.responseSchema = responseSchema;
+  }
+
+  // Retry logic for invalid JSON responses
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`[gemini] Attempt ${attempt + 1}/${maxRetries} to generate valid JSON...`);
+
+      const response = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        generationConfig
+      });
+
+      const text = extractResponseText(response);
+      const parsed = parseJsonOutput(text);
+
+      console.log(`[gemini] ✅ Valid JSON received on attempt ${attempt + 1}`);
+      return parsed;
+    } catch (error) {
+      lastError = error;
+
+      if (error.message && error.message.includes('invalid JSON')) {
+        console.warn(`[gemini] ⚠️  Attempt ${attempt + 1} failed with invalid JSON, retrying...`);
+        // Add a small delay before retry (exponential backoff)
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      } else {
+        // If it's not a JSON parsing error, throw immediately
+        throw error;
+      }
     }
-  });
+  }
 
-  const response = await model.generateContent({
-    contents: [
-      { role: 'user', parts: [{ text: userPrompt }] }
-    ]
-  });
-
-  const text = extractResponseText(response);
-  return parseJsonOutput(text);
+  // All retries exhausted
+  console.error(`[gemini] ❌ Failed to get valid JSON after ${maxRetries} attempts`);
+  throw lastError;
 }
 
 function buildLessonPrompt({ topic, query, hits }) {
@@ -399,70 +471,65 @@ ${full_text}
 Create a comprehensive, interactive learning experience that prepares students for exams. Follow these principles:
 
 **FORMATTING:**
-- Use **Markdown formatting** for all text fields (explanations, examples, notes, MCQ text, etc.)
+- Use **Markdown formatting** for all text fields (explanations, notes, MCQ text, etc.)
 - Use **bold** for key terms and important concepts
 - Use *italic* for emphasis and definitions
-- Use inline code (surrounded by backticks) for variable names, function names, or short code snippets
+- Use inline code with single backticks for short code: \`SELECT * FROM table\`
+- **For multi-line code blocks:**
+  * Wrap code in <cb lang="language">code here</cb> tags
+  * Replace "language" with actual language (e.g., sql, python, javascript)
+  * Put the raw code inside the tags WITHOUT markdown fences
+  * Use \\n for newlines inside the code, not literal newlines
+  * Example: <cb lang="sql">CREATE PROCEDURE proc()\\nBEGIN\\n  SELECT * FROM table;\\nEND</cb>
+- **For inline text examples:** Just use plain markdown text in the examples array
 - Use **LaTeX** for mathematical formulas:
   - Inline math: $x^2 + y^2 = z^2$
   - Display math: $$E = mc^2$$
-- Format formulas as LaTeX in the "formula" field
-- DO NOT use plain text for formulas - always use proper LaTeX notation
+- **CRITICAL:** Never use markdown code blocks (triple backticks) directly in JSON strings. Always use <cb> tags for multi-line code.
 
 **PEDAGOGY:**
-- Information completeness: Capture ALL testable content (formulas, definitions, procedures) ${section_name ? `FROM THIS SECTION ONLY` : ''}
-- Hierarchical structure: Main concepts with sub-concepts for nested topics
-- Progressive complexity: Build from fundamentals to advanced topics
-- Active learning: Test understanding at multiple levels
+- Progressive disclosure: One concept at a time
+- Concise explanations: 2-3 sentences max
+- Immediate application: MCQs right after each concept
+- Active learning: No passive reading
+- Extract important formulas, examples, and notes ${section_name ? `FROM THIS SECTION ONLY` : ''}
 
-**EXTRACTION PRIORITY:**
-Extract and organize:
-1. Definitions and terminology
-2. Formulas and equations (with variable explanations)
-3. Procedures and algorithms
-4. Examples and worked problems
-5. Comparisons and contrasts
-6. Edge cases and limitations
+**CRITICAL CONTENT COVERAGE:**
+- **READ THE ENTIRE SECTION** before deciding which concepts to include
+- **IDENTIFY ALL MAJOR TOPICS** covered in the content (e.g., if the section covers both ALTER TABLE operations AND stored procedures, include concepts for BOTH)
+- **DO NOT skip important topics** just because they appear later in the text
+- **ENSURE COMPREHENSIVE COVERAGE** of all substantive educational content
+- If the section covers multiple distinct topics, create concepts for ALL of them
 
 **STRUCTURE:**
 
 1. **High-Level Summary** (3-5 numbered bullets):
-   - What this chapter covers
+   - What this ${section_name ? 'section' : 'chapter'} covers
    - Why it matters / real-world relevance
    - What you'll be able to do after learning this
 
-2. **Concepts** (6-10 key concepts that cover the most important testable material):
+2. **Concepts** (6-15 key concepts - adjust based on content breadth):
+   **IMPORTANT:** The number of concepts should match the breadth of content:
+   - If section covers 1-2 major topics: 6-8 concepts
+   - If section covers 3-4 major topics: 9-12 concepts
+   - If section covers 5+ major topics: 12-15 concepts
 
-   **For Main Concepts** (broad topics that contain multiple sub-topics):
-   - name: Main concept name
-   - explanation: 4-6 sentences covering the core idea
-   - key_details: Object containing:
-     * formulas: Array of {formula: "equation", variables: "what each variable means"}
-     * examples: Array of concrete examples or worked problems
-     * important_notes: Array of critical points, edge cases, or common misconceptions
-   - sub_concepts: Array of related sub-topics (2-4 sub-concepts if applicable)
-   - mcqs: 2-3 integration questions testing the overall concept
-
-   **For Sub-Concepts** (specific topics under a main concept):
-   - name: Sub-concept name
-   - explanation: 3-4 sentences focused on this specific aspect
-   - key_details: Object with relevant formulas/examples/notes
-   - mcqs: 1-2 targeted questions
-
-   **For Standalone Concepts** (single focused topics):
-   - name: Concept name
-   - explanation: 3-5 sentences
-   - key_details: Formulas/examples/notes as applicable
-   - mcqs: 2 questions testing understanding
+   For each concept, provide:
+   - **name**: Clear, descriptive concept name
+   - **explanation**: 2-3 sentence focused explanation with **key terms** in bold and *definitions* in italics
+   - **key_details**: Object containing (all optional, include only if relevant):
+     * **formulas**: Array of {formula: "LaTeX equation", variables: "what each variable means"}
+     * **examples**: Array of concrete examples or worked problems using Markdown
+     * **important_notes**: Array of critical points, edge cases, or common misconceptions
+   - **mcqs**: 2-3 questions testing understanding
 
 **MCQ REQUIREMENTS:**
 - 4 options (A, B, C, D) per question
-- ONE correct answer
+- ONE correct answer (CRITICAL: exactly one option with "correct": true)
 - Each option needs an explanation:
   * Correct: Why it's right + key insight
-  * Incorrect: Why it's wrong + what misconception this addresses
-- Mix question types: definitional, conceptual, application, comparison
-- Include calculation questions when relevant
+  * Incorrect: Why it's wrong + common misconception addressed
+- Questions should test conceptual understanding, not memorization
 
 Return JSON in this EXACT structure:
 {
@@ -474,71 +541,26 @@ Return JSON in this EXACT structure:
   },
   "concepts": [
     {
-      "name": "Main Concept Name",
-      "is_main_concept": true,
-      "explanation": "4-6 sentence comprehensive explanation with **key terminology** *defined* and variables highlighted using Markdown formatting.",
+      "name": "Concept Name",
+      "explanation": "2-3 sentence explanation with **key terms** in bold and *definitions* in italics. Use Markdown and LaTeX for formulas like $E = mc^2$.",
       "key_details": {
         "formulas": [
           {"formula": "$$E = mc^2$$", "variables": "$E$ is energy (joules), $m$ is mass (kg), $c$ is speed of light"}
         ],
         "examples": [
-          "**Example 1:** If mass $m = 2$ kg, then energy $E = 2 \\\\times (3 \\\\times 10^8)^2 = 1.8 \\\\times 10^{17}$ J",
-          "**Example 2:** This shows *exponential* relationship between mass and energy"
+          "**Example 1:** Calculate energy for mass $m = 2$ kg: $E = 2 \\\\times (3 \\\\times 10^8)^2 = 1.8 \\\\times 10^{17}$ J"
         ],
         "important_notes": [
-          "**Critical:** This only applies in *relativistic* contexts where $v \\\\approx c$",
+          "**Critical:** Only applies in *relativistic* contexts",
           "**Common mistake:** Don't confuse rest mass with relativistic mass"
         ]
       },
-      "sub_concepts": [
-        {
-          "name": "Sub-Concept Name",
-          "explanation": "3-4 sentences focused on this specific aspect.",
-          "key_details": {
-            "formulas": [],
-            "examples": ["Example specific to sub-concept"],
-            "important_notes": []
-          },
-          "mcqs": [
-            {
-              "question": "Question testing this sub-concept",
-              "options": [
-                {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
-                {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct + insight"},
-                {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
-                {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
-              ]
-            }
-          ]
-        }
-      ],
       "mcqs": [
         {
-          "question": "Integration question testing overall concept",
+          "question": "Clear question testing understanding",
           "options": [
-            {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
-            {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct"},
-            {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
-            {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Standalone Concept",
-      "is_main_concept": false,
-      "explanation": "3-5 sentences.",
-      "key_details": {
-        "formulas": [],
-        "examples": [],
-        "important_notes": []
-      },
-      "mcqs": [
-        {
-          "question": "Question testing understanding",
-          "options": [
-            {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong"},
-            {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct"},
+            {"letter": "A", "text": "Option text", "correct": false, "explanation": "Why wrong + misconception"},
+            {"letter": "B", "text": "Option text", "correct": true, "explanation": "Why correct + insight"},
             {"letter": "C", "text": "Option text", "correct": false, "explanation": "Why wrong"},
             {"letter": "D", "text": "Option text", "correct": false, "explanation": "Why wrong"}
           ]
@@ -549,12 +571,12 @@ Return JSON in this EXACT structure:
 }
 
 CRITICAL REMINDERS:
-- Extract ALL testable content - don't summarize away important details
-- Include ALL formulas with complete variable explanations
-- Provide concrete examples with specifics (numbers, scenarios)
-- Focus on 6-10 core concepts that capture the most testable material
-- Use sub_concepts when a topic naturally breaks into multiple parts
+- Keep explanations SHORT (2-3 sentences)
+- NO sub_concepts or hierarchical nesting - flat structure only
+- Use key_details (formulas/examples/notes) but keep it simple
+- Exactly ONE correct answer per MCQ (crucial!)
 - Every MCQ option needs a detailed explanation
+- Use Markdown and LaTeX formatting throughout
 - Base everything on the provided content
 - Test understanding, not memorization
 - IMPORTANT: Return ONLY valid JSON, no markdown code blocks, no explanatory text before or after
@@ -652,7 +674,7 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     const keyDetails = concept?.key_details || {};
     return {
       formulas: Array.isArray(keyDetails.formulas) ? keyDetails.formulas : [],
-      examples: Array.isArray(keyDetails.examples) ? keyDetails.examples : [],
+      examples: processCodeBlocks(keyDetails.examples), // Process <cb> tags to markdown code blocks
       important_notes: Array.isArray(keyDetails.important_notes) ? keyDetails.important_notes : []
     };
   }
@@ -689,7 +711,7 @@ function normalizeFullContextLessonPayload(payload, document_id) {
       });
     });
 
-    // Add main concept
+    // Add concept (simple flat structure, no sub-concepts)
     normalizedConcepts.push({
       name,
       explanation: conceptExplanation,
@@ -697,45 +719,7 @@ function normalizeFullContextLessonPayload(payload, document_id) {
       examples: keyDetails.examples,
       formulas: keyDetails.formulas,
       important_notes: keyDetails.important_notes,
-      is_main_concept: concept.is_main_concept === true,
       check_ins: checkIns
-    });
-
-    // Process sub_concepts if they exist
-    const subConcepts = Array.isArray(concept.sub_concepts) ? concept.sub_concepts : [];
-    subConcepts.forEach((subConcept, subIdx) => {
-      const subName = requireString(subConcept?.name, `concept ${idx + 1} sub-concept ${subIdx + 1} name`);
-      const subExplanation = requireString(subConcept?.explanation, `concept ${idx + 1} sub-concept ${subIdx + 1} explanation`);
-
-      const subKeyDetails = extractKeyDetails(subConcept);
-
-      // Process sub-concept MCQs
-      const subMcqs = Array.isArray(subConcept.mcqs) ? subConcept.mcqs : [];
-      const subCheckIns = processMCQs(subMcqs, `concept ${idx + 1} sub-concept ${subIdx + 1}`);
-
-      // Add sub-concept's check-ins to flat array
-      subCheckIns.forEach(checkIn => {
-        allCheckins.push({
-          concept: subName,
-          question: checkIn.question,
-          options: checkIn.options,
-          expected_answer: checkIn.expected_answer,
-          hint: checkIn.hint
-        });
-      });
-
-      // Add sub-concept as a regular concept (flattened)
-      normalizedConcepts.push({
-        name: subName,
-        explanation: subExplanation,
-        analogies: [], // Sub-concepts don't have analogies in new structure
-        examples: subKeyDetails.examples,
-        formulas: subKeyDetails.formulas,
-        important_notes: subKeyDetails.important_notes,
-        is_main_concept: false,
-        parent_concept: name, // Track which main concept this belongs to
-        check_ins: subCheckIns
-      });
     });
   });
 
@@ -748,6 +732,114 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     document_id
   };
 }
+
+// JSON Schema for lesson generation (structured output)
+const LESSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    topic: {
+      type: 'string',
+      description: 'The topic of the lesson'
+    },
+    summary: {
+      type: 'object',
+      properties: {
+        what: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'What this lesson covers (3-5 bullet points)'
+        },
+        why: {
+          type: 'string',
+          description: 'Why this topic matters'
+        },
+        outcome: {
+          type: 'string',
+          description: 'What students will be able to do after learning'
+        }
+      },
+      required: ['what', 'why', 'outcome']
+    },
+    concepts: {
+      type: 'array',
+      description: 'Array of 6-15 key concepts. Adjust count based on content breadth: 6-8 for narrow topics, 9-12 for moderate breadth, 12-15 for comprehensive coverage of multiple major topics. CRITICAL: Ensure ALL major topics in the section are covered.',
+      items: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Clear, descriptive concept name'
+          },
+          explanation: {
+            type: 'string',
+            description: '2-3 sentence focused explanation'
+          },
+          key_details: {
+            type: 'object',
+            properties: {
+              examples: {
+                type: 'array',
+                items: {
+                  type: 'string',
+                  description: 'Example text or code. For multi-line code, use <cb lang="language">code</cb> tags with \\n for newlines'
+                },
+                description: 'Concrete examples demonstrating the concept'
+              },
+              important_notes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Important notes or caveats (plain text with inline markdown only)'
+              }
+            }
+          },
+          mcqs: {
+            type: 'array',
+            description: 'Array of 1-2 multiple choice questions. CRITICAL: Exactly ONE option must have correct=true, all others must have correct=false.',
+            items: {
+              type: 'object',
+              properties: {
+                question: {
+                  type: 'string',
+                  description: 'The MCQ question'
+                },
+                options: {
+                  type: 'array',
+                  description: 'Exactly 4 options (A, B, C, D). EXACTLY ONE must have correct=true.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      letter: {
+                        type: 'string',
+                        description: 'Option letter: A, B, C, or D',
+                        enum: ['A', 'B', 'C', 'D']
+                      },
+                      text: {
+                        type: 'string',
+                        description: 'The option text'
+                      },
+                      correct: {
+                        type: 'boolean',
+                        description: 'CRITICAL: Exactly ONE option must be true, all others must be false'
+                      },
+                      explanation: {
+                        type: 'string',
+                        description: 'Explanation of why this option is correct or incorrect'
+                      }
+                    },
+                    required: ['letter', 'text', 'correct', 'explanation']
+                  }
+                }
+              },
+              required: ['question', 'options']
+            }
+          }
+        },
+        required: ['name', 'explanation']
+      }
+    }
+  },
+  required: ['topic', 'summary', 'concepts']
+};
 
 export default async function createGeminiLLMProvider() {
   return {
@@ -795,8 +887,20 @@ export default async function createGeminiLLMProvider() {
       });
 
       try {
-        console.log('[gemini] Calling model for full context lesson...');
-        const lesson = await callModel(systemInstruction, userPrompt);
+        console.log('[gemini] ==================== LLM PROMPT DETAILS ====================');
+        console.log('[gemini] Section-scoped:', !!section_name);
+        if (section_name) {
+          console.log('[gemini] Section name:', section_name);
+          console.log('[gemini] Section description:', section_description);
+        }
+        console.log('[gemini] Full text length:', full_text.length, 'characters');
+        console.log('[gemini] Full text preview (first 800 chars):\n', full_text.substring(0, 800));
+        console.log('[gemini] Full text preview (last 800 chars):\n', full_text.substring(Math.max(0, full_text.length - 800)));
+        console.log('[gemini] User prompt length:', userPrompt.length, 'characters');
+        console.log('[gemini] ===============================================================');
+
+        console.log('[gemini] Calling model for full context lesson with JSON schema...');
+        const lesson = await callModel(systemInstruction, userPrompt, LESSON_SCHEMA);
         console.log('[gemini] Raw lesson response:', JSON.stringify(lesson, null, 2));
 
         console.log('[gemini] Normalizing lesson payload...');

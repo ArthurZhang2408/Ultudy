@@ -83,7 +83,19 @@ export function createPdfIngestionService(options = {}) {
     let pages;
 
     try {
+      const extractionMode = process.env.PDF_EXTRACTION_MODE || 'auto';
+      console.log(`[ingest] Using PDF extraction mode: ${extractionMode}`);
+
       pages = await extractor(storagePath, options.extractOptions || {});
+
+      console.log(`[ingest] Extraction complete: ${pages.length} pages`);
+      if (pages[0]?._fullResult) {
+        console.log('[ingest] Rich content detected:', {
+          tables: pages[0]._fullResult.tables?.length || 0,
+          formulas: pages[0]._fullResult.formulas?.length || 0,
+          code_blocks: pages[0]._fullResult.code_blocks?.length || 0
+        });
+      }
     } catch (error) {
       await fs.rm(storagePath, { force: true });
       throw error;
@@ -91,6 +103,7 @@ export function createPdfIngestionService(options = {}) {
 
     const pageCount = pages.length;
     // Extract full text from all pages for MVP v1.0
+    // No page markers - we split by section headers, not pages
     const fullText = pages.map((p) => p.text).join('\n\n');
 
     // MVP v1.0: Embeddings are optional now (only needed for legacy RAG search)

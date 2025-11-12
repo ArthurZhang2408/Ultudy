@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pdfParse from 'pdf-parse';
+import { extractTextWithDeterministic, extractPageRange } from './extractor-enhanced.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT_PATH = path.resolve(__dirname, '..', '..', 'scripts', 'extract_text.py');
@@ -78,7 +79,39 @@ export async function extractTextWithPdfParse(filePath) {
   return pages.map((page, index) => ({ page: page.page ?? index + 1, text: page.text }));
 }
 
+/**
+ * Extract text from PDF with automatic mode selection
+ *
+ * Supported extraction modes (via PDF_EXTRACTION_MODE env var):
+ * - 'enhanced': Uses deterministic extraction with markdown support (tables, formulas, code)
+ * - 'standard': Uses pdf-parse (simple, fast, no dependencies)
+ * - 'auto' (default): Tries Python extractor, falls back to pdf-parse
+ *
+ * @param {string} filePath - Path to PDF file
+ * @param {object} options - Extraction options
+ * @returns {Promise<Array>} Array of page objects
+ */
 export async function extractTextFromPdf(filePath, options = {}) {
+  const mode = process.env.PDF_EXTRACTION_MODE || 'auto';
+
+  console.log(`[extractor] Using PDF extraction mode: ${mode}`);
+
+  // Enhanced mode: Use deterministic extraction with rich content support
+  if (mode === 'enhanced') {
+    try {
+      return await extractTextWithDeterministic(filePath, options);
+    } catch (error) {
+      console.error('[extractor] Enhanced extraction failed, falling back:', error.message);
+      // Fall through to standard mode
+    }
+  }
+
+  // Standard mode: Use pdf-parse directly
+  if (mode === 'standard') {
+    return extractTextWithPdfParse(filePath);
+  }
+
+  // Auto mode (default): Try Python extractor, fall back to pdf-parse
   const usePython = options.usePython ?? true;
 
   if (usePython) {
@@ -89,10 +122,14 @@ export async function extractTextFromPdf(filePath, options = {}) {
       if (options.strict) {
         throw error;
       }
+      console.log('[extractor] Python extractor not available, using pdf-parse fallback');
     }
   }
 
   return extractTextWithPdfParse(filePath);
 }
+
+// Re-export enhanced extractor functions for direct use
+export { extractTextWithDeterministic, extractPageRange };
 
 export default extractTextFromPdf;

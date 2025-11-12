@@ -54,6 +54,7 @@ type DocumentInfo = {
   chapter: string | null;
   pages: number;
   uploaded_at: string;
+  course_id: string | null;
 };
 
 type Lesson = {
@@ -137,6 +138,8 @@ function LearnPageContent() {
   const searchParams = useSearchParams();
   const documentId = searchParams.get('document_id');
   const chapter = searchParams.get('chapter');
+  const urlSectionId = searchParams.get('section_id');
+  const targetConceptName = searchParams.get('concept_name') || null;
 
   // Document and section-related state
   const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
@@ -145,7 +148,6 @@ function LearnPageContent() {
   const [generatingSections, setGeneratingSections] = useState(false);
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
   const [generatingLesson, setGeneratingLesson] = useState(false);
-  const [showingDocumentSummary, setShowingDocumentSummary] = useState(true);
 
   // Error state
   const [error, setError] = useState<{ message: string; retry?: () => void } | null>(null);
@@ -155,7 +157,7 @@ function LearnPageContent() {
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [showingSummary, setShowingSummary] = useState(true);
-  const [showingSections, setShowingSections] = useState(false);
+  const [showingSections, setShowingSections] = useState(true);
   const [currentConceptIndex, setCurrentConceptIndex] = useState(0);
   const [currentMCQIndex, setCurrentMCQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -208,6 +210,20 @@ function LearnPageContent() {
       loadDocumentAndSections();
     }
   }, [documentId]);
+
+  // Auto-load lesson when section_id is in URL (from grid click)
+  useEffect(() => {
+    if (!urlSectionId || !documentId || sections.length === 0 || lesson) {
+      return;
+    }
+
+    // Find the section matching the URL parameter
+    const targetSection = sections.find(s => s.id === urlSectionId);
+    if (targetSection) {
+      console.log(`[learn] Auto-loading section from URL: ${targetSection.name}`);
+      loadOrGenerateLesson(targetSection);
+    }
+  }, [urlSectionId, documentId, sections]);
 
   async function loadDocumentAndSections() {
     setLoading(true);
@@ -271,7 +287,6 @@ function LearnPageContent() {
       if (res.ok) {
         const data = await res.json();
         setSections(data.sections || []);
-        setShowingDocumentSummary(false);
         setShowingSections(true);
       } else {
         const errorData = await res.json();
@@ -289,6 +304,91 @@ function LearnPageContent() {
     } finally {
       setGeneratingSections(false);
       setLoadingSections(false);
+    }
+  }
+
+  // Load existing lesson or generate if not found (for grid navigation)
+  async function loadOrGenerateLesson(section: Section) {
+    console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
+    setGeneratingLesson(true);
+    setSelectedSection(section);
+    setError(null);
+
+    try {
+      // Call generate endpoint - it will return existing lesson if found
+      console.log(`[learn] Loading/generating lesson for section ${section.id}...`);
+      const res = await fetch('/api/lessons/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          section_id: section.id,
+          chapter: chapter || undefined,
+          include_check_ins: true
+        })
+      });
+
+      if (res.ok) {
+        const rawData = await res.json();
+        console.log('[learn] Received lesson data:', rawData);
+        const normalizedLesson = normalizeLesson(rawData);
+        console.log('[learn] Normalized lesson:', normalizedLesson);
+        setLesson(normalizedLesson);
+
+        // Update section to mark concepts as generated
+        setSections(prev => prev.map(s =>
+          s.id === section.id ? { ...s, concepts_generated: true } : s
+        ));
+
+        // Check if we should navigate directly to a specific concept by name
+        console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
+        if (targetConceptName) {
+          const concepts = normalizedLesson.concepts || [];
+          // Search for concept by name (case-insensitive)
+          const targetIndex = concepts.findIndex(c =>
+            c.name.toLowerCase() === targetConceptName.toLowerCase()
+          );
+
+          console.log('[learn] Available concept names:', concepts.map(c => c.name));
+          console.log('[learn] Searching for:', targetConceptName);
+          console.log('[learn] Found concept at index:', targetIndex);
+
+          if (targetIndex >= 0) {
+            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+            setCurrentConceptIndex(targetIndex);
+            setCurrentMCQIndex(0);
+            setShowingSections(false);
+            setShowingSummary(false);
+          } else {
+            // Concept not found, show summary
+            console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
+            setShowingSections(false);
+            setShowingSummary(true);
+          }
+        } else {
+          // No target concept, show summary screen
+          setShowingSections(false);
+          setShowingSummary(true);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
+        const errorMessage = errorData.details
+          ? `${errorData.error}\n\n${errorData.details}`
+          : errorData.error || 'Failed to load lesson';
+        setError({
+          message: errorMessage,
+          retry: () => loadOrGenerateLesson(section)
+        });
+      }
+    } catch (error) {
+      console.error('[learn] Error loading/generating lesson:', error);
+      setError({
+        message: 'Failed to load lesson. Please check your connection and try again.',
+        retry: () => loadOrGenerateLesson(section)
+      });
+    } finally {
+      setGeneratingLesson(false);
     }
   }
 
@@ -321,9 +421,37 @@ function LearnPageContent() {
           s.id === section.id ? { ...s, concepts_generated: true } : s
         ));
 
-        // Show summary screen
-        setShowingSections(false);
-        setShowingSummary(true);
+        // Check if we should navigate directly to a specific concept by name
+        console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
+        if (targetConceptName) {
+          const concepts = normalizedLesson.concepts || [];
+          // Search for concept by name (case-insensitive)
+          const targetIndex = concepts.findIndex(c =>
+            c.name.toLowerCase() === targetConceptName.toLowerCase()
+          );
+
+          console.log('[learn] Available concept names:', concepts.map(c => c.name));
+          console.log('[learn] Searching for:', targetConceptName);
+          console.log('[learn] Found concept at index:', targetIndex);
+
+          if (targetIndex >= 0) {
+            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+            setCurrentConceptIndex(targetIndex);
+            setCurrentMCQIndex(0);
+            setShowingSections(false);
+            setShowingSummary(false);
+          } else {
+            // Concept not found, show summary
+            console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
+            setShowingSections(false);
+            setShowingSummary(true);
+          }
+        } else {
+          // No target concept, show summary screen
+          setShowingSections(false);
+          setShowingSummary(true);
+        }
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.details
@@ -422,6 +550,27 @@ function LearnPageContent() {
       console.error('Failed to persist lesson progress:', error);
     }
   }, [lesson, currentConceptIndex, currentMCQIndex, conceptProgress, answerHistory]);
+
+  // Handle direct navigation to a specific concept via URL (name-based)
+  useEffect(() => {
+    if (!lesson || !targetConceptName || showingSummary) {
+      return;
+    }
+
+    const concepts = lesson.concepts || [];
+    // Search for concept by name (case-insensitive)
+    const targetIndex = concepts.findIndex(c =>
+      c.name.toLowerCase() === targetConceptName.toLowerCase()
+    );
+
+    if (targetIndex >= 0 && targetIndex !== currentConceptIndex) {
+      console.log(`[learn] useEffect navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+      setCurrentConceptIndex(targetIndex);
+      setCurrentMCQIndex(0);
+      setShowingSummary(false);
+      setShowingSections(false);
+    }
+  }, [lesson, targetConceptName, showingSummary, currentConceptIndex]);
 
   useEffect(() => {
     if (showingSummary) {
@@ -853,102 +1002,6 @@ function LearnPageContent() {
   }
 
   // Show document summary screen (first screen after loading)
-  if (showingDocumentSummary && documentInfo) {
-    const hasSections = sections.length > 0;
-    const needsGeneration = !hasSections && !generatingSections;
-
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <button
-            onClick={() => router.push('/courses')}
-            className="text-sm text-slate-600 hover:text-slate-900"
-          >
-            ← Back to courses
-          </button>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              {documentInfo.title}
-            </h1>
-            {documentInfo.material_type && (
-              <p className="mt-2 text-sm text-slate-600">
-                {documentInfo.material_type}
-                {chapter && ` • Chapter ${chapter}`}
-              </p>
-            )}
-            {documentInfo.pages && (
-              <p className="mt-1 text-sm text-slate-600">
-                {documentInfo.pages} pages
-              </p>
-            )}
-          </div>
-
-          <div className="prose prose-slate max-w-none">
-            <p className="text-slate-700 text-lg leading-relaxed">
-              This document has been organized into sections for easier learning.
-              Each section focuses on a specific topic and contains multiple concepts
-              with explanations, examples, and practice questions.
-            </p>
-          </div>
-
-          {hasSections && (
-            <div className="rounded-lg bg-green-50 p-6">
-              <h3 className="font-semibold text-green-900 mb-3">
-                {sections.length} sections ready to study:
-              </h3>
-              <div className="space-y-2">
-                {sections.map((section, idx) => (
-                  <div key={section.id} className="flex items-start gap-2 text-green-800">
-                    <span className="text-green-600 font-semibold">{idx + 1}.</span>
-                    <span>{section.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {needsGeneration && (
-            <div className="rounded-lg bg-blue-50 p-6">
-              <p className="text-blue-900">
-                Click "Start Learning" below to analyze this document and extract its major sections.
-                This will take about 10-20 seconds.
-              </p>
-            </div>
-          )}
-
-          {generatingSections && (
-            <div className="rounded-lg bg-blue-50 p-4 text-center">
-              <p className="text-blue-900 font-medium">
-                Analyzing document structure...
-              </p>
-              <p className="text-sm text-blue-700 mt-1">
-                Extracting major sections from the document
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={async () => {
-              if (hasSections) {
-                setShowingDocumentSummary(false);
-                setShowingSections(true);
-              } else {
-                await generateSections();
-              }
-            }}
-            disabled={generatingSections}
-            className="w-full rounded-md bg-blue-600 px-6 py-3 text-base font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {hasSections ? 'View Sections' : generatingSections ? 'Analyzing...' : 'Start Learning'}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Show section selection screen
   if (showingSections && sections.length > 0) {
     return (
@@ -956,12 +1009,16 @@ function LearnPageContent() {
         <div>
           <button
             onClick={() => {
-              setShowingSections(false);
-              setShowingDocumentSummary(true);
+              const courseId = documentInfo?.course_id;
+              if (courseId) {
+                router.push(`/courses/${courseId}`);
+              } else {
+                router.push('/courses');
+              }
             }}
             className="text-sm text-slate-600 hover:text-slate-900"
           >
-            ← Back to document summary
+            ← Back to course
           </button>
         </div>
 

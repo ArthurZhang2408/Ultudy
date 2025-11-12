@@ -197,6 +197,12 @@ export default function createDocumentsRouter(options = {}) {
           [id, ownerId]
         );
 
+        // Delete concepts (MUST be before sections since concepts reference sections)
+        const { rowCount: conceptsDeleted } = await client.query(
+          'DELETE FROM concepts WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
         // Delete sections
         const { rowCount: sectionsDeleted } = await client.query(
           'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
@@ -224,6 +230,7 @@ export default function createDocumentsRouter(options = {}) {
         console.log(`[documents] Deleted document ${id}:`, {
           title: document.title,
           chunks: chunksDeleted,
+          concepts: conceptsDeleted,
           sections: sectionsDeleted,
           lessons: lessonsDeleted,
           sessions: sessionsDeleted
@@ -234,6 +241,7 @@ export default function createDocumentsRouter(options = {}) {
           deleted: {
             document: document.title,
             chunks: chunksDeleted,
+            concepts: conceptsDeleted,
             sections: sectionsDeleted,
             lessons: lessonsDeleted,
             sessions: sessionsDeleted

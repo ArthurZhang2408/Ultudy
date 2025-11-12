@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'document_id is required' }, { status: 400 });
     }
 
-    // Fetch progress data to get concept mastery
-    const progressUrl = `${getBackendUrl()}/progress/overview`;
+    // Fetch progress data to get concept mastery (filtered by document_id)
+    const progressUrl = `${getBackendUrl()}/progress/overview?document_id=${encodeURIComponent(documentId)}`;
     const progressResponse = await fetch(progressUrl, {
       method: 'GET',
       headers: {
@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
               name: concept.name,
               chapter: chapterKey,
               section_id: concept.section_id || null,
+              concept_number: concept.concept_number || null,
               mastery_level: masteryLevel,
               accuracy,
               total_attempts: totalAttempts,
@@ -125,28 +126,24 @@ export async function GET(request: NextRequest) {
 
     console.log('[concepts/mastery] First concept with section:', conceptsWithSections[0]);
 
-    // Sort by chapter, section_number, then by concept name
+    // Sort by chapter, section_number, then by concept_number (lesson order)
+    // This preserves the order concepts appear in lessons
     conceptsWithSections.sort((a, b) => {
       if (a.chapter !== b.chapter) {
         return a.chapter.localeCompare(b.chapter, undefined, { numeric: true });
       }
       if (a.section_number !== b.section_number) {
-        return (a.section_number || 0) - (b.section_number || 0);
+        return (a.section_number || 999) - (b.section_number || 999);
       }
+      // Sort by concept_number (from database) to preserve lesson order
+      // Fallback to name if concept_number is missing (for old data)
+      if (a.concept_number !== null && b.concept_number !== null) {
+        return a.concept_number - b.concept_number;
+      }
+      if (a.concept_number !== null) return -1;
+      if (b.concept_number !== null) return 1;
       return a.name.localeCompare(b.name);
     });
-
-    // Assign concept numbers within each section
-    let currentSection = null;
-    let conceptCounter = 1;
-
-    for (const concept of conceptsWithSections) {
-      if (concept.section_number !== currentSection) {
-        currentSection = concept.section_number;
-        conceptCounter = 1;
-      }
-      concept.concept_number = conceptCounter++;
-    }
 
     return NextResponse.json({
       concepts: conceptsWithSections,
