@@ -17,7 +17,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
 
-    const backendResponse = await fetch(`${getBackendUrl()}/upload/pdf`, {
+    // Use new LLM-based structured extraction endpoint
+    const backendResponse = await fetch(`${getBackendUrl()}/upload/pdf-structured`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`

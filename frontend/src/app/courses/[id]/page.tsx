@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
+import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 
 type Course = {
   id: string;
@@ -21,6 +22,20 @@ type Document = {
   uploaded_at: string;
 };
 
+type ConceptWithMastery = {
+  id: string;
+  name: string;
+  chapter: string;
+  section_id: string | null;
+  section_number: number | null;
+  section_name: string | null;
+  concept_number: number;
+  mastery_level: MasteryLevel;
+  accuracy: number;
+  total_attempts: number;
+  correct_attempts: number;
+};
+
 export default function CoursePage() {
   const params = useParams();
   const courseId = params.id as string;
@@ -29,6 +44,7 @@ export default function CoursePage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
 
   useEffect(() => {
     if (courseId) {
@@ -49,7 +65,52 @@ export default function CoursePage() {
       const docsRes = await fetch(`/api/documents?course_id=${courseId}`);
       if (docsRes.ok) {
         const docsData = await docsRes.json();
-        setDocuments(docsData.documents || []);
+        const docs = docsData.documents || [];
+        setDocuments(docs);
+
+        // Fetch concept mastery data for each document
+        const conceptPromises = docs.map(async (doc: Document) => {
+          try {
+            const masteryUrl = doc.chapter
+              ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+              : `/api/concepts/mastery?document_id=${doc.id}`;
+
+            const res = await fetch(masteryUrl);
+
+            if (res.ok) {
+              const data = await res.json();
+              const chapterKey = doc.chapter || 'Uncategorized';
+              return { chapterKey, concepts: data.concepts || [] };
+            }
+          } catch (error) {
+            console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
+          }
+          return null;
+        });
+
+        const conceptResults = await Promise.all(conceptPromises);
+        const conceptsMap: Record<string, ConceptWithMastery[]> = {};
+
+        // Deduplicate concepts by ID
+        const seenConceptIds = new Set<string>();
+
+        for (const result of conceptResults) {
+          if (result) {
+            if (!conceptsMap[result.chapterKey]) {
+              conceptsMap[result.chapterKey] = [];
+            }
+
+            // Only add concepts we haven't seen before
+            for (const concept of result.concepts) {
+              if (!seenConceptIds.has(concept.id)) {
+                seenConceptIds.add(concept.id);
+                conceptsMap[result.chapterKey].push(concept);
+              }
+            }
+          }
+        }
+
+        setConceptsByChapter(conceptsMap);
       }
     } catch (error) {
       console.error('Failed to fetch course data:', error);
@@ -192,12 +253,90 @@ export default function CoursePage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {chapters.map((chapter) => (
-            <div key={chapter} className="space-y-3">
-              <h2 className="text-lg font-semibold text-slate-900">
-                {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
-              </h2>
-              <div className="grid gap-3">
+          {chapters.map((chapter) => {
+            const chapterConcepts = conceptsByChapter[chapter] || [];
+
+            // Log concepts to see what section numbers they have
+            console.log(`[Course Page] Chapter "${chapter}" - Raw concepts:`,
+              chapterConcepts.map(c => ({
+                id: c.id,
+                name: c.name,
+                section_id: c.section_id,
+                section_number: c.section_number,
+                section_name: c.section_name
+              }))
+            );
+
+            // Convert concepts to skills for the mastery grid
+            const skills: SkillSquare[] = chapterConcepts.map((concept) => {
+              return {
+                id: concept.id,
+                name: concept.name,
+                masteryLevel: concept.mastery_level,
+                sectionNumber: concept.section_number || undefined,
+                sectionName: concept.section_name || undefined,
+                conceptNumber: concept.concept_number,
+                description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
+                onClick: () => {
+                  // Find the document for this chapter
+                  const doc = documentsByChapter[chapter]?.[0];
+                  if (doc) {
+                    // Navigate to the specific concept using concept name (more robust than index)
+                    if (concept.section_id) {
+                      console.log(`[Course Page] Navigating to section ${concept.section_id}, concept "${concept.name}"`);
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
+                    } else {
+                      handleStartStudy(doc.id, doc.chapter);
+                    }
+                  }
+                }
+              };
+            });
+
+            console.log(`[Course Page] Chapter "${chapter}" - Skills for grid:`,
+              skills.map(s => ({
+                id: s.id,
+                name: s.name,
+                sectionNumber: s.sectionNumber,
+                sectionName: s.sectionName
+              }))
+            );
+
+            return (
+              <div key={chapter} className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      const doc = documentsByChapter[chapter]?.[0];
+                      if (doc) {
+                        handleStartStudy(doc.id, doc.chapter);
+                      }
+                    }}
+                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Study
+                  </button>
+                </div>
+
+                {/* Concept Mastery Grid */}
+                {skills.length > 0 && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                    <MasteryGrid
+                      title="Concept Progress"
+                      skills={skills}
+                      columns={15}
+                      showSectionDividers={true}
+                    />
+                  </div>
+                )}
+
+                {/* Documents List */}
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-slate-700">Materials</h3>
+                  <div className="grid gap-3">
                 {documentsByChapter[chapter].map((doc) => (
                   <div
                     key={doc.id}
@@ -215,26 +354,20 @@ export default function CoursePage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleStartStudy(doc.id, doc.chapter)}
-                        className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                      >
-                        Study
-                      </button>
-                      <button
-                        onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                        className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                        title="Delete document"
-                      >
-                        Delete
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                      title="Delete document"
+                    >
+                      Delete
+                    </button>
                   </div>
                 ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

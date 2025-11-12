@@ -160,19 +160,31 @@ async function extractSectionsWithLLM(documentInfo, options = {}) {
     textSample = full_text;
   }
 
-  const systemInstruction = `You are an expert at analyzing educational documents and identifying their main sections.
-Your task is to extract major sections or topics from the provided document.
+  const systemInstruction = `You are an expert at analyzing educational documents and identifying their main sections based on document structure.
 
-Focus on:
-- Major conceptual divisions (not just chapter numbers)
-- Topics that could be studied independently
-- Logical groupings of related concepts
-- Section-level granularity (not too broad, not too narrow)
+Your task is to extract major sections by looking for STRUCTURAL MARKERS in the text:
 
-CRITICAL - IGNORE:
+**PRIMARY INDICATORS (highest priority):**
+1. Markdown headings (# Heading, ## Heading, ### Heading)
+2. Bold text that appears to be section titles (**Section Name**)
+3. Text with larger font sizes (detected as headings in layout)
+
+**SECONDARY INDICATORS:**
+4. Numbered sections (1. Section Name, 1.1 Subsection)
+5. Clear topic transitions with new conceptual themes
+6. Whitespace patterns suggesting new sections
+
+**EXTRACTION PRINCIPLES:**
+- Prefer 4-8 sections for most documents (not too many, not too few)
+- Each section should be a substantial topic
+- Section names MUST match the text EXACTLY as they appear
+- If you see "## Introduction", use "Introduction" as the name
+- If you see "**Core Concepts**", use "Core Concepts" as the name
+- CRITICAL: Use the EXACT wording from headings/bold text in the document
+
+**IGNORE:**
 - Table cells, table headers, or data from tables
 - Addresses, names, or identification codes
-- Page numbers, headers, and footers
 - Figure captions and table titles
 - Short acronyms or abbreviations without context
 - Metadata like dates, IDs, or reference numbers
@@ -184,28 +196,31 @@ Return ONLY valid JSON, no markdown code blocks or explanatory text.`;
 **Document Text:**
 ${textSample}
 
-Identify ${sectionCount.min}-${sectionCount.max} major sections that divide this content into logical study units (aim for ${sectionCount.target}).
+**INSTRUCTIONS:**
+1. Look for structural markers (headings, bold text, numbered sections)
+2. Extract section names EXACTLY as they appear in the text
+3. Identify ${sectionCount.min}-${sectionCount.max} major sections (aim for ${sectionCount.target})
+4. Each section should be a substantial, independent topic
 
 Return JSON in this exact format:
 {
   "sections": [
     {
-      "name": "Clear, descriptive section title (at least 10 characters)",
-      "description": "1-2 sentence overview of what this section covers",
-      "page_range": "estimated page numbers (e.g., '1-5' or 'unknown')"
+      "name": "EXACT section title from document (copy it word-for-word)",
+      "description": "1-2 sentence overview of what this section covers"
     }
   ]
 }
 
-Requirements:
-- ${sectionCount.min}-${sectionCount.max} sections total (aim for ${sectionCount.target})
+**CRITICAL REQUIREMENTS:**
+- Section names MUST match EXACTLY as they appear (don't paraphrase!)
+- If you see "## Introduction", use "Introduction"
+- If you see "**Learning Objectives**", use "Learning Objectives"
+- Aim for ${sectionCount.target} sections (not too many, not too few)
 - Each section should cover a substantial topic
-- Section names must be descriptive (not abbreviations or codes)
 - Descriptions should explain what concepts are introduced
-- If page numbers are visible in the text, extract them
 - Focus on the most important, testable content
-- IGNORE table cells, addresses, metadata, and other non-content text
-- Section names should be at least 10 characters and read like actual topics`;
+- IGNORE table cells, addresses, metadata, and other non-content text`;
 
   try {
     const response = await provider.generateRawCompletion({
@@ -251,35 +266,13 @@ Requirements:
         continue;
       }
 
-      // Parse page range if provided
-      let pageStart = null;
-      let pageEnd = null;
-      if (section.page_range && section.page_range !== 'unknown') {
-        const match = section.page_range.match(/(\d+)-(\d+)/);
-        if (match) {
-          pageStart = parseInt(match[1], 10);
-          pageEnd = parseInt(match[2], 10);
-
-          // Validate page range (start must be <= end)
-          if (pageStart > pageEnd) {
-            console.warn(`[section.service] Invalid page range for section "${name}": ${pageStart}-${pageEnd}, swapping`);
-            [pageStart, pageEnd] = [pageEnd, pageStart]; // Swap them
-          }
-
-          // Sanity check: page numbers should be reasonable
-          if (pageStart < 1 || pageEnd > 10000) {
-            console.warn(`[section.service] Unreasonable page range for section "${name}": ${pageStart}-${pageEnd}, ignoring`);
-            pageStart = pageEnd = null;
-          }
-        }
-      }
-
+      // No page ranges - we split by section headers in markdown
       validSections.push({
         section_number: validSections.length + 1,
         name: name,
         description: section.description?.trim() || null,
-        page_start: pageStart,
-        page_end: pageEnd
+        page_start: null,
+        page_end: null
       });
     }
 
@@ -291,6 +284,12 @@ Requirements:
     if (invalidCount > 0) {
       console.log(`[section.service] Filtered out ${invalidCount} invalid sections, kept ${validSections.length} valid sections`);
     }
+
+    // No page-based computation needed - sections will be split by markdown structure
+    console.log(`[section.service] Extracted ${validSections.length} sections (split will be based on markdown headers)`);
+    validSections.forEach(section => {
+      console.log(`[section.service] Section ${section.section_number}: "${section.name}"`);
+    });
 
     return validSections;
   } catch (error) {
@@ -359,6 +358,167 @@ function createFallbackSections(fullText, title) {
 }
 
 /**
+ * Find smart boundary near a position (respects paragraph/sentence boundaries)
+ * Searches for the nearest paragraph or sentence break
+ */
+function findSmartBoundary(text, approximatePos, direction = 'forward') {
+  if (approximatePos < 0 || approximatePos >= text.length) {
+    return direction === 'forward' ? text.length : 0;
+  }
+
+  const searchRadius = 500; // Look 500 chars in each direction
+  const searchStart = Math.max(0, approximatePos - searchRadius);
+  const searchEnd = Math.min(text.length, approximatePos + searchRadius);
+  const searchRegion = text.substring(searchStart, searchEnd);
+
+  // Priority 1: Double newline (paragraph break)
+  const paragraphBreaks = [];
+  const paragraphRegex = /\n\n+/g;
+  let match;
+  while ((match = paragraphRegex.exec(searchRegion)) !== null) {
+    paragraphBreaks.push(searchStart + match.index);
+  }
+
+  if (paragraphBreaks.length > 0) {
+    // Find closest paragraph break to approximatePos
+    const closest = paragraphBreaks.reduce((prev, curr) =>
+      Math.abs(curr - approximatePos) < Math.abs(prev - approximatePos) ? curr : prev
+    );
+    return closest;
+  }
+
+  // Priority 2: Sentence end (. ! ? followed by space or newline)
+  const sentenceBreaks = [];
+  const sentenceRegex = /[.!?][\s\n]/g;
+  while ((match = sentenceRegex.exec(searchRegion)) !== null) {
+    sentenceBreaks.push(searchStart + match.index + 1); // After the punctuation
+  }
+
+  if (sentenceBreaks.length > 0) {
+    const closest = sentenceBreaks.reduce((prev, curr) =>
+      Math.abs(curr - approximatePos) < Math.abs(prev - approximatePos) ? curr : prev
+    );
+    return closest;
+  }
+
+  // Priority 3: Single newline
+  const newlineBreaks = [];
+  const newlineRegex = /\n/g;
+  while ((match = newlineRegex.exec(searchRegion)) !== null) {
+    newlineBreaks.push(searchStart + match.index);
+  }
+
+  if (newlineBreaks.length > 0) {
+    const closest = newlineBreaks.reduce((prev, curr) =>
+      Math.abs(curr - approximatePos) < Math.abs(prev - approximatePos) ? curr : prev
+    );
+    return closest;
+  }
+
+  // Fallback: Use the approximate position
+  return approximatePos;
+}
+
+/**
+ * Split markdown text by section boundaries
+ * Finds each section's content and assigns it to markdown_text field
+ */
+function splitMarkdownBySections(fullText, sections) {
+  console.log(`[section.service] Splitting markdown into ${sections.length} section chunks`);
+
+  const sectionsWithMarkdown = [];
+
+  for (let i = 0; i < sections.length; i++) {
+    const currentSection = sections[i];
+    const nextSection = i < sections.length - 1 ? sections[i + 1] : null;
+
+    // Strategy 1: Try to find section by name in the text (as heading)
+    let sectionStart = -1;
+    let sectionEnd = fullText.length;
+
+    // Look for section name as a markdown heading (case-insensitive)
+    const namePattern = new RegExp(`^#{1,3}\\s*${escapeRegex(currentSection.name)}`, 'mi');
+    const nameMatch = fullText.match(namePattern);
+
+    if (nameMatch) {
+      sectionStart = nameMatch.index;
+      console.log(`[section.service] Found section "${currentSection.name}" as heading at position ${sectionStart}`);
+    } else {
+      // Strategy 2: Look for bold text matching section name (**Section Name**)
+      const boldPattern = new RegExp(`\\*\\*${escapeRegex(currentSection.name)}\\*\\*`, 'i');
+      const boldMatch = fullText.match(boldPattern);
+
+      if (boldMatch) {
+        sectionStart = boldMatch.index;
+        console.log(`[section.service] Found section "${currentSection.name}" as bold text at position ${sectionStart}`);
+      } else {
+        // Strategy 3: Search for section name anywhere in expected region
+        const simpleName = currentSection.name.toLowerCase();
+        const searchStart = Math.floor((i / sections.length) * fullText.length);
+        const searchEnd = Math.floor(((i + 1) / sections.length) * fullText.length);
+        const searchRegion = fullText.substring(searchStart, searchEnd);
+        const simpleMatch = searchRegion.toLowerCase().indexOf(simpleName);
+
+        if (simpleMatch !== -1) {
+          sectionStart = searchStart + simpleMatch;
+          console.log(`[section.service] Found section "${currentSection.name}" in expected region at position ${sectionStart}`);
+        } else {
+          // Last resort: Use proportional division with smart boundary
+          const approximateStart = Math.floor((i / sections.length) * fullText.length);
+          sectionStart = findSmartBoundary(fullText, approximateStart, 'forward');
+          console.warn(`[section.service] Could not find section "${currentSection.name}", using smart boundary at ${sectionStart}`);
+        }
+      }
+    }
+
+    // Find where this section ends (where next section begins)
+    if (nextSection) {
+      // Try to find next section as heading
+      const nextNamePattern = new RegExp(`^#{1,3}\\s*${escapeRegex(nextSection.name)}`, 'mi');
+      const nextMatch = fullText.substring(sectionStart + 1).match(nextNamePattern);
+
+      if (nextMatch) {
+        sectionEnd = sectionStart + 1 + nextMatch.index;
+        console.log(`[section.service] Next section "${nextSection.name}" found as heading at ${sectionEnd}`);
+      } else {
+        // Try bold text
+        const nextBoldPattern = new RegExp(`\\*\\*${escapeRegex(nextSection.name)}\\*\\*`, 'i');
+        const nextBoldMatch = fullText.substring(sectionStart + 1).match(nextBoldPattern);
+
+        if (nextBoldMatch) {
+          sectionEnd = sectionStart + 1 + nextBoldMatch.index;
+          console.log(`[section.service] Next section "${nextSection.name}" found as bold at ${sectionEnd}`);
+        } else {
+          // Fallback: Use proportional division with smart boundary
+          const approximateEnd = Math.floor(((i + 1) / sections.length) * fullText.length);
+          sectionEnd = findSmartBoundary(fullText, approximateEnd, 'backward');
+          console.warn(`[section.service] Could not find next section "${nextSection.name}", using smart boundary at ${sectionEnd}`);
+        }
+      }
+    }
+
+    // Extract markdown chunk for this section
+    const markdown_text = fullText.substring(sectionStart, sectionEnd).trim();
+
+    console.log(`[section.service] Section "${currentSection.name}": ${markdown_text.length} chars (${((markdown_text.length / fullText.length) * 100).toFixed(1)}% of document)`);
+
+    sectionsWithMarkdown.push({
+      ...currentSection,
+      markdown_text
+    });
+  }
+
+  return sectionsWithMarkdown;
+}
+
+/**
+ * Helper to escape regex special characters
+ */
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Main section extraction function
  * Uses TOC if available, falls back to LLM, then to equal divisions
  */
@@ -375,97 +535,224 @@ export async function extractSections(documentInfo, options = {}) {
     const tocSections = parseTableOfContents(full_text);
     if (tocSections && tocSections.length >= 6 && tocSections.length <= 15) {
       console.log(`[section.service] Extracted ${tocSections.length} sections from TOC`);
-      return tocSections;
+      // Split markdown by section boundaries
+      return splitMarkdownBySections(full_text, tocSections);
     }
   }
 
   // Fall back to LLM extraction
   try {
     console.log('[section.service] Using LLM for section extraction');
-    return await extractSectionsWithLLM(documentInfo, options);
+    const sections = await extractSectionsWithLLM(documentInfo, options);
+    // Split markdown by section boundaries
+    return splitMarkdownBySections(full_text, sections);
   } catch (error) {
     console.error('[section.service] LLM extraction failed:', error.message);
 
     // Last resort: create fallback sections by dividing document equally
     console.warn('[section.service] Using fallback: dividing document into equal sections');
-    return createFallbackSections(full_text, title || 'Document');
+    const sections = createFallbackSections(full_text, title || 'Document');
+    // Split markdown by section boundaries
+    return splitMarkdownBySections(full_text, sections);
   }
+}
+
+/**
+ * Calculate extraction quality score (0.0 to 1.0)
+ * Higher score = more confident the extracted text is correct
+ *
+ * @param {string} extractedText - The text that was extracted for the section
+ * @param {object} sectionInfo - The section metadata
+ * @param {array} allSections - All sections for context
+ * @param {string} fullText - The full document text
+ * @returns {number} Quality score between 0.0 and 1.0
+ */
+function calculateExtractionQuality(extractedText, sectionInfo, allSections, fullText) {
+  let score = 0.0;
+
+  // Check 1: Text contains section name (30 points)
+  if (extractedText.toLowerCase().includes(sectionInfo.name.toLowerCase())) {
+    score += 0.3;
+  }
+
+  // Check 2: Text length is reasonable - not too small or entire document (30 points)
+  const textLengthRatio = extractedText.length / fullText.length;
+  if (textLengthRatio > 0.05 && textLengthRatio < 0.5) {
+    score += 0.3;
+  } else if (textLengthRatio >= 0.5) {
+    // Likely extracted too much (maybe entire document)
+    score -= 0.2;
+  }
+
+  // Check 3: Text doesn't contain too many other section names (40 points)
+  const otherSectionNames = allSections
+    .filter(s => s.section_number !== sectionInfo.section_number)
+    .map(s => s.name.toLowerCase());
+
+  const containedSectionCount = otherSectionNames.filter(name =>
+    extractedText.toLowerCase().includes(name)
+  ).length;
+
+  if (containedSectionCount === 0) {
+    score += 0.4; // Perfect - no other sections
+  } else if (containedSectionCount <= 1) {
+    score += 0.2; // Acceptable - might have transition text
+  } else {
+    score -= 0.2; // Bad - likely extracted wrong text
+  }
+
+  return Math.max(0.0, Math.min(1.0, score)); // Clamp to [0, 1]
 }
 
 /**
  * Extract text for a specific section based on page numbers or heuristics
  *
+ * ENHANCED MODE: When PDF_EXTRACTION_MODE=enhanced, this function can use
+ * native page range extraction from the enhanced extractor (more accurate).
+ * This is handled at the lesson generation level by passing a file path.
+ *
  * @param {string} fullText - The full document text
  * @param {object} sectionInfo - The section metadata (with page_start, page_end, name)
  * @param {array} allSections - All sections for this document (for context)
  * @param {number} totalPages - Total pages in the document (optional, will be estimated if not provided)
+ * @returns {object} {text: string, quality: number, strategy: string}
  */
 export function extractSectionText(fullText, sectionInfo, allSections, totalPages = null) {
   // Estimate total pages if not provided (assuming ~2000 chars per page)
   const estimatedPages = totalPages || Math.ceil(fullText.length / 2000);
 
-  // Strategy 1: Use page numbers if available
-  if (sectionInfo.page_start && sectionInfo.page_end && estimatedPages > 0) {
-    // Calculate chars per page based on actual document size
-    const charsPerPage = Math.floor(fullText.length / estimatedPages);
-    const startChar = Math.max(0, (sectionInfo.page_start - 1) * charsPerPage);
-    const endChar = Math.min(fullText.length, sectionInfo.page_end * charsPerPage);
+  let extractedText = '';
+  let strategy = '';
 
-    console.log(`[extractSectionText] Using page numbers: pages ${sectionInfo.page_start}-${sectionInfo.page_end}, chars ${startChar}-${endChar}`);
-    return fullText.substring(startChar, endChar);
+  // Strategy 1: Use page markers to extract exact pages (BEST - no calculation!)
+  if (sectionInfo.page_start && sectionInfo.page_end) {
+    // Look for "## Page N" markers and extract only pages in the range
+    const pageRegex = /^## Page (\d+)$/gm;
+    const pagePositions = [];
+    let match;
+
+    while ((match = pageRegex.exec(fullText)) !== null) {
+      const pageNum = parseInt(match[1], 10);
+      const position = match.index;
+      pagePositions.push({ pageNum, position });
+    }
+
+    if (pagePositions.length > 0) {
+      // Find start and end positions for the section's page range
+      const startPage = pagePositions.find(p => p.pageNum === sectionInfo.page_start);
+      const endPageIndex = pagePositions.findIndex(p => p.pageNum === sectionInfo.page_end);
+      const nextPageAfterEnd = endPageIndex >= 0 ? pagePositions[endPageIndex + 1] : null;
+
+      if (startPage) {
+        const startChar = startPage.position;
+        const endChar = nextPageAfterEnd ? nextPageAfterEnd.position : fullText.length;
+
+        extractedText = fullText.substring(startChar, endChar);
+        strategy = 'page_markers';
+
+        console.log(`[extractSectionText] Strategy: page_markers (exact)`);
+        console.log(`[extractSectionText] Extracted pages ${sectionInfo.page_start}-${sectionInfo.page_end} using "## Page N" markers`);
+        console.log(`[extractSectionText] Chars ${startChar}-${endChar} (${extractedText.length} chars)`);
+      } else {
+        console.warn(`[extractSectionText] Could not find "## Page ${sectionInfo.page_start}" marker, falling back to calculation`);
+      }
+    }
+
+    // Fallback: Calculate based on page numbers if no markers found
+    if (!extractedText && estimatedPages > 0) {
+      const charsPerPage = Math.floor(fullText.length / estimatedPages);
+      const startChar = Math.max(0, (sectionInfo.page_start - 1) * charsPerPage);
+      const endChar = Math.min(fullText.length, sectionInfo.page_end * charsPerPage);
+
+      extractedText = fullText.substring(startChar, endChar);
+      strategy = 'page_range_calc';
+
+      console.log(`[extractSectionText] Strategy: page_range_calc (estimated)`);
+      console.log(`[extractSectionText] Pages ${sectionInfo.page_start}-${sectionInfo.page_end} → chars ${startChar}-${endChar}`);
+    }
   }
 
   // Strategy 2: Try to find section by name in text (case-insensitive, partial match)
-  const sectionIndex = allSections.findIndex(s => s.section_number === sectionInfo.section_number);
-  const currentSection = allSections[sectionIndex];
-  const nextSection = allSections[sectionIndex + 1];
+  if (!extractedText) {
+    const sectionIndex = allSections.findIndex(s => s.section_number === sectionInfo.section_number);
+    const currentSection = allSections[sectionIndex];
+    const nextSection = allSections[sectionIndex + 1];
 
-  // Try exact match first
-  let sectionStart = fullText.indexOf(currentSection.name);
+    // Try exact match first
+    let sectionStart = fullText.indexOf(currentSection.name);
 
-  // If exact match fails, try case-insensitive search
-  if (sectionStart === -1) {
-    const lowerFullText = fullText.toLowerCase();
-    const lowerSectionName = currentSection.name.toLowerCase();
-    const foundIndex = lowerFullText.indexOf(lowerSectionName);
+    // If exact match fails, try case-insensitive search
+    if (sectionStart === -1) {
+      const lowerFullText = fullText.toLowerCase();
+      const lowerSectionName = currentSection.name.toLowerCase();
+      const foundIndex = lowerFullText.indexOf(lowerSectionName);
 
-    if (foundIndex !== -1) {
-      sectionStart = foundIndex;
-      console.log(`[extractSectionText] Found section via case-insensitive match: "${currentSection.name}"`);
+      if (foundIndex !== -1) {
+        sectionStart = foundIndex;
+        console.log(`[extractSectionText] Strategy: name_search (case-insensitive)`);
+      }
+    } else {
+      console.log(`[extractSectionText] Strategy: name_search (exact match)`);
+    }
+
+    // If name-based search succeeds, extract from section start to next section
+    if (sectionStart !== -1) {
+      let sectionEnd = fullText.length;
+      if (nextSection) {
+        // Try to find next section name
+        const nextStart = fullText.indexOf(nextSection.name, sectionStart + 1);
+
+        if (nextStart !== -1) {
+          sectionEnd = nextStart;
+        } else {
+          // Try case-insensitive for next section too
+          const lowerFullText = fullText.toLowerCase();
+          const lowerNextName = nextSection.name.toLowerCase();
+          const nextFoundIndex = lowerFullText.indexOf(lowerNextName, sectionStart + 1);
+
+          if (nextFoundIndex !== -1) {
+            sectionEnd = nextFoundIndex;
+          }
+        }
+      }
+
+      extractedText = fullText.substring(sectionStart, sectionEnd);
+      strategy = 'name_search';
+      console.log(`[extractSectionText] Found section from char ${sectionStart} to ${sectionEnd} (${extractedText.length} chars)`);
     }
   }
 
-  // If name-based search fails, use proportional chunking
-  if (sectionStart === -1) {
-    console.log(`[extractSectionText] Section name "${currentSection.name}" not found in text, using proportional chunking`);
+  // Strategy 3: Proportional chunking (fallback)
+  if (!extractedText) {
+    console.log(`[extractSectionText] Strategy: proportional_chunking (fallback)`);
+    const sectionIndex = allSections.findIndex(s => s.section_number === sectionInfo.section_number);
     const chunkSize = Math.floor(fullText.length / allSections.length);
     const start = sectionIndex * chunkSize;
     const end = Math.min(fullText.length, start + chunkSize);
-    return fullText.substring(start, end);
+
+    extractedText = fullText.substring(start, end);
+    strategy = 'proportional_chunking';
+    console.log(`[extractSectionText] Using proportional chunk: chars ${start}-${end} (${extractedText.length} chars)`);
   }
 
-  // Extract from section start to next section (or end of document)
-  let sectionEnd = fullText.length;
-  if (nextSection) {
-    // Try to find next section name
-    const nextStart = fullText.indexOf(nextSection.name, sectionStart + 1);
+  // Calculate extraction quality
+  const quality = calculateExtractionQuality(extractedText, sectionInfo, allSections, fullText);
+  const qualityPercent = (quality * 100).toFixed(0);
 
-    if (nextStart !== -1) {
-      sectionEnd = nextStart;
-    } else {
-      // Try case-insensitive for next section too
-      const lowerFullText = fullText.toLowerCase();
-      const lowerNextName = nextSection.name.toLowerCase();
-      const nextFoundIndex = lowerFullText.indexOf(lowerNextName, sectionStart + 1);
+  console.log(`[extractSectionText] ═══════════════════════════════════════════════`);
+  console.log(`[extractSectionText] Extraction Quality: ${qualityPercent}% ${quality >= 0.7 ? '✅' : quality >= 0.4 ? '⚠️' : '❌'}`);
+  console.log(`[extractSectionText] Strategy: ${strategy}`);
+  console.log(`[extractSectionText] Section: "${sectionInfo.name}"`);
+  console.log(`[extractSectionText] Extracted: ${extractedText.length} chars (${(extractedText.length / fullText.length * 100).toFixed(1)}% of document)`);
 
-      if (nextFoundIndex !== -1) {
-        sectionEnd = nextFoundIndex;
-      }
-    }
+  if (quality < 0.5) {
+    console.warn(`[extractSectionText] ⚠️  LOW QUALITY - Concepts may be document-scoped!`);
+    console.warn(`[extractSectionText] ⚠️  Consider using enhanced extraction mode or regenerating sections`);
   }
 
-  console.log(`[extractSectionText] Extracted section "${currentSection.name}" from char ${sectionStart} to ${sectionEnd} (${sectionEnd - sectionStart} chars)`);
-  return fullText.substring(sectionStart, sectionEnd);
+  console.log(`[extractSectionText] ═══════════════════════════════════════════════`);
+
+  return extractedText;
 }
 
 export default {

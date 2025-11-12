@@ -1,4 +1,12 @@
-# Dynamic AI Study Guide App — `task.md`
+# ⚠️ OUTDATED - Dynamic AI Study Guide App — `task.md`
+
+**STATUS: OUTDATED - This document describes the original RAG-based architecture that is no longer in use.**
+
+The actual implementation uses:
+- LLM vision-based PDF extraction (not chunking/embeddings)
+- Structured section-based lesson generation (not RAG retrieval)
+- Mastery grid system with concept tracking
+- Course/document organization model
 
 This document is the **single source of truth** for building the AI-powered dynamic study guide app. It consolidates research, implementation plans, MVP milestones, future roadmap, and task breakdowns.
 

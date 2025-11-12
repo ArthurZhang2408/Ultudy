@@ -1,4 +1,19 @@
-# Dynamic AI Study Guide App
+# ⚠️ PARTIALLY OUTDATED - Dynamic AI Study Guide App
+
+**STATUS: PARTIALLY OUTDATED - This README describes the original RAG-based architecture with pgvector and embeddings.**
+
+**Current implementation uses:**
+- LLM vision-based PDF extraction (not chunking/embeddings)
+- Full-context lesson generation (not RAG retrieval)
+- Section-based learning with mastery tracking
+- Course/document organization model
+
+**For current architecture documentation, see:**
+- [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) - Complete product vision and technical specification
+- [`LESSON_GENERATION_ARCHITECTURE.md`](./LESSON_GENERATION_ARCHITECTURE.md) - Current lesson generation system
+- [`MVP_IMPLEMENTATION_PLAN.md`](./MVP_IMPLEMENTATION_PLAN.md) - Implementation progress
+
+---
 
 An AI-powered study companion that transforms uploaded course PDFs into:
 - **Lessons** — clear summaries, analogies, and quick check‑ins
@@ -8,11 +23,11 @@ An AI-powered study companion that transforms uploaded course PDFs into:
 - 🔐 Authentication setup: [`CLERK_SETUP.md`](./CLERK_SETUP.md)
 - 🧭 High-level milestones: [`milestone.md`](./milestone.md)
 
-## MVP Tech
+## MVP Tech (OUTDATED - describes RAG architecture)
 - **Frontend:** React / Next.js
 - **Backend:** Node.js / Express
-- **Database:** PostgreSQL + pgvector
-- **AI:** Google Gemini (embeddings + lessons/MCQs) with optional OpenAI fallbacks
+- **Database:** PostgreSQL + pgvector ← NO LONGER USED
+- **AI:** Google Gemini (embeddings + lessons/MCQs) with optional OpenAI fallbacks ← EMBEDDINGS NO LONGER USED
 
 ## Getting Started
 > This section will be filled in Milestone 1 when we scaffold the apps.

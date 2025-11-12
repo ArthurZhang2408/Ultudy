@@ -266,12 +266,54 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
+  // GET /lessons - Fetch existing lesson by section_id
+  router.get('/lessons', async (req, res) => {
+    const { section_id } = req.query;
+    const ownerId = req.userId;
+
+    if (!section_id) {
+      return res.status(400).json({ error: 'section_id is required' });
+    }
+
+    try {
+      await tenantHelpers.withTenant(ownerId, async (client) => {
+        const result = await client.query(
+          `SELECT * FROM lessons
+           WHERE owner_id = $1 AND section_id = $2
+           LIMIT 1`,
+          [ownerId, section_id]
+        );
+
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'Lesson not found' });
+        }
+
+        const lesson = buildLessonResponse(result.rows[0], []);
+        res.json({ lesson });
+      });
+    } catch (error) {
+      console.error('[GET /lessons] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch lesson' });
+    }
+  });
+
   // MVP v1.0: Full-context lesson generation from document
   // IMPORTANT: Generates lesson ONCE and persists it. No re-generation!
   // Now supports section-scoped generation for multi-layer structure
   router.post('/lessons/generate', async (req, res) => {
     const { document_id, section_id, chapter, include_check_ins = true } = req.body || {};
     const ownerId = req.userId;
+
+    console.log('');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🎓 LESSON GENERATION REQUEST');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('document_id:', document_id);
+    console.log('section_id:', section_id);
+    console.log('chapter:', chapter);
+    console.log('SCOPED:', section_id ? '✅ SECTION-SCOPED' : '❌ DOCUMENT-SCOPED');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('');
 
     if (!document_id) {
       return res.status(400).json({ error: 'document_id is required' });
@@ -322,19 +364,17 @@ export default function createStudyRouter(options = {}) {
 
         const document = rows[0];
 
-        if (!document.full_text) {
-          throw new Error('Document does not have full text extracted');
-        }
+        // Note: full_text is optional with new vision-based extraction
+        // Sections have their own markdown_text
 
         // Step 2b: If section_id provided, load section data and extract section text
         let sectionData = null;
-        let textToProcess = document.full_text;
-        let allSections = [];
+        let textToProcess = null;
 
         if (section_id) {
           // Load the specific section
           const { rows: sectionRows } = await client.query(
-            `SELECT id, section_number, name, description, page_start, page_end
+            `SELECT id, section_number, name, description, page_start, page_end, markdown_text
              FROM sections
              WHERE id = $1 AND owner_id = $2`,
             [section_id, ownerId]
@@ -346,25 +386,49 @@ export default function createStudyRouter(options = {}) {
 
           sectionData = sectionRows[0];
 
-          // Load all sections for context (needed for extractSectionText)
-          const { rows: allSectionRows } = await client.query(
-            `SELECT section_number, name, page_start, page_end
-             FROM sections
-             WHERE document_id = $1 AND owner_id = $2
-             ORDER BY section_number ASC`,
-            [document_id, ownerId]
-          );
+          // Use markdown_text from section
+          if (sectionData.markdown_text) {
+            textToProcess = sectionData.markdown_text;
+            console.log(`[lessons/generate] Using section markdown: ${textToProcess.length} chars`);
+          } else {
+            // Fallback: try to extract from full_text if available
+            if (document.full_text) {
+              console.warn(`[lessons/generate] Section has no markdown_text, falling back to full_text extraction`);
+              const { rows: allSectionRows } = await client.query(
+                `SELECT section_number, name, page_start, page_end
+                 FROM sections
+                 WHERE document_id = $1 AND owner_id = $2
+                 ORDER BY section_number ASC`,
+                [document_id, ownerId]
+              );
+              textToProcess = extractSectionText(document.full_text, sectionData, allSectionRows, document.pages);
+              console.log(`[lessons/generate] Extracted ${textToProcess.length} chars using fallback extraction`);
+            } else {
+              throw new Error('Section has no markdown_text and document has no full_text');
+            }
+          }
 
-          allSections = allSectionRows;
-
-          // Extract text specific to this section
-          textToProcess = extractSectionText(document.full_text, sectionData, allSections, document.pages);
-          console.log(`[lessons/generate] Extracted ${textToProcess.length} chars for section ${sectionData.name}`);
+          console.log(`[lessons/generate] Text preview (first 500 chars):`, textToProcess.substring(0, 500));
+          console.log(`[lessons/generate] Text preview (last 500 chars):`, textToProcess.substring(Math.max(0, textToProcess.length - 500)));
+        } else {
+          // Document-level generation requires full_text
+          if (!document.full_text) {
+            throw new Error('Document does not have full text extracted. Please generate lessons at the section level.');
+          }
+          textToProcess = document.full_text;
         }
 
         // Step 3: Generate lesson from document or section text
         const logTarget = section_id ? `section ${section_id} (${sectionData.name})` : `document ${document_id}`;
         console.log(`[lessons/generate] Generating new lesson for ${logTarget}`);
+
+        // Log the actual text being sent to LLM
+        const textForLLM = section_id ? textToProcess : document.full_text;
+        console.log(`[lessons/generate] ==================== TEXT SENT TO LLM ====================`);
+        console.log(`[lessons/generate] Length: ${textForLLM.length} characters`);
+        console.log(`[lessons/generate] First 1000 chars:\n${textForLLM.substring(0, 1000)}`);
+        console.log(`[lessons/generate] Last 1000 chars:\n${textForLLM.substring(Math.max(0, textForLLM.length - 1000))}`);
+        console.log(`[lessons/generate] ===============================================================`);
 
         const generatedLesson = await studyService.buildFullContextLesson(document, {
           chapter: chapter || document.doc_chapter,
@@ -400,21 +464,41 @@ export default function createStudyRouter(options = {}) {
 
         // Step 5: Extract and persist concepts to concepts table
         if (Array.isArray(conceptsForStorage) && conceptsForStorage.length > 0) {
-          for (const conceptData of conceptsForStorage) {
-            // Create concept record with not_learned state
-            await client.query(
-              `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, section_id, mastery_state)
-               VALUES ($1, $2, $3, $4, $5, $6, 'not_learned')
-               ON CONFLICT DO NOTHING`,
-              [
-                ownerId,
-                conceptData.name || conceptData,
-                chapter || document.doc_chapter,
-                document.course_id,
-                document_id,
-                section_id || null
-              ]
+          for (let i = 0; i < conceptsForStorage.length; i++) {
+            const conceptData = conceptsForStorage[i];
+            // Create concept record with not_learned state and concept_number to preserve order
+            // Note: We check for existing concept by name within the same section/document
+            const existingConcept = await client.query(
+              `SELECT id FROM concepts
+               WHERE owner_id = $1 AND name = $2 AND document_id = $3 AND
+                     (section_id = $4 OR (section_id IS NULL AND $4 IS NULL))`,
+              [ownerId, conceptData.name || conceptData, document_id, section_id || null]
             );
+
+            if (existingConcept.rows.length > 0) {
+              // Update existing concept with correct concept_number to maintain order
+              await client.query(
+                `UPDATE concepts
+                 SET concept_number = $1, chapter = $2, course_id = $3
+                 WHERE id = $4`,
+                [i, chapter || document.doc_chapter, document.course_id, existingConcept.rows[0].id]
+              );
+            } else {
+              // Insert new concept
+              await client.query(
+                `INSERT INTO concepts (owner_id, name, chapter, course_id, document_id, section_id, concept_number, mastery_state)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'not_learned')`,
+                [
+                  ownerId,
+                  conceptData.name || conceptData,
+                  chapter || document.doc_chapter,
+                  document.course_id,
+                  document_id,
+                  section_id || null,
+                  i  // Preserve the lesson order by storing the array index
+                ]
+              );
+            }
           }
         }
 
@@ -540,8 +624,10 @@ export default function createStudyRouter(options = {}) {
 
         const document = rows[0];
 
+        // Note: /sections/generate is for OLD python-based extraction
+        // NEW vision-based extraction creates sections directly during upload
         if (!document.full_text) {
-          throw new Error('Document does not have full text extracted');
+          throw new Error('This endpoint is only for documents with full_text (old Python extraction). Documents uploaded with vision-based extraction already have sections.');
         }
 
         // Step 3: Extract sections using service (TOC or LLM)
@@ -552,12 +638,19 @@ export default function createStudyRouter(options = {}) {
           material_type: document.material_type
         }, { forceLLM: force_llm });
 
+        console.log(`[sections/generate] Extracted sections:`, extractedSections.map(s => ({
+          section_number: s.section_number,
+          name: s.name,
+          page_start: s.page_start,
+          page_end: s.page_end
+        })));
+
         // Step 4: Persist sections to database
         const insertedSections = [];
         for (const section of extractedSections) {
           const { rows: inserted } = await client.query(
-            `INSERT INTO sections (owner_id, document_id, course_id, chapter, section_number, name, description, page_start, page_end, concepts_generated)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false)
+            `INSERT INTO sections (owner_id, document_id, course_id, chapter, section_number, name, description, page_start, page_end, markdown_text, concepts_generated)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
              RETURNING id, section_number, name, description, page_start, page_end, concepts_generated, created_at`,
             [
               ownerId,
@@ -568,7 +661,8 @@ export default function createStudyRouter(options = {}) {
               section.name,
               section.description,
               section.page_start,
-              section.page_end
+              section.page_end,
+              section.markdown_text || null
             ]
           );
           insertedSections.push(inserted[0]);
@@ -988,7 +1082,7 @@ export default function createStudyRouter(options = {}) {
   // GET /progress/overview - Get user's overall progress dashboard
   router.get('/progress/overview', async (req, res) => {
     const ownerId = req.userId;
-    const { course_id } = req.query;
+    const { course_id, document_id } = req.query;
 
     try {
       await tenantHelpers.withTenant(ownerId, async (client) => {
@@ -1000,6 +1094,11 @@ export default function createStudyRouter(options = {}) {
           if (course_id) {
             params.push(course_id);
             conditions.push(`${prefix}course_id = $${params.length}`);
+          }
+
+          if (document_id) {
+            params.push(document_id);
+            conditions.push(`${prefix}document_id = $${params.length}`);
           }
 
           return {
@@ -1016,6 +1115,8 @@ export default function createStudyRouter(options = {}) {
             cpt.name,
             cpt.chapter,
             cpt.course_id,
+            cpt.section_id,
+            cpt.concept_number,
             cpt.mastery_state,
             cpt.total_attempts,
             cpt.correct_attempts,
@@ -1026,7 +1127,7 @@ export default function createStudyRouter(options = {}) {
            FROM concepts cpt
            LEFT JOIN courses crs ON cpt.course_id = crs.id
            WHERE ${conceptFilters.whereClause}
-           ORDER BY cpt.course_id NULLS LAST, cpt.chapter, cpt.name`,
+           ORDER BY cpt.course_id NULLS LAST, cpt.chapter, cpt.section_id NULLS LAST, cpt.concept_number NULLS LAST, cpt.name`,
           conceptFilters.params
         );
 
@@ -1087,6 +1188,7 @@ export default function createStudyRouter(options = {}) {
           byChapter[chapter].concepts.push({
             id: concept.id,
             name: concept.name,
+            section_id: concept.section_id,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,
@@ -1125,6 +1227,7 @@ export default function createStudyRouter(options = {}) {
           chapterEntry.concepts.push({
             id: concept.id,
             name: concept.name,
+            section_id: concept.section_id,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,
