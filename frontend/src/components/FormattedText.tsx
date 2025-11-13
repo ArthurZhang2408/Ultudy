@@ -9,30 +9,186 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
 import 'katex/dist/katex.min.css';
 
+type DefaultAttributes = NonNullable<typeof defaultSchema.attributes>;
+type PropertyDefinition = DefaultAttributes[keyof DefaultAttributes] extends Array<infer T>
+  ? T
+  : never;
+
+const defaultAttributesFor = (tagName: string): PropertyDefinition[] =>
+  (defaultSchema.attributes?.[tagName] as PropertyDefinition[] | undefined) ?? [];
+
+const mathMlTagNames = [
+  'annotation',
+  'math',
+  'menclose',
+  'merror',
+  'mfenced',
+  'mfrac',
+  'mi',
+  'mlabeledtr',
+  'mmultiscripts',
+  'mn',
+  'mo',
+  'mover',
+  'mpadded',
+  'mphantom',
+  'mroot',
+  'mrow',
+  'ms',
+  'mscarries',
+  'mscarry',
+  'msgroup',
+  'mspace',
+  'msqrt',
+  'mstyle',
+  'msub',
+  'msubsup',
+  'msup',
+  'mtable',
+  'mtd',
+  'mtext',
+  'mtr',
+  'munder',
+  'munderover',
+  'none',
+  'semantics',
+];
+
 const mathEnabledSanitizeSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames ?? []), ...mathMlTagNames],
   attributes: {
     ...defaultSchema.attributes,
     code: [
-      ...((defaultSchema.attributes?.code as Array<unknown>) || []),
+      ...defaultAttributesFor('code'),
       ['className', 'math-inline'],
       ['className', 'math-display'],
       ['className', 'language-math'],
     ],
     span: [
-      ...((defaultSchema.attributes?.span as Array<unknown>) || []),
-      ['className', 'math-inline'],
-      ['className', 'math-display'],
+      ...defaultAttributesFor('span'),
+      ['className', /^[-_a-zA-Z0-9\s]+$/],
       'style',
     ],
     div: [
-      ...((defaultSchema.attributes?.div as Array<unknown>) || []),
-      ['className', 'math-display'],
+      ...defaultAttributesFor('div'),
+      ['className', /^[-_a-zA-Z0-9\s]+$/],
       'style',
     ],
     '*': [
-      ...((defaultSchema.attributes?.['*'] as Array<unknown>) || []),
+      ...defaultAttributesFor('*'),
       'ariaHidden',
+    ],
+    math: [
+      ...defaultAttributesFor('math'),
+      ['xmlns', 'http://www.w3.org/1998/Math/MathML'],
+      ['display', 'block'],
+      ['display', 'inline'],
+    ],
+    annotation: [
+      ...defaultAttributesFor('annotation'),
+      ['encoding', 'application/x-tex'],
+    ],
+    mo: [
+      ...defaultAttributesFor('mo'),
+      'mathvariant',
+      'stretchy',
+      'movablelimits',
+      'form',
+    ],
+    mpadded: [
+      ...defaultAttributesFor('mpadded'),
+      'width',
+      'height',
+      'depth',
+      'voffset',
+    ],
+    menclose: [
+      ...defaultAttributesFor('menclose'),
+      'notation',
+    ],
+    mstyle: [
+      ...defaultAttributesFor('mstyle'),
+      'scriptlevel',
+      'displaystyle',
+      'mathsize',
+    ],
+    mfrac: [
+      ...defaultAttributesFor('mfrac'),
+      'linethickness',
+    ],
+    mover: [
+      ...defaultAttributesFor('mover'),
+      'accent',
+      'align',
+    ],
+    munder: [
+      ...defaultAttributesFor('munder'),
+      'accentunder',
+      'align',
+    ],
+    munderover: [
+      ...defaultAttributesFor('munderover'),
+      'accent',
+      'accentunder',
+      'align',
+    ],
+    mtable: [
+      ...defaultAttributesFor('mtable'),
+      'rowspacing',
+      'columnspacing',
+      'rowlines',
+      'columnlines',
+      'displaystyle',
+      'align',
+    ],
+    mtd: [
+      ...defaultAttributesFor('mtd'),
+      'columnalign',
+      'rowalign',
+    ],
+    mtr: [
+      ...defaultAttributesFor('mtr'),
+      'rowalign',
+    ],
+    mi: [
+      ...defaultAttributesFor('mi'),
+      'mathvariant',
+    ],
+    mn: [
+      ...defaultAttributesFor('mn'),
+      'mathvariant',
+    ],
+    mtext: [
+      ...defaultAttributesFor('mtext'),
+      'mathvariant',
+    ],
+    ms: [
+      ...defaultAttributesFor('ms'),
+      'lquote',
+      'rquote',
+    ],
+    msub: [
+      ...defaultAttributesFor('msub'),
+      'displaystyle',
+    ],
+    msup: [
+      ...defaultAttributesFor('msup'),
+      'displaystyle',
+    ],
+    msubsup: [
+      ...defaultAttributesFor('msubsup'),
+      'displaystyle',
+    ],
+    mmultiscripts: [
+      ...defaultAttributesFor('mmultiscripts'),
+      'displaystyle',
+    ],
+    mspace: [
+      ...defaultAttributesFor('mspace'),
+      'width',
+      'height',
+      'depth',
     ],
   },
 };
