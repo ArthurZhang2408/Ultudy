@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (chapterData.concepts) {
-          for (const concept of chapterData.concepts) {
+          for (const [conceptIndex, concept] of chapterData.concepts.entries()) {
             // Determine mastery level based on check-in results
             let masteryLevel: MasteryLevel = 'not_started';
 
@@ -74,6 +74,7 @@ export async function GET(request: NextRequest) {
               chapter: chapterKey,
               section_id: concept.section_id || null,
               concept_number: concept.concept_number || null,
+              lesson_position: conceptIndex,
               mastery_level: masteryLevel,
               accuracy,
               total_attempts: totalAttempts,
@@ -110,10 +111,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('[concepts/mastery] Total concepts found:', concepts.length);
-    console.log('[concepts/mastery] Section map:', sectionMap);
-    console.log('[concepts/mastery] First concept section_id:', concepts[0]?.section_id);
-
     // Attach section info to concepts
     const conceptsWithSections = concepts.map(concept => {
       const hasSection = concept.section_id && sectionMap[concept.section_id];
@@ -123,8 +120,6 @@ export async function GET(request: NextRequest) {
         section_name: hasSection ? sectionMap[concept.section_id].name : null
       };
     });
-
-    console.log('[concepts/mastery] First concept with section:', conceptsWithSections[0]);
 
     // Sort by chapter, section_number, then by concept_number (lesson order)
     // This preserves the order concepts appear in lessons
@@ -142,6 +137,14 @@ export async function GET(request: NextRequest) {
       }
       if (a.concept_number !== null) return -1;
       if (b.concept_number !== null) return 1;
+
+      const positionA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
+      const positionB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
+
+      if (positionA !== positionB) {
+        return positionA - positionB;
+      }
+
       return a.name.localeCompare(b.name);
     });
 

@@ -30,6 +30,7 @@ type ConceptWithMastery = {
   section_number: number | null;
   section_name: string | null;
   concept_number: number | null;
+  lesson_position?: number | null;
   mastery_level: MasteryLevel;
   accuracy: number;
   total_attempts: number;
@@ -269,19 +270,14 @@ export default function CoursePage() {
                 return conceptA - conceptB;
               }
 
+              const lessonPosA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
+              const lessonPosB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
+              if (lessonPosA !== lessonPosB) {
+                return lessonPosA - lessonPosB;
+              }
+
               return a.name.localeCompare(b.name);
             });
-
-            // Log concepts to see what section numbers they have
-            console.log(`[Course Page] Chapter "${chapter}" - Raw concepts:`,
-              chapterConcepts.map(c => ({
-                id: c.id,
-                name: c.name,
-                section_id: c.section_id,
-                section_number: c.section_number,
-                section_name: c.section_name
-              }))
-            );
 
             // Convert concepts to skills for the mastery grid
             const skills: SkillSquare[] = orderedConcepts.map((concept) => {
@@ -292,6 +288,7 @@ export default function CoursePage() {
                 sectionNumber: concept.section_number || undefined,
                 sectionName: concept.section_name || undefined,
                 conceptNumber: concept.concept_number ?? undefined,
+                lessonPosition: typeof concept.lesson_position === 'number' ? concept.lesson_position : undefined,
                 description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
                 onClick: () => {
                   // Find the document for this chapter
@@ -299,7 +296,6 @@ export default function CoursePage() {
                   if (doc) {
                     // Navigate to the specific concept using concept name (more robust than index)
                     if (concept.section_id) {
-                      console.log(`[Course Page] Navigating to section ${concept.section_id}, concept "${concept.name}"`);
                       router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
                     } else {
                       handleStartStudy(doc.id, doc.chapter);
@@ -308,15 +304,6 @@ export default function CoursePage() {
                 }
               };
             });
-
-            console.log(`[Course Page] Chapter "${chapter}" - Skills for grid:`,
-              skills.map(s => ({
-                id: s.id,
-                name: s.name,
-                sectionNumber: s.sectionNumber,
-                sectionName: s.sectionName
-              }))
-            );
 
             return (
               <div key={chapter} className="space-y-6">

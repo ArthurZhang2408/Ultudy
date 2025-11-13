@@ -141,6 +141,18 @@ function LearnPageContent() {
   const urlSectionId = searchParams.get('section_id');
   const targetConceptName = searchParams.get('concept_name') || null;
 
+  const clearConceptNavigation = () => {
+    const conceptParam = searchParams.get('concept_name');
+    if (!conceptParam) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('concept_name');
+    const queryString = params.toString();
+    router.replace(queryString ? `/learn?${queryString}` : '/learn', { scroll: false });
+  };
+
   // Document and section-related state
   const [documentInfo, setDocumentInfo] = useState<DocumentInfo | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
@@ -363,11 +375,13 @@ function LearnPageContent() {
           } else {
             // Concept not found, show summary
             console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
+            clearConceptNavigation();
             setShowingSections(false);
             setShowingSummary(true);
           }
         } else {
           // No target concept, show summary screen
+          clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
         }
@@ -444,11 +458,13 @@ function LearnPageContent() {
           } else {
             // Concept not found, show summary
             console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
+            clearConceptNavigation();
             setShowingSections(false);
             setShowingSummary(true);
           }
         } else {
           // No target concept, show summary screen
+          clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
         }
@@ -744,6 +760,7 @@ function LearnPageContent() {
     }
 
     void startStudySession();
+    clearConceptNavigation();
 
     if (storedProgress) {
       setConceptProgress(new Map(storedProgress.conceptProgress || []));
@@ -1241,6 +1258,7 @@ function LearnPageContent() {
           <button
             onClick={() => {
               if (sections.length > 0) {
+                clearConceptNavigation();
                 setShowingSummary(false);
                 setShowingSections(true);
               } else {
@@ -1311,7 +1329,10 @@ function LearnPageContent() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <button
-          onClick={() => setShowingSummary(true)}
+          onClick={() => {
+            clearConceptNavigation();
+            setShowingSummary(true);
+          }}
           className="text-sm text-slate-600 hover:text-slate-900"
         >
           ← Back to summary

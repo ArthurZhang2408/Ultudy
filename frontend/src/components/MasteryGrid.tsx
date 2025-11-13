@@ -11,6 +11,7 @@ export type SkillSquare = {
   sectionNumber?: number;
   sectionName?: string;
   conceptNumber?: number;
+  lessonPosition?: number;
   description?: string;
   onClick?: () => void;
 };
@@ -69,10 +70,6 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
       }, {} as Record<number, SkillSquare[]>)
     : { 0: skills };
 
-  console.log('[MasteryGrid] showSectionDividers:', showSectionDividers);
-  console.log('[MasteryGrid] groupedSkills:', groupedSkills);
-  console.log('[MasteryGrid] first skill:', skills[0]);
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -87,7 +84,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
         {Object.entries(groupedSkills)
           .sort(([a], [b]) => Number(a) - Number(b))
           .filter(([sectionNum]) => Number(sectionNum) > 0) // Skip section 0 (concepts without section)
-          .map(([sectionNum, sectionSkills], idx) => {
+          .map(([sectionNum, sectionSkills]) => {
             const sectionName = sectionSkills[0]?.sectionName || `Section ${sectionNum}`;
 
             return (
@@ -106,58 +103,67 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                   </div>
                 )}
 
-            {/* Grid of skill squares */}
-            <div
-              className={`grid gap-1.5 ${showSectionDividers ? 'p-3 rounded-lg bg-slate-50 border border-slate-200' : ''}`}
-              style={{
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                maxWidth: `${columns * 56}px`
-              }}
-            >
-              {sectionSkills.map((skill) => (
-                <div key={skill.id} className="relative">
-                  <button
-                    className={`
-                      w-12 h-12 rounded-md transition-all duration-200
-                      ${getMasteryColor(skill.masteryLevel)}
-                      ${skill.onClick ? 'cursor-pointer' : 'cursor-default'}
-                      flex items-center justify-center
-                      text-white font-bold text-xs
-                      shadow-sm
-                    `}
-                    onClick={skill.onClick}
-                    onMouseEnter={() => setHoveredSkill(skill.id)}
-                    onMouseLeave={() => setHoveredSkill(null)}
-                    title={`${skill.name} - ${getMasteryLabel(skill.masteryLevel)}`}
-                  >
-                    {skill.conceptNumber || ''}
-                  </button>
+                {/* Grid of skill squares */}
+                <div
+                  className={`grid gap-1.5 ${showSectionDividers ? 'p-3 rounded-lg bg-slate-50 border border-slate-200' : ''}`}
+                  style={{
+                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                    maxWidth: `${columns * 56}px`
+                  }}
+                >
+                  {sectionSkills.map((skill, index) => {
+                    const displayNumber =
+                      typeof skill.conceptNumber === 'number' && skill.conceptNumber > 0
+                        ? skill.conceptNumber
+                        : typeof skill.lessonPosition === 'number'
+                        ? skill.lessonPosition + 1
+                        : index + 1;
 
-            {/* Hover tooltip */}
-            {hoveredSkill === skill.id && (
-              <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 pointer-events-none">
-                <div className="bg-slate-900 text-white text-xs rounded-md p-2.5 shadow-xl">
-                  <div className="font-semibold mb-1 text-sm">{skill.name}</div>
-                  {skill.description && (
-                    <div className="text-slate-300 text-xs mb-1.5 line-clamp-2">{skill.description}</div>
-                  )}
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <div className={`w-2.5 h-2.5 rounded-sm ${getMasteryColor(skill.masteryLevel).split(' ')[0]}`} />
-                    <span>{getMasteryLabel(skill.masteryLevel)}</span>
-                  </div>
-                  {/* Arrow */}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-0.5">
-                    <div className="w-1.5 h-1.5 bg-slate-900 rotate-45" />
-                  </div>
+                    return (
+                      <div key={skill.id} className="relative">
+                        <button
+                          className={`
+                            w-12 h-12 rounded-md transition-all duration-200
+                            ${getMasteryColor(skill.masteryLevel)}
+                            ${skill.onClick ? 'cursor-pointer' : 'cursor-default'}
+                            flex items-center justify-center
+                            text-white font-bold text-xs
+                            shadow-sm
+                          `}
+                          onClick={skill.onClick}
+                          onMouseEnter={() => setHoveredSkill(skill.id)}
+                          onMouseLeave={() => setHoveredSkill(null)}
+                          title={`${skill.name} - ${getMasteryLabel(skill.masteryLevel)}`}
+                        >
+                          {displayNumber}
+                        </button>
+
+                        {/* Hover tooltip */}
+                        {hoveredSkill === skill.id && (
+                          <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-56 pointer-events-none">
+                            <div className="bg-slate-900 text-white text-xs rounded-md p-2.5 shadow-xl">
+                              <div className="font-semibold mb-1 text-sm">{skill.name}</div>
+                              {skill.description && (
+                                <div className="text-slate-300 text-xs mb-1.5 line-clamp-2">{skill.description}</div>
+                              )}
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <div className={`w-2.5 h-2.5 rounded-sm ${getMasteryColor(skill.masteryLevel).split(' ')[0]}`} />
+                                <span>{getMasteryLabel(skill.masteryLevel)}</span>
+                              </div>
+                              {/* Arrow */}
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-0.5">
+                                <div className="w-1.5 h-1.5 bg-slate-900 rotate-45" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-                </div>
-              ))}
-            </div>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* Legend */}
