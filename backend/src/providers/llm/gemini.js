@@ -482,10 +482,14 @@ Create a comprehensive, interactive learning experience that prepares students f
   * Use \\n for newlines inside the code, not literal newlines
   * Example: <cb lang="sql">CREATE PROCEDURE proc()\\nBEGIN\\n  SELECT * FROM table;\\nEND</cb>
 - **For inline text examples:** Just use plain markdown text in the examples array
-- Use **LaTeX** for mathematical formulas:
-  - Inline math: $x^2 + y^2 = z^2$
-  - Display math: $$E = mc^2$$
+- **For mathematical formulas and equations:**
+  * Wrap ALL math expressions (both inline and display) in <eqs>LaTeX here</eqs> tags
+  * Inline math example: <eqs>x^2 + y^2 = z^2</eqs>
+  * Display math example: <eqs>E = mc^2</eqs>
+  * Use raw LaTeX syntax without any escaping or HTML entities
+  * Example: <eqs>\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}</eqs>
 - **CRITICAL:** Never use markdown code blocks (triple backticks) directly in JSON strings. Always use <cb> tags for multi-line code.
+- **CRITICAL:** Never use dollar signs ($) for math. Always use <eqs> tags for ALL mathematical expressions.
 
 **PEDAGOGY:**
 - Progressive disclosure: One concept at a time
@@ -542,13 +546,13 @@ Return JSON in this EXACT structure:
   "concepts": [
     {
       "name": "Concept Name",
-      "explanation": "2-3 sentence explanation with **key terms** in bold and *definitions* in italics. Use Markdown and LaTeX for formulas like $E = mc^2$.",
+      "explanation": "2-3 sentence explanation with **key terms** in bold and *definitions* in italics. Use Markdown. For formulas, wrap in <eqs> tags like <eqs>E = mc^2</eqs>.",
       "key_details": {
         "formulas": [
-          {"formula": "$$E = mc^2$$", "variables": "$E$ is energy (joules), $m$ is mass (kg), $c$ is speed of light"}
+          {"formula": "<eqs>E = mc^2</eqs>", "variables": "<eqs>E</eqs> is energy (joules), <eqs>m</eqs> is mass (kg), <eqs>c</eqs> is speed of light"}
         ],
         "examples": [
-          "**Example 1:** Calculate energy for mass $m = 2$ kg: $E = 2 \\\\times (3 \\\\times 10^8)^2 = 1.8 \\\\times 10^{17}$ J"
+          "**Example 1:** Calculate energy for mass <eqs>m = 2</eqs> kg: <eqs>E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17}</eqs> J"
         ],
         "important_notes": [
           "**Critical:** Only applies in *relativistic* contexts",
