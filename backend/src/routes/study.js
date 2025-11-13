@@ -481,7 +481,12 @@ export default function createStudyRouter(options = {}) {
                 `UPDATE concepts
                  SET concept_number = $1, chapter = $2, course_id = $3
                  WHERE id = $4`,
-                [i, chapter || document.doc_chapter, document.course_id, existingConcept.rows[0].id]
+                [
+                  i + 1,
+                  chapter || document.doc_chapter,
+                  document.course_id,
+                  existingConcept.rows[0].id
+                ]
               );
             } else {
               // Insert new concept
@@ -495,7 +500,7 @@ export default function createStudyRouter(options = {}) {
                   document.course_id,
                   document_id,
                   section_id || null,
-                  i  // Preserve the lesson order by storing the array index
+                  i + 1 // Preserve the lesson order using 1-based numbering for readability
                 ]
               );
             }
@@ -1189,6 +1194,7 @@ export default function createStudyRouter(options = {}) {
             id: concept.id,
             name: concept.name,
             section_id: concept.section_id,
+            concept_number: concept.concept_number,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,
@@ -1228,6 +1234,7 @@ export default function createStudyRouter(options = {}) {
             id: concept.id,
             name: concept.name,
             section_id: concept.section_id,
+            concept_number: concept.concept_number,
             mastery_state: concept.mastery_state,
             total_attempts: concept.total_attempts,
             correct_attempts: concept.correct_attempts,

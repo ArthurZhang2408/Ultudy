@@ -242,6 +242,7 @@ export function createMemoryPool() {
             course_id: params[3] ?? null,
             document_id: params[4] ?? null,
             section_id: null, // Not provided in old format
+            concept_number: null,
             mastery_state: params[5] ?? 'not_learned',
             total_attempts: params[6] ?? 0,
             correct_attempts: params[7] ?? 0,
