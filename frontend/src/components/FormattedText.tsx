@@ -5,8 +5,37 @@ import type { Components } from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
-import rehypeSanitize from 'rehype-sanitize';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
 import 'katex/dist/katex.min.css';
+
+const mathEnabledSanitizeSchema: RehypeSanitizeOptions = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [
+      ...((defaultSchema.attributes?.code as Array<unknown>) || []),
+      ['className', 'math-inline'],
+      ['className', 'math-display'],
+      ['className', 'language-math'],
+    ],
+    span: [
+      ...((defaultSchema.attributes?.span as Array<unknown>) || []),
+      ['className', 'math-inline'],
+      ['className', 'math-display'],
+      'style',
+    ],
+    div: [
+      ...((defaultSchema.attributes?.div as Array<unknown>) || []),
+      ['className', 'math-display'],
+      'style',
+    ],
+    '*': [
+      ...((defaultSchema.attributes?.['*'] as Array<unknown>) || []),
+      'ariaHidden',
+    ],
+  },
+};
 
 type FormattedTextProps = {
   children: string;
@@ -31,7 +60,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
     <div className={`formatted-text ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[rehypeKatex, rehypeSanitize]}
+        rehypePlugins={[[rehypeSanitize, mathEnabledSanitizeSchema], rehypeKatex]}
         components={{
           // Style paragraph elements
           p: ({ node, ...props }) => (
