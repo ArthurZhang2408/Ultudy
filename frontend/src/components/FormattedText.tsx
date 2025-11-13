@@ -218,6 +218,9 @@ type MathNode = {
   };
 };
 
+const unescapeBackslashQuotes = (value: string): string =>
+  value.replace(/\\(["'])/g, '$1');
+
 const decodeHtmlEntitiesOnce = (value: string): string =>
   value.replace(/&(#x?[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g, (match, entity) => {
     if (entity.startsWith('#x') || entity.startsWith('#X')) {
@@ -260,6 +263,8 @@ const decodeHtmlEntities = (value: string): string => {
   return decoded;
 };
 
+const normalizeMathText = (value: string): string => unescapeBackslashQuotes(decodeHtmlEntities(value));
+
 const decodeTextChildren = (children: HastLikeChild[]): HastLikeChild[] =>
   children.map(child => {
     if (!child || typeof child !== 'object') {
@@ -269,7 +274,7 @@ const decodeTextChildren = (children: HastLikeChild[]): HastLikeChild[] =>
     const nextChild = { ...child };
 
     if (typeof nextChild.value === 'string') {
-      nextChild.value = decodeHtmlEntities(nextChild.value);
+      nextChild.value = normalizeMathText(nextChild.value);
     }
 
     if (Array.isArray(nextChild.children)) {
@@ -287,7 +292,7 @@ const remarkDecodeMathEntities: Plugin<[], Root> = () => tree => {
       return;
     }
 
-    const decoded = decodeHtmlEntities(mathNode.value);
+    const decoded = normalizeMathText(mathNode.value);
 
     if (decoded === mathNode.value) {
       return;
@@ -313,10 +318,10 @@ const remarkDecodeMathEntities: Plugin<[], Root> = () => tree => {
           const propertyValue = properties[key];
 
           if (typeof propertyValue === 'string') {
-            properties[key] = decodeHtmlEntities(propertyValue);
+            properties[key] = normalizeMathText(propertyValue);
           } else if (Array.isArray(propertyValue)) {
             properties[key] = propertyValue.map(item =>
-              typeof item === 'string' ? decodeHtmlEntities(item) : item,
+              typeof item === 'string' ? normalizeMathText(item) : item,
             );
           }
         });
