@@ -203,15 +203,22 @@ type FormattedTextProps = {
   className?: string;
 };
 
+type HastLikeChild = {
+  type?: string;
+  value?: string;
+  children?: HastLikeChild[];
+} & Record<string, unknown>;
+
 type MathNode = {
   type: 'math' | 'inlineMath';
   value: string;
   data?: {
-    hChildren?: Array<{ type?: string; value?: string } & Record<string, unknown>>;
+    hChildren?: HastLikeChild[];
+    hProperties?: Record<string, unknown>;
   };
 };
 
-const decodeHtmlEntities = (value: string): string =>
+const decodeHtmlEntitiesOnce = (value: string): string =>
   value.replace(/&(#x?[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g, (match, entity) => {
     if (entity.startsWith('#x') || entity.startsWith('#X')) {
       const hex = entity.slice(2);
@@ -241,6 +248,37 @@ const decodeHtmlEntities = (value: string): string =>
     return match;
   });
 
+const decodeHtmlEntities = (value: string): string => {
+  let previous = value;
+  let decoded = decodeHtmlEntitiesOnce(previous);
+
+  while (decoded !== previous) {
+    previous = decoded;
+    decoded = decodeHtmlEntitiesOnce(previous);
+  }
+
+  return decoded;
+};
+
+const decodeTextChildren = (children: HastLikeChild[]): HastLikeChild[] =>
+  children.map(child => {
+    if (!child || typeof child !== 'object') {
+      return child;
+    }
+
+    const nextChild = { ...child };
+
+    if (typeof nextChild.value === 'string') {
+      nextChild.value = decodeHtmlEntities(nextChild.value);
+    }
+
+    if (Array.isArray(nextChild.children)) {
+      nextChild.children = decodeTextChildren(nextChild.children);
+    }
+
+    return nextChild;
+  });
+
 const remarkDecodeMathEntities: Plugin<[], Root> = () => tree => {
   visit(tree, ['inlineMath', 'math'], node => {
     const mathNode = node as MathNode;
@@ -261,14 +299,28 @@ const remarkDecodeMathEntities: Plugin<[], Root> = () => tree => {
       mathNode.data = {};
     }
 
-    if (Array.isArray(mathNode.data.hChildren)) {
-      mathNode.data.hChildren = mathNode.data.hChildren.map((child: { [key: string]: unknown }) =>
-        typeof child === 'object' && child !== null && 'type' in child && child.type === 'text'
-          ? { ...child, value: decoded }
-          : child,
-      );
-    } else {
-      mathNode.data.hChildren = [{ type: 'text', value: decoded }];
+    if (mathNode.data && typeof mathNode.data === 'object') {
+      if (Array.isArray(mathNode.data.hChildren)) {
+        mathNode.data.hChildren = decodeTextChildren(mathNode.data.hChildren);
+      } else {
+        mathNode.data.hChildren = [{ type: 'text', value: decoded }];
+      }
+
+      if (mathNode.data.hProperties && typeof mathNode.data.hProperties === 'object') {
+        const properties = mathNode.data.hProperties as Record<string, unknown>;
+
+        Object.keys(properties).forEach(key => {
+          const propertyValue = properties[key];
+
+          if (typeof propertyValue === 'string') {
+            properties[key] = decodeHtmlEntities(propertyValue);
+          } else if (Array.isArray(propertyValue)) {
+            properties[key] = propertyValue.map(item =>
+              typeof item === 'string' ? decodeHtmlEntities(item) : item,
+            );
+          }
+        });
+      }
     }
   });
 };
