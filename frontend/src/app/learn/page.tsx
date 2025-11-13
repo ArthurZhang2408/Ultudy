@@ -372,6 +372,7 @@ function LearnPageContent() {
             setCurrentMCQIndex(0);
             setShowingSections(false);
             setShowingSummary(false);
+            clearConceptNavigation();
           } else {
             // Concept not found, show summary
             console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
@@ -455,6 +456,7 @@ function LearnPageContent() {
             setCurrentMCQIndex(0);
             setShowingSections(false);
             setShowingSummary(false);
+            clearConceptNavigation();
           } else {
             // Concept not found, show summary
             console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
@@ -585,6 +587,10 @@ function LearnPageContent() {
       setCurrentMCQIndex(0);
       setShowingSummary(false);
       setShowingSections(false);
+
+      // Clear the concept navigation parameter after honoring it once
+      // so subsequent manual navigation isn't overridden by this effect.
+      clearConceptNavigation();
     }
   }, [lesson, targetConceptName, showingSummary, currentConceptIndex]);
 
