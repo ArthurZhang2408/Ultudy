@@ -60,7 +60,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
     <div className={`formatted-text ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[[rehypeSanitize, mathEnabledSanitizeSchema], rehypeKatex]}
+        rehypePlugins={[rehypeKatex, [rehypeSanitize, mathEnabledSanitizeSchema]]}
         components={{
           // Style paragraph elements
           p: ({ node, ...props }) => (
