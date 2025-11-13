@@ -396,6 +396,15 @@ function buildMCQPrompt({ topic, difficulty, hits, n }) {
 - "correctIndex": number (0-3),
 - "rationale": string,
 - "source": { "document_id": string, "page_start": number, "page_end": number }
+
+**MATH FORMATTING RULES:**
+- Wrap ALL math expressions (both inline and display) in <eqs>LaTeX here</eqs> tags
+- Inline math example: <eqs>x^2 + y^2 = z^2</eqs>
+- Display math example: <eqs>E = mc^2</eqs>
+- Use raw LaTeX syntax without any escaping or HTML entities
+- Example: <eqs>\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}</eqs>
+- **CRITICAL:** Never use dollar signs ($) for math. Always use <eqs> tags for ALL mathematical expressions in questions, choices, and rationale.
+
 Use only the given context and match the requested difficulty. Input data: ${JSON.stringify(payload)}`;
 }
 
