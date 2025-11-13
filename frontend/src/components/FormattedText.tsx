@@ -8,6 +8,11 @@ import rehypeKatex from 'rehype-katex';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
 import 'katex/dist/katex.min.css';
+import { decodeNamedCharacterReference } from 'decode-named-character-reference';
+import { decodeNumericCharacterReference } from 'micromark-util-decode-numeric-character-reference';
+import { visit } from 'unist-util-visit';
+import type { Root } from 'mdast';
+import type { Plugin } from 'unified';
 
 type DefaultAttributes = NonNullable<typeof defaultSchema.attributes>;
 type PropertyDefinition = DefaultAttributes[keyof DefaultAttributes] extends Array<infer T>
@@ -198,6 +203,76 @@ type FormattedTextProps = {
   className?: string;
 };
 
+type MathNode = {
+  type: 'math' | 'inlineMath';
+  value: string;
+  data?: {
+    hChildren?: Array<{ type?: string; value?: string } & Record<string, unknown>>;
+  };
+};
+
+const decodeHtmlEntities = (value: string): string =>
+  value.replace(/&(#x?[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]+);/g, (match, entity) => {
+    if (entity.startsWith('#x') || entity.startsWith('#X')) {
+      const hex = entity.slice(2);
+      if (hex) {
+        try {
+          return decodeNumericCharacterReference(hex, 16);
+        } catch {
+          // Fall through to return the original match.
+        }
+      }
+    } else if (entity.startsWith('#')) {
+      const decimal = entity.slice(1);
+      if (decimal) {
+        try {
+          return decodeNumericCharacterReference(decimal, 10);
+        } catch {
+          // Fall through to return the original match.
+        }
+      }
+    } else {
+      const decoded = decodeNamedCharacterReference(entity);
+      if (decoded !== false) {
+        return decoded;
+      }
+    }
+
+    return match;
+  });
+
+const remarkDecodeMathEntities: Plugin<[], Root> = () => tree => {
+  visit(tree, ['inlineMath', 'math'], node => {
+    const mathNode = node as MathNode;
+
+    if (typeof mathNode.value !== 'string') {
+      return;
+    }
+
+    const decoded = decodeHtmlEntities(mathNode.value);
+
+    if (decoded === mathNode.value) {
+      return;
+    }
+
+    mathNode.value = decoded;
+
+    if (!mathNode.data) {
+      mathNode.data = {};
+    }
+
+    if (Array.isArray(mathNode.data.hChildren)) {
+      mathNode.data.hChildren = mathNode.data.hChildren.map((child: { [key: string]: unknown }) =>
+        typeof child === 'object' && child !== null && 'type' in child && child.type === 'text'
+          ? { ...child, value: decoded }
+          : child,
+      );
+    } else {
+      mathNode.data.hChildren = [{ type: 'text', value: decoded }];
+    }
+  });
+};
+
 /**
  * FormattedText component
  *
@@ -215,7 +290,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
   return (
     <div className={`formatted-text ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath, remarkGfm]}
+        remarkPlugins={[remarkMath, remarkGfm, remarkDecodeMathEntities]}
         rehypePlugins={[rehypeKatex, [rehypeSanitize, mathEnabledSanitizeSchema]]}
         components={{
           // Style paragraph elements
