@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
+import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
 
 type Course = {
   id: string;
@@ -46,6 +47,8 @@ export default function CoursePage() {
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     if (courseId) {
@@ -124,15 +127,18 @@ export default function CoursePage() {
     router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}`);
   }
 
-  async function handleDeleteDocument(documentId: string, title: string) {
-    if (!confirm(`Are you sure you want to delete "${title}"?\n\nThis will permanently delete:\n• The document\n• All sections\n• All generated lessons\n• The PDF file\n\nThis action cannot be undone.`)) {
-      return;
-    }
+  function openDeleteModal(documentId: string, title: string) {
+    setDocumentToDelete({ id: documentId, title });
+    setDeleteModalOpen(true);
+  }
+
+  async function handleDeleteDocument() {
+    if (!documentToDelete) return;
 
     setDeleteError(null);
 
     try {
-      const res = await fetch(`/api/documents/${documentId}`, {
+      const res = await fetch(`/api/documents/${documentToDelete.id}`, {
         method: 'DELETE'
       });
 
@@ -146,6 +152,7 @@ export default function CoursePage() {
 
       // Refresh the documents list
       fetchCourseData();
+      setDocumentToDelete(null);
     } catch (error) {
       console.error('Failed to delete document:', error);
       setDeleteError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
@@ -154,20 +161,46 @@ export default function CoursePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-slate-600">Loading course...</div>
+      <div className="space-y-6 animate-pulse">
+        <div className="flex items-start justify-between">
+          <div className="space-y-3">
+            <div className="h-4 w-24 skeleton rounded" />
+            <div className="h-9 w-64 skeleton rounded-lg" />
+            <div className="h-4 w-48 skeleton rounded" />
+          </div>
+          <div className="flex gap-3">
+            <div className="h-10 w-32 skeleton rounded-lg" />
+            <div className="h-10 w-40 skeleton rounded-lg" />
+          </div>
+        </div>
+        <div className="h-96 skeleton rounded-xl" />
       </div>
     );
   }
 
   if (!course) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-slate-900">Course not found</h2>
-        <Link href="/courses" className="mt-4 inline-block text-slate-600 hover:text-slate-900">
-          ← Back to courses
-        </Link>
-      </div>
+      <Card className="text-center py-16 animate-fade-in">
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="w-20 h-20 bg-danger-100 rounded-full flex items-center justify-center mx-auto">
+            <svg className="w-10 h-10 text-danger-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-semibold text-neutral-900">Course not found</h2>
+          <p className="text-neutral-600">
+            The course you're looking for doesn't exist or has been deleted.
+          </p>
+          <Link href="/courses">
+            <Button variant="primary">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Courses
+            </Button>
+          </Link>
+        </div>
+      </Card>
     );
   }
 
@@ -188,70 +221,103 @@ export default function CoursePage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-start justify-between">
-        <div>
-          <Link href="/courses" className="text-sm text-slate-600 hover:text-slate-900">
-            ← Back to courses
+        <div className="space-y-3">
+          <Link href="/courses" className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-700 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to courses
           </Link>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-900">{course.name}</h1>
-          <div className="mt-2 flex gap-4 text-sm text-slate-600">
-            {course.code && <span>{course.code}</span>}
-            {course.term && <span>• {course.term}</span>}
-            {course.exam_date && (
-              <span>• Exam: {new Date(course.exam_date).toLocaleDateString()}</span>
-            )}
+          <div>
+            <h1 className="text-4xl font-bold text-neutral-900">{course.name}</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {course.code && (
+                <Badge variant="primary" size="md">
+                  {course.code}
+                </Badge>
+              )}
+              {course.term && (
+                <Badge variant="neutral" size="md">
+                  {course.term}
+                </Badge>
+              )}
+              {course.exam_date && (
+                <Badge variant="warning" size="md" dot>
+                  Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex gap-3">
-          <Link
-            href={`/progress?course_id=${course.id}`}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            View Progress
+          <Link href={`/progress?course_id=${course.id}`}>
+            <Button variant="secondary">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              View Progress
+            </Button>
           </Link>
-          <Link
-            href={`/upload?course_id=${course.id}`}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Upload Materials
+          <Link href={`/upload?course_id=${course.id}`}>
+            <Button variant="primary">
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Upload Materials
+            </Button>
           </Link>
         </div>
       </div>
 
       {deleteError && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-red-800">Delete Failed</h3>
-              <p className="mt-1 text-sm text-red-700">{deleteError}</p>
-            </div>
-            <button
-              onClick={() => setDeleteError(null)}
-              className="text-red-500 hover:text-red-700"
-            >
-              <span className="sr-only">Dismiss</span>
-              <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
+        <div className="flex items-start gap-3 rounded-lg border border-danger-200 bg-danger-50 p-4 animate-slide-down">
+          <svg className="w-5 h-5 text-danger-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-danger-800">Delete Failed</p>
+            <p className="text-sm text-danger-700 mt-1">{deleteError}</p>
           </div>
+          <button
+            onClick={() => setDeleteError(null)}
+            className="text-danger-500 hover:text-danger-700 transition-colors"
+          >
+            <span className="sr-only">Dismiss</span>
+            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
         </div>
       )}
 
       {documents.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
-          <h3 className="text-lg font-medium text-slate-900">No materials uploaded yet</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Upload your textbooks, lecture notes, and practice problems to get started.
-          </p>
-          <Link
-            href={`/upload?course_id=${course.id}`}
-            className="mt-4 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Upload Your First Document
-          </Link>
-        </div>
+        <Card className="text-center py-16 animate-fade-in">
+          <div className="max-w-md mx-auto space-y-4">
+            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-semibold text-neutral-900">No materials uploaded yet</h3>
+            <p className="text-neutral-600">
+              Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
+            </p>
+            <Link href={`/upload?course_id=${course.id}`}>
+              <Button variant="primary" size="lg">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Upload Your First Document
+              </Button>
+            </Link>
+          </div>
+        </Card>
       ) : (
         <div className="space-y-8">
           {chapters.map((chapter) => {
@@ -308,64 +374,89 @@ export default function CoursePage() {
             return (
               <div key={chapter} className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-slate-900">
+                  <h2 className="text-2xl font-bold text-neutral-900">
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
-                  <button
+                  <Button
                     onClick={() => {
                       const doc = documentsByChapter[chapter]?.[0];
                       if (doc) {
                         handleStartStudy(doc.id, doc.chapter);
                       }
                     }}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    variant="primary"
                   >
-                    Study
-                  </button>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    Start Studying
+                  </Button>
                 </div>
 
                 {/* Concept Mastery Grid */}
                 {skills.length > 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <Card hover={false}>
                     <MasteryGrid
                       title="Concept Progress"
                       skills={skills}
                       columns={15}
                       showSectionDividers={true}
                     />
-                  </div>
+                  </Card>
                 )}
 
                 {/* Documents List */}
-                <div className="space-y-3">
-                  <h3 className="text-sm font-medium text-slate-700">Materials</h3>
-                  <div className="grid gap-3">
-                {documentsByChapter[chapter].map((doc) => (
-                  <div
-                    key={doc.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-                  >
-                    <div className="flex-1">
-                      <h3 className="font-medium text-slate-900">{doc.title}</h3>
-                      <div className="mt-1 flex gap-3 text-sm text-slate-600">
-                        {doc.material_type && (
-                          <span className="capitalize">{doc.material_type}</span>
-                        )}
-                        <span>• {doc.pages} pages</span>
-                        <span>
-                          • {new Date(doc.uploaded_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                      className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                      title="Delete document"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-neutral-900">Course Materials</h3>
+                  <div className="grid gap-4">
+                    {documentsByChapter[chapter].map((doc) => (
+                      <Card key={doc.id} padding="md" hover className="group">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                                <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-neutral-900 group-hover:text-primary-700 transition-colors">
+                                  {doc.title}
+                                </h4>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  {doc.material_type && (
+                                    <Badge variant="neutral" size="sm">
+                                      {doc.material_type}
+                                    </Badge>
+                                  )}
+                                  <span className="text-xs text-neutral-500">
+                                    {doc.pages} pages
+                                  </span>
+                                  <span className="text-xs text-neutral-400">•</span>
+                                  <span className="text-xs text-neutral-500">
+                                    {new Date(doc.uploaded_at).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      year: 'numeric'
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            onClick={() => openDeleteModal(doc.id, doc.title)}
+                            variant="danger"
+                            size="sm"
+                          >
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -373,6 +464,21 @@ export default function CoursePage() {
           })}
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => {
+          setDeleteModalOpen(false);
+          setDocumentToDelete(null);
+        }}
+        onConfirm={handleDeleteDocument}
+        title="Delete Document"
+        message={`Are you sure you want to delete "${documentToDelete?.title}"? This will permanently delete the document, all sections, all generated lessons, and the PDF file. This action cannot be undone.`}
+        confirmText="Delete Document"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

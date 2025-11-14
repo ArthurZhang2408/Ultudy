@@ -2,22 +2,165 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 text-slate-900;
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 text-neutral-900 antialiased;
+    @apply min-h-screen;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-neutral-900;
+  }
+
+  h1 {
+    @apply text-4xl md:text-5xl lg:text-6xl;
+  }
+
+  h2 {
+    @apply text-3xl md:text-4xl;
+  }
+
+  h3 {
+    @apply text-2xl md:text-3xl;
+  }
+
+  h4 {
+    @apply text-xl md:text-2xl;
+  }
+
+  a {
+    @apply text-primary-600 hover:text-primary-700 transition-colors duration-200;
+  }
+
+  main {
+    @apply flex-1;
+  }
 }
 
-a {
-  @apply text-blue-600 hover:text-blue-800;
+@layer components {
+  /* Input styles - removed from global, will be applied per component */
+  .input-base {
+    @apply rounded-lg border border-neutral-300 px-4 py-2.5 bg-white;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply transition-all duration-200;
+    @apply placeholder:text-neutral-400;
+  }
+
+  .input-error {
+    @apply border-danger-500 focus:ring-danger-500;
+  }
+
+  /* Button base - removed from global, will use Button component */
+  .btn-base {
+    @apply rounded-lg px-4 py-2.5 font-medium;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 text-white hover:bg-primary-700;
+    @apply focus:ring-primary-500;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-neutral-700 border border-neutral-300;
+    @apply hover:bg-neutral-50 hover:border-neutral-400;
+    @apply focus:ring-primary-500;
+  }
+
+  .btn-success {
+    @apply bg-success-600 text-white hover:bg-success-700;
+    @apply focus:ring-success-500;
+  }
+
+  .btn-danger {
+    @apply bg-danger-600 text-white hover:bg-danger-700;
+    @apply focus:ring-danger-500;
+  }
+
+  /* Card component */
+  .card {
+    @apply bg-white rounded-xl shadow-soft border border-neutral-200;
+    @apply transition-all duration-200;
+    @apply hover:shadow-medium;
+  }
+
+  .card-interactive {
+    @apply hover:border-primary-300 hover:-translate-y-0.5;
+    @apply cursor-pointer;
+  }
+
+  /* Badge component */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-primary {
+    @apply bg-primary-100 text-primary-800;
+  }
+
+  .badge-success {
+    @apply bg-success-100 text-success-800;
+  }
+
+  .badge-warning {
+    @apply bg-warning-100 text-warning-800;
+  }
+
+  .badge-danger {
+    @apply bg-danger-100 text-danger-800;
+  }
+
+  .badge-neutral {
+    @apply bg-neutral-100 text-neutral-800;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply w-full h-2 bg-neutral-200 rounded-full overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full;
+    @apply transition-all duration-500 ease-out;
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply animate-pulse bg-neutral-200 rounded;
+  }
+
+  /* Shimmer effect */
+  .shimmer {
+    @apply relative overflow-hidden bg-neutral-200;
+  }
+
+  .shimmer::after {
+    @apply absolute inset-0;
+    content: '';
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.5),
+      transparent
+    );
+    animation: shimmer 2s infinite;
+  }
 }
 
-input, select, button, textarea {
-  @apply rounded border border-slate-300 px-3 py-2;
-}
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 
-button {
-  @apply bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed;
-}
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 
-main {
-  @apply flex-1;
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
