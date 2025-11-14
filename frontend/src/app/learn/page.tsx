@@ -1500,7 +1500,8 @@ function LearnPageContent() {
               </button>
               <button
                 onClick={handleSkipConcept}
-                className="text-sm text-slate-600 hover:text-slate-900"
+                disabled={selectedOption !== null}
+                className="text-sm text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Skip concept
               </button>
