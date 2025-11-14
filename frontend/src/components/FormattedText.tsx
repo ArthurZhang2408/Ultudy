@@ -203,8 +203,9 @@ type FormattedTextProps = {
  * This allows the LLM to use <eqs> tags without escaping issues
  */
 function preprocessMathTags(text: string): string {
-  // Convert <eqs>...</eqs> to $...$
-  return text.replace(/<eqs>(.*?)<\/eqs>/gs, '$$$1$$');
+  // Convert <eqs>...</eqs> to $...$ (inline math)
+  // Use a function to ensure proper replacement
+  return text.replace(/<eqs>(.*?)<\/eqs>/gs, (match, content) => `$${content}$`);
 }
 
 /**
