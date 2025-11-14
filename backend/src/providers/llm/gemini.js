@@ -165,6 +165,76 @@ function processCodeBlocks(examples) {
   });
 }
 
+/**
+ * Wrap math expressions in <eqs> tags if they're not already wrapped
+ * Handles cases where models (especially lighter ones like gemini-2.5-flash-lite)
+ * don't follow the instruction to use <eqs> tags and output raw $ delimiters instead
+ */
+function wrapMathEquations(text) {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  // First pass: Protect already-wrapped equations by replacing them with placeholders
+  const protectedEquations = [];
+  let protectedText = text.replace(/<eqs>(.*?)<\/eqs>/gs, (match, content) => {
+    const placeholder = `__EQS_PROTECTED_${protectedEquations.length}__`;
+    protectedEquations.push(match);
+    return placeholder;
+  });
+
+  // Second pass: Find and wrap unwrapped $ delimited math
+  // Match $...$ patterns, handling escaped characters (\\$, \\\\, etc.)
+
+  // Handle display math ($$...$$) first - more specific pattern
+  protectedText = protectedText.replace(/\$\$((?:[^\$]|\\\$)+?)\$\$/g, (match, content) => {
+    console.log(`[wrapMathEquations] Wrapping display math: ${content.substring(0, 50)}...`);
+    return `<eqs>${content}</eqs>`;
+  });
+
+  // Handle inline math ($...$) - allows escaped $ within content
+  // Pattern: $ followed by (non-$ chars or \$) followed by $
+  protectedText = protectedText.replace(/\$((?:[^\$\n]|\\\$)+?)\$/g, (match, content) => {
+    // Skip if it looks like a currency reference (just numbers, commas, periods, spaces)
+    if (/^[\d,.\s]+$/.test(content.trim())) {
+      return match; // Likely currency, not math
+    }
+    console.log(`[wrapMathEquations] Wrapping inline math: ${content.substring(0, 50)}...`);
+    return `<eqs>${content}</eqs>`;
+  });
+
+  // Third pass: Restore protected equations
+  protectedEquations.forEach((equation, idx) => {
+    const placeholder = `__EQS_PROTECTED_${idx}__`;
+    protectedText = protectedText.replace(placeholder, equation);
+  });
+
+  return protectedText;
+}
+
+/**
+ * Recursively apply math wrapping to all string fields in an object or array
+ */
+function wrapMathInPayload(obj) {
+  if (typeof obj === 'string') {
+    return wrapMathEquations(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => wrapMathInPayload(item));
+  }
+
+  if (obj && typeof obj === 'object') {
+    const wrapped = {};
+    for (const [key, value] of Object.entries(obj)) {
+      wrapped[key] = wrapMathInPayload(value);
+    }
+    return wrapped;
+  }
+
+  return obj;
+}
+
 function normalizeLessonPayload(payload) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Gemini LLM provider returned an invalid lesson payload');
@@ -593,6 +663,10 @@ function normalizeFullContextLessonPayload(payload, document_id) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Gemini LLM provider returned an invalid lesson payload');
   }
+
+  // Wrap any unwrapped math equations in <eqs> tags
+  // This handles cases where lighter models don't follow the <eqs> instruction
+  payload = wrapMathInPayload(payload);
 
   const concepts = Array.isArray(payload.concepts) ? payload.concepts : [];
   if (concepts.length === 0) {
