@@ -179,13 +179,13 @@ export default function CoursePage() {
     return (
       <Card className="text-center py-16 animate-fade-in">
         <div className="max-w-md mx-auto space-y-4">
-          <div className="w-20 h-20 bg-danger-100 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-10 h-10 text-danger-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-20 h-20 bg-danger-100 dark:bg-danger-900/40 rounded-full flex items-center justify-center mx-auto">
+            <svg className="w-10 h-10 text-danger-600 dark:text-danger-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-neutral-900">Course not found</h2>
-          <p className="text-neutral-600">
+          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Course not found</h2>
+          <p className="text-neutral-600 dark:text-neutral-300">
             The course you're looking for doesn't exist or has been deleted.
           </p>
           <Link href="/courses">
@@ -221,14 +221,14 @@ export default function CoursePage() {
     <div className="space-y-8">
       <div className="flex items-start justify-between">
         <div className="space-y-3">
-          <Link href="/courses" className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-700 transition-colors">
+          <Link href="/courses" className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             Back to courses
           </Link>
           <div>
-            <h1 className="text-4xl font-bold text-neutral-900">{course.name}</h1>
+            <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">{course.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               {course.code && (
                 <Badge variant="primary" size="md">
@@ -263,17 +263,17 @@ export default function CoursePage() {
       </div>
 
       {deleteError && (
-        <div className="flex items-start gap-3 rounded-lg border border-danger-200 bg-danger-50 p-4 animate-slide-down">
-          <svg className="w-5 h-5 text-danger-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+        <div className="flex items-start gap-3 rounded-lg border border-danger-200 dark:border-danger-800/50 bg-danger-50 dark:bg-danger-900/20 p-4 animate-slide-down">
+          <svg className="w-5 h-5 text-danger-600 dark:text-danger-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
           <div className="flex-1">
-            <p className="text-sm font-medium text-danger-800">Delete Failed</p>
-            <p className="text-sm text-danger-700 mt-1">{deleteError}</p>
+            <p className="text-sm font-medium text-danger-800 dark:text-danger-300">Delete Failed</p>
+            <p className="text-sm text-danger-700 dark:text-danger-400 mt-1">{deleteError}</p>
           </div>
           <button
             onClick={() => setDeleteError(null)}
-            className="text-danger-500 hover:text-danger-700 transition-colors"
+            className="text-danger-500 dark:text-danger-400 hover:text-danger-700 dark:hover:text-danger-300 transition-colors"
           >
             <span className="sr-only">Dismiss</span>
             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -286,13 +286,13 @@ export default function CoursePage() {
       {documents.length === 0 ? (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
-            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto">
-              <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-10 h-10 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <h3 className="text-2xl font-semibold text-neutral-900">No materials uploaded yet</h3>
-            <p className="text-neutral-600">
+            <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">No materials uploaded yet</h3>
+            <p className="text-neutral-600 dark:text-neutral-300">
               Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
             </p>
             <Link href={`/upload?course_id=${course.id}`}>
@@ -361,7 +361,7 @@ export default function CoursePage() {
             return (
               <div key={chapter} className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-neutral-900">
+                  <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
                   <Button
@@ -394,20 +394,20 @@ export default function CoursePage() {
 
                 {/* Documents List */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-neutral-900">Course Materials</h3>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
                     {documentsByChapter[chapter].map((doc) => (
                       <Card key={doc.id} padding="md" hover className="group">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-2">
                             <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                                <svg className="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                 </svg>
                               </div>
                               <div>
-                                <h4 className="font-semibold text-neutral-900 group-hover:text-primary-700 transition-colors">
+                                <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">
                                   {doc.title}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -416,11 +416,11 @@ export default function CoursePage() {
                                       {doc.material_type}
                                     </Badge>
                                   )}
-                                  <span className="text-xs text-neutral-500">
+                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
                                     {doc.pages} pages
                                   </span>
-                                  <span className="text-xs text-neutral-400">•</span>
-                                  <span className="text-xs text-neutral-500">
+                                  <span className="text-xs text-neutral-400 dark:text-neutral-600">•</span>
+                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
                                     {new Date(doc.uploaded_at).toLocaleDateString('en-US', {
                                       month: 'short',
                                       day: 'numeric',
