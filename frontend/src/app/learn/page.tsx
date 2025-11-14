@@ -613,17 +613,18 @@ function LearnPageContent() {
     }
   }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
 
+  // Helper function to scroll to top of page
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   useEffect(() => {
     if (showingSummary) {
       return;
     }
 
-    if (!activeConceptRef.current) {
-      return;
-    }
-
-    activeConceptRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [showingSummary, currentConceptIndex]);
+    scrollToTop();
+  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
 
   async function startStudySession(): Promise<string | null> {
     if (sessionId) {
