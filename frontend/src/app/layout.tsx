@@ -47,9 +47,6 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                       <Link href="/upload" className="px-4 py-2 text-sm font-medium text-neutral-700 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors">
                         Upload
                       </Link>
-                      <Link href="/progress" className="px-4 py-2 text-sm font-medium text-neutral-700 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors">
-                        Progress
-                      </Link>
                     </SignedIn>
                   </nav>
                 )}
