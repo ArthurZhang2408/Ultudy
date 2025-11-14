@@ -1,6 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
+  darkMode: 'class',
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
@@ -82,6 +83,10 @@ const config: Config = {
         'medium': '0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06)',
         'large': '0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08)',
         'glow': '0 0 20px rgba(14, 165, 233, 0.3)',
+        'dark-soft': '0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.4)',
+        'dark-medium': '0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.5)',
+        'dark-large': '0 8px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.6)',
+        'dark-glow': '0 0 20px rgba(56, 189, 248, 0.4)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',

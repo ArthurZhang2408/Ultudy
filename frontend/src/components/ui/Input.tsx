@@ -20,9 +20,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     className = '',
     ...props
   }, ref) => {
-    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 transition-all duration-200 placeholder:text-neutral-400';
-    const normalStyles = 'border-neutral-300 focus:ring-primary-500 focus:border-transparent';
-    const errorStyles = 'border-danger-500 focus:ring-danger-500';
+    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-2 transition-all duration-200 placeholder:text-neutral-400 dark:placeholder:text-neutral-500';
+    const normalStyles = 'border-neutral-300 dark:border-neutral-700 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent';
+    const errorStyles = 'border-danger-500 dark:border-danger-400 focus:ring-danger-500 dark:focus:ring-danger-400';
     const widthStyles = fullWidth ? 'w-full' : '';
     const iconPaddingLeft = leftIcon ? 'pl-10' : '';
     const iconPaddingRight = rightIcon ? 'pr-10' : '';
@@ -30,13 +30,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={fullWidth ? 'w-full' : ''}>
         {label && (
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
             {label}
           </label>
         )}
         <div className="relative">
           {leftIcon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
               {leftIcon}
             </div>
           )}
@@ -46,16 +46,16 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             {...props}
           />
           {rightIcon && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500">
               {rightIcon}
             </div>
           )}
         </div>
         {error && (
-          <p className="mt-1 text-sm text-danger-600">{error}</p>
+          <p className="mt-1 text-sm text-danger-600 dark:text-danger-400">{error}</p>
         )}
         {helperText && !error && (
-          <p className="mt-1 text-sm text-neutral-500">{helperText}</p>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{helperText}</p>
         )}
       </div>
     );
@@ -85,15 +85,15 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     className = '',
     ...props
   }, ref) => {
-    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 transition-all duration-200 placeholder:text-neutral-400';
-    const normalStyles = 'border-neutral-300 focus:ring-primary-500 focus:border-transparent';
-    const errorStyles = 'border-danger-500 focus:ring-danger-500';
+    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-2 transition-all duration-200 placeholder:text-neutral-400 dark:placeholder:text-neutral-500';
+    const normalStyles = 'border-neutral-300 dark:border-neutral-700 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent';
+    const errorStyles = 'border-danger-500 dark:border-danger-400 focus:ring-danger-500 dark:focus:ring-danger-400';
     const widthStyles = fullWidth ? 'w-full' : '';
 
     return (
       <div className={fullWidth ? 'w-full' : ''}>
         {label && (
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
             {label}
           </label>
         )}
@@ -104,10 +104,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           {...props}
         />
         {error && (
-          <p className="mt-1 text-sm text-danger-600">{error}</p>
+          <p className="mt-1 text-sm text-danger-600 dark:text-danger-400">{error}</p>
         )}
         {helperText && !error && (
-          <p className="mt-1 text-sm text-neutral-500">{helperText}</p>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{helperText}</p>
         )}
       </div>
     );
@@ -135,15 +135,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     className = '',
     ...props
   }, ref) => {
-    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 transition-all duration-200';
-    const normalStyles = 'border-neutral-300 focus:ring-primary-500 focus:border-transparent';
-    const errorStyles = 'border-danger-500 focus:ring-danger-500';
+    const baseStyles = 'rounded-lg border px-4 py-2.5 bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-2 transition-all duration-200';
+    const normalStyles = 'border-neutral-300 dark:border-neutral-700 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-transparent';
+    const errorStyles = 'border-danger-500 dark:border-danger-400 focus:ring-danger-500 dark:focus:ring-danger-400';
     const widthStyles = fullWidth ? 'w-full' : '';
 
     return (
       <div className={fullWidth ? 'w-full' : ''}>
         {label && (
-          <label className="block text-sm font-medium text-neutral-700 mb-1">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
             {label}
           </label>
         )}
@@ -159,10 +159,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ))}
         </select>
         {error && (
-          <p className="mt-1 text-sm text-danger-600">{error}</p>
+          <p className="mt-1 text-sm text-danger-600 dark:text-danger-400">{error}</p>
         )}
         {helperText && !error && (
-          <p className="mt-1 text-sm text-neutral-500">{helperText}</p>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{helperText}</p>
         )}
       </div>
     );

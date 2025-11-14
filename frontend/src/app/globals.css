@@ -5,11 +5,12 @@
 @layer base {
   body {
     @apply bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 text-neutral-900 antialiased;
+    @apply dark:bg-gradient-to-br dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 dark:text-neutral-100;
     @apply min-h-screen;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold text-neutral-900;
+    @apply font-semibold text-neutral-900 dark:text-neutral-100;
   }
 
   h1 {
@@ -30,6 +31,7 @@
 
   a {
     @apply text-primary-600 hover:text-primary-700 transition-colors duration-200;
+    @apply dark:text-primary-400 dark:hover:text-primary-300;
   }
 
   main {
@@ -41,13 +43,16 @@
   /* Input styles - removed from global, will be applied per component */
   .input-base {
     @apply rounded-lg border border-neutral-300 px-4 py-2.5 bg-white;
+    @apply dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-100;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply dark:focus:ring-primary-400;
     @apply transition-all duration-200;
-    @apply placeholder:text-neutral-400;
+    @apply placeholder:text-neutral-400 dark:placeholder:text-neutral-500;
   }
 
   .input-error {
     @apply border-danger-500 focus:ring-danger-500;
+    @apply dark:border-danger-400 dark:focus:ring-danger-400;
   }
 
   /* Button base - removed from global, will use Button component */
@@ -55,40 +60,49 @@
     @apply rounded-lg px-4 py-2.5 font-medium;
     @apply transition-all duration-200;
     @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply dark:focus:ring-offset-neutral-900;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
     @apply bg-primary-600 text-white hover:bg-primary-700;
-    @apply focus:ring-primary-500;
+    @apply dark:bg-primary-500 dark:hover:bg-primary-600;
+    @apply focus:ring-primary-500 dark:focus:ring-primary-400;
     @apply shadow-sm hover:shadow-md;
+    @apply dark:shadow-dark-soft dark:hover:shadow-dark-medium;
   }
 
   .btn-secondary {
     @apply bg-white text-neutral-700 border border-neutral-300;
     @apply hover:bg-neutral-50 hover:border-neutral-400;
-    @apply focus:ring-primary-500;
+    @apply dark:bg-neutral-800 dark:text-neutral-200 dark:border-neutral-700;
+    @apply dark:hover:bg-neutral-700 dark:hover:border-neutral-600;
+    @apply focus:ring-primary-500 dark:focus:ring-primary-400;
   }
 
   .btn-success {
     @apply bg-success-600 text-white hover:bg-success-700;
-    @apply focus:ring-success-500;
+    @apply dark:bg-success-500 dark:hover:bg-success-600;
+    @apply focus:ring-success-500 dark:focus:ring-success-400;
   }
 
   .btn-danger {
     @apply bg-danger-600 text-white hover:bg-danger-700;
-    @apply focus:ring-danger-500;
+    @apply dark:bg-danger-500 dark:hover:bg-danger-600;
+    @apply focus:ring-danger-500 dark:focus:ring-danger-400;
   }
 
   /* Card component */
   .card {
     @apply bg-white rounded-xl shadow-soft border border-neutral-200;
+    @apply dark:bg-neutral-800 dark:border-neutral-700 dark:shadow-dark-soft;
     @apply transition-all duration-200;
-    @apply hover:shadow-medium;
+    @apply hover:shadow-medium dark:hover:shadow-dark-medium;
   }
 
   .card-interactive {
     @apply hover:border-primary-300 hover:-translate-y-0.5;
+    @apply dark:hover:border-primary-600;
     @apply cursor-pointer;
   }
 
@@ -99,42 +113,51 @@
 
   .badge-primary {
     @apply bg-primary-100 text-primary-800;
+    @apply dark:bg-primary-900/40 dark:text-primary-300;
   }
 
   .badge-success {
     @apply bg-success-100 text-success-800;
+    @apply dark:bg-success-900/40 dark:text-success-300;
   }
 
   .badge-warning {
     @apply bg-warning-100 text-warning-800;
+    @apply dark:bg-warning-900/40 dark:text-warning-300;
   }
 
   .badge-danger {
     @apply bg-danger-100 text-danger-800;
+    @apply dark:bg-danger-900/40 dark:text-danger-300;
   }
 
   .badge-neutral {
     @apply bg-neutral-100 text-neutral-800;
+    @apply dark:bg-neutral-800 dark:text-neutral-300;
   }
 
   /* Progress bar */
   .progress-bar {
     @apply w-full h-2 bg-neutral-200 rounded-full overflow-hidden;
+    @apply dark:bg-neutral-700;
   }
 
   .progress-fill {
     @apply h-full bg-gradient-to-r from-primary-500 to-primary-600 rounded-full;
+    @apply dark:from-primary-400 dark:to-primary-500;
     @apply transition-all duration-500 ease-out;
   }
 
   /* Skeleton loading */
   .skeleton {
     @apply animate-pulse bg-neutral-200 rounded;
+    @apply dark:bg-neutral-700;
   }
 
   /* Shimmer effect */
   .shimmer {
     @apply relative overflow-hidden bg-neutral-200;
+    @apply dark:bg-neutral-700;
   }
 
   .shimmer::after {
@@ -147,6 +170,15 @@
       transparent
     );
     animation: shimmer 2s infinite;
+  }
+
+  .dark .shimmer::after {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
   }
 }
 

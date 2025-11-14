@@ -29,10 +29,10 @@ const Progress = forwardRef<HTMLDivElement, ProgressProps>(
     };
 
     const variantStyles = {
-      primary: 'bg-gradient-to-r from-primary-500 to-primary-600',
-      success: 'bg-gradient-to-r from-success-500 to-success-600',
-      warning: 'bg-gradient-to-r from-warning-500 to-warning-600',
-      danger: 'bg-gradient-to-r from-danger-500 to-danger-600',
+      primary: 'bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-400 dark:to-primary-500',
+      success: 'bg-gradient-to-r from-success-500 to-success-600 dark:from-success-400 dark:to-success-500',
+      warning: 'bg-gradient-to-r from-warning-500 to-warning-600 dark:from-warning-400 dark:to-warning-500',
+      danger: 'bg-gradient-to-r from-danger-500 to-danger-600 dark:from-danger-400 dark:to-danger-500',
     };
 
     const animatedStyles = animated ? 'animate-pulse-soft' : '';
@@ -41,12 +41,12 @@ const Progress = forwardRef<HTMLDivElement, ProgressProps>(
       <div ref={ref} className={className} {...props}>
         {showLabel && (
           <div className="flex justify-between items-center mb-1">
-            <span className="text-sm font-medium text-neutral-700">
+            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
               {Math.round(percentage)}%
             </span>
           </div>
         )}
-        <div className={`w-full bg-neutral-200 rounded-full overflow-hidden ${sizeStyles[size]}`}>
+        <div className={`w-full bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden ${sizeStyles[size]}`}>
           <div
             className={`${sizeStyles[size]} ${variantStyles[variant]} rounded-full transition-all duration-500 ease-out ${animatedStyles}`}
             style={{ width: `${percentage}%` }}
@@ -86,11 +86,18 @@ export function CircularProgress({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (percentage / 100) * circumference;
 
-  const colorStyles = {
+  const lightColorStyles = {
     primary: '#0284c7',
     success: '#16a34a',
     warning: '#ca8a04',
     danger: '#dc2626',
+  };
+
+  const darkColorStyles = {
+    primary: '#38bdf8',
+    success: '#4ade80',
+    warning: '#facc15',
+    danger: '#f87171',
   };
 
   return (
@@ -104,25 +111,38 @@ export function CircularProgress({
           stroke="currentColor"
           strokeWidth={strokeWidth}
           fill="none"
-          className="text-neutral-200"
+          className="text-neutral-200 dark:text-neutral-700"
         />
-        {/* Progress circle */}
+        {/* Progress circle - light mode */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={colorStyles[variant]}
+          stroke={lightColorStyles[variant]}
           strokeWidth={strokeWidth}
           fill="none"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="transition-all duration-500 ease-out"
+          className="transition-all duration-500 ease-out dark:hidden"
+        />
+        {/* Progress circle - dark mode */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={darkColorStyles[variant]}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="transition-all duration-500 ease-out hidden dark:block"
         />
       </svg>
       {showLabel && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl font-semibold text-neutral-900">
+          <span className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
             {Math.round(percentage)}%
           </span>
         </div>
