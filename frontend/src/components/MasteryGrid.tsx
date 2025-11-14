@@ -33,7 +33,7 @@ function getMasteryColor(level: MasteryLevel): string {
       return 'bg-gradient-to-br from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 shadow-danger-500/20';
     case 'not_started':
     default:
-      return 'bg-neutral-200 hover:bg-neutral-300 shadow-neutral-500/10';
+      return 'bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 shadow-neutral-500/10';
   }
 }
 
@@ -87,12 +87,12 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-neutral-900">{title}</h3>
+        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span className="text-sm font-medium text-neutral-600">
+          <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
             {skills.length} {skills.length === 1 ? 'concept' : 'concepts'}
           </span>
         </div>
@@ -112,15 +112,15 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                   <div className="mb-4">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-primary-100 rounded-lg flex items-center justify-center">
-                          <span className="text-xs font-bold text-primary-700">{sectionNum}</span>
+                        <div className="w-6 h-6 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                          <span className="text-xs font-bold text-primary-700 dark:text-primary-400">{sectionNum}</span>
                         </div>
-                        <div className="text-sm font-semibold text-neutral-900">
+                        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
                           {sectionName}
                         </div>
                       </div>
-                      <div className="flex-1 h-px bg-neutral-200"></div>
-                      <div className="text-xs text-neutral-500 font-medium">
+                      <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
                         {sectionSkills.length} {sectionSkills.length === 1 ? 'concept' : 'concepts'}
                       </div>
                     </div>
@@ -129,7 +129,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
                 {/* Grid of skill squares */}
                 <div
-                  className={`grid gap-2 ${showSectionDividers ? 'p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-white border border-neutral-200' : ''}`}
+                  className={`grid gap-2 ${showSectionDividers ? 'p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-800/50 dark:to-neutral-800/30 border border-neutral-200 dark:border-neutral-700' : ''}`}
                   style={{
                     gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                     maxWidth: `${columns * 60}px`
@@ -192,7 +192,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-sm pt-3 border-t border-neutral-200">
+      <div className="flex flex-wrap gap-4 text-sm pt-3 border-t border-neutral-200 dark:border-neutral-700">
         {(['completed', 'in_progress', 'incorrect', 'not_started'] as MasteryLevel[]).map((level) => {
           const count = counts[level] || 0;
           if (count === 0) return null;
@@ -200,10 +200,10 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
           return (
             <div key={level} className="flex items-center gap-2">
               <div className={`w-4 h-4 rounded ${getMasteryColor(level).split(' ')[0]} shadow-sm`} />
-              <span className="text-sm font-medium text-neutral-700">
+              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
                 {getMasteryLabel(level)}
               </span>
-              <span className="text-xs text-neutral-500 font-medium bg-neutral-100 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
                 {count}
               </span>
             </div>
