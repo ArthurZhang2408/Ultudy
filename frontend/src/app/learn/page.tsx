@@ -174,6 +174,7 @@ function LearnPageContent() {
   const [currentMCQIndex, setCurrentMCQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showingExplanations, setShowingExplanations] = useState(false);
+  const [hoveredOption, setHoveredOption] = useState<string | null>(null);
   const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong'>>(new Map());
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [answerHistory, setAnswerHistory] = useState<Record<string, AnswerRecord>>({});
@@ -611,6 +612,7 @@ function LearnPageContent() {
       setSelectedOption(null);
       setShowingExplanations(false);
     }
+    setHoveredOption(null);
   }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
 
   // Helper function to scroll to top of page
@@ -1431,11 +1433,18 @@ function LearnPageContent() {
             {currentMCQ.options.map((option) => {
               const isSelected = selectedOption === option.letter;
               const isCorrect = option.correct;
+              const isHovered = hoveredOption === option.letter;
               const showAsCorrect = showingExplanations && isCorrect;
               const showAsWrong = showingExplanations && isSelected && !isCorrect;
+              const shouldShowExplanation = showingExplanations && (isSelected || isCorrect || isHovered);
 
               return (
-                <div key={option.letter} className="space-y-2">
+                <div
+                  key={option.letter}
+                  className="space-y-2"
+                  onMouseEnter={() => showingExplanations && setHoveredOption(option.letter)}
+                  onMouseLeave={() => showingExplanations && setHoveredOption(null)}
+                >
                   <button
                     onClick={() => !showingExplanations && handleSelectOption(option.letter)}
                     disabled={showingExplanations}
@@ -1473,7 +1482,7 @@ function LearnPageContent() {
                     </div>
                   </button>
 
-                  {showingExplanations && (isSelected || isCorrect) && (
+                  {shouldShowExplanation && (
                     <div className={`rounded-lg p-3 text-sm ${
                       isCorrect ? 'bg-green-50 text-green-900' : 'bg-slate-50 text-slate-800'
                     }`}>
