@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormattedText } from '../../components/FormattedText';
+import { createJobPoller, type Job } from '@/lib/jobs';
 
 type MCQOption = {
   letter: string;
@@ -45,6 +46,9 @@ type Section = {
   page_end: number | null;
   concepts_generated: boolean;
   created_at: string;
+  generating?: boolean; // Track if this section is being generated
+  generation_progress?: number; // Track generation progress
+  job_id?: string; // Track the generation job ID
 };
 
 type DocumentInfo = {
@@ -320,15 +324,63 @@ function LearnPageContent() {
     }
   }
 
+  // Fetch an existing lesson by ID
+  async function fetchLesson(lessonId: string) {
+    setGeneratingLesson(true);
+    try {
+      const res = await fetch(`/api/lessons/${lessonId}`);
+      if (res.ok) {
+        const rawData = await res.json();
+        console.log('[learn] Fetched lesson:', rawData);
+        const normalizedLesson = normalizeLesson(rawData);
+        setLesson(normalizedLesson);
+
+        // Navigate appropriately
+        if (targetConceptName) {
+          const concepts = normalizedLesson.concepts || [];
+          const targetIndex = concepts.findIndex(c =>
+            c.name.toLowerCase() === targetConceptName.toLowerCase()
+          );
+
+          if (targetIndex >= 0) {
+            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+            setCurrentConceptIndex(targetIndex);
+            setCurrentMCQIndex(0);
+            setShowingSections(false);
+            setShowingSummary(false);
+            clearConceptNavigation();
+          } else {
+            clearConceptNavigation();
+            setShowingSections(false);
+            setShowingSummary(true);
+          }
+        } else {
+          clearConceptNavigation();
+          setShowingSections(false);
+          setShowingSummary(true);
+        }
+      } else {
+        throw new Error('Failed to fetch lesson');
+      }
+    } catch (error) {
+      console.error('[learn] Error fetching lesson:', error);
+      setError({
+        message: 'Failed to load lesson. Please try again.',
+        retry: () => fetchLesson(lessonId)
+      });
+    } finally {
+      setGeneratingLesson(false);
+    }
+  }
+
   // Load existing lesson or generate if not found (for grid navigation)
   async function loadOrGenerateLesson(section: Section) {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
-    setGeneratingLesson(true);
     setSelectedSection(section);
     setError(null);
 
     try {
-      // Call generate endpoint - it will return existing lesson if found
+      // Call generate endpoint - it will return job_id if needs generation, or lesson_id if already exists
       console.log(`[learn] Loading/generating lesson for section ${section.id}...`);
       const res = await fetch('/api/lessons/generate', {
         method: 'POST',
@@ -342,16 +394,78 @@ function LearnPageContent() {
       });
 
       if (res.ok) {
-        const rawData = await res.json();
-        console.log('[learn] Received lesson data:', rawData);
-        const normalizedLesson = normalizeLesson(rawData);
-        console.log('[learn] Normalized lesson:', normalizedLesson);
-        setLesson(normalizedLesson);
+        const data = await res.json();
+        console.log('[learn] Received response:', data);
 
-        // Update section to mark concepts as generated
-        setSections(prev => prev.map(s =>
-          s.id === section.id ? { ...s, concepts_generated: true } : s
-        ));
+        // Check if it's a job (async generation) or existing lesson
+        if (data.job_id) {
+          // Lesson is being generated - mark section as generating
+          console.log(`[learn] Lesson generation queued: job_id=${data.job_id}`);
+
+          // Update section state to show it's generating
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: true, generation_progress: 0, job_id: data.job_id }
+              : s
+          ));
+
+          // Start polling for job completion
+          createJobPoller(data.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[learn] Generation progress:', job.progress);
+              // Update progress
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generation_progress: job.progress }
+                  : s
+              ));
+            },
+            onComplete: async (job: Job) => {
+              console.log('[learn] Generation completed:', job);
+              // Mark section as no longer generating
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false, concepts_generated: true }
+                  : s
+              ));
+
+              // Fetch the generated lesson
+              if (job.result?.lesson_id) {
+                await fetchLesson(job.result.lesson_id);
+              }
+            },
+            onError: (error: string) => {
+              console.error('[learn] Generation error:', error);
+              // Mark section as failed
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false }
+                  : s
+              ));
+              setError({
+                message: `Failed to generate lesson: ${error}`,
+                retry: () => loadOrGenerateLesson(section)
+              });
+            }
+          });
+
+          // Don't block the UI - user can click other sections
+          return;
+        } else if (data.lesson_id) {
+          // Lesson already exists - fetch it
+          console.log(`[learn] Lesson already exists: lesson_id=${data.lesson_id}`);
+          await fetchLesson(data.lesson_id);
+        } else {
+          // Old format: lesson data returned directly (shouldn't happen with new API)
+          const normalizedLesson = normalizeLesson(data);
+          console.log('[learn] Normalized lesson:', normalizedLesson);
+          setLesson(normalizedLesson);
+
+          // Update section to mark concepts as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id ? { ...s, concepts_generated: true } : s
+          ));
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);

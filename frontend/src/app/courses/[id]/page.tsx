@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
+import { createJobPoller, type Job } from '@/lib/jobs';
 
 type Course = {
   id: string;
@@ -21,6 +22,15 @@ type Document = {
   chapter: string | null;
   pages: number;
   uploaded_at: string;
+};
+
+type ProcessingJob = {
+  job_id: string;
+  document_id: string;
+  title: string;
+  type: 'upload';
+  progress: number;
+  status: string;
 };
 
 type ConceptWithMastery = {
@@ -40,6 +50,7 @@ type ConceptWithMastery = {
 
 export default function CoursePage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const courseId = params.id as string;
   const router = useRouter();
   const [course, setCourse] = useState<Course | null>(null);
@@ -49,12 +60,101 @@ export default function CoursePage() {
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
 
   useEffect(() => {
     if (courseId) {
       fetchCourseData();
+      loadProcessingJobs();
     }
   }, [courseId]);
+
+  // Poll for upload job completion when redirected from upload page
+  useEffect(() => {
+    const uploadJobId = searchParams.get('upload_job_id');
+    if (uploadJobId) {
+      // Start polling for this specific job
+      const cancelPoller = createJobPoller(uploadJobId, {
+        interval: 2000,
+        onProgress: (job: Job) => {
+          console.log('Upload progress:', job.progress);
+          updateJobProgress(uploadJobId, job.progress, job.status);
+        },
+        onComplete: (job: Job) => {
+          console.log('Upload completed:', job);
+          removeProcessingJob(uploadJobId);
+          // Refresh course data to show the new document
+          fetchCourseData();
+        },
+        onError: (error: string) => {
+          console.error('Upload job error:', error);
+          removeProcessingJob(uploadJobId);
+        }
+      });
+
+      // Cleanup on unmount
+      return () => {
+        cancelPoller();
+      };
+    }
+  }, [searchParams]);
+
+  function loadProcessingJobs() {
+    try {
+      const stored = sessionStorage.getItem('processingJobs');
+      if (stored) {
+        const allJobs = JSON.parse(stored);
+        const courseJobs = allJobs.filter((job: any) => job.course_id === courseId);
+        setProcessingJobs(courseJobs.map((job: any) => ({
+          ...job,
+          progress: 0,
+          status: 'queued'
+        })));
+
+        // Start polling for each job
+        courseJobs.forEach((job: any) => {
+          createJobPoller(job.job_id, {
+            interval: 2000,
+            onProgress: (jobData: Job) => {
+              updateJobProgress(job.job_id, jobData.progress, jobData.status);
+            },
+            onComplete: (jobData: Job) => {
+              removeProcessingJob(job.job_id);
+              fetchCourseData();
+            },
+            onError: (error: string) => {
+              console.error('Job error:', error);
+              removeProcessingJob(job.job_id);
+            }
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load processing jobs:', error);
+    }
+  }
+
+  function updateJobProgress(jobId: string, progress: number, status: string) {
+    setProcessingJobs(prev => prev.map(job =>
+      job.job_id === jobId ? { ...job, progress, status } : job
+    ));
+  }
+
+  function removeProcessingJob(jobId: string) {
+    setProcessingJobs(prev => prev.filter(job => job.job_id !== jobId));
+
+    // Also remove from session storage
+    try {
+      const stored = sessionStorage.getItem('processingJobs');
+      if (stored) {
+        const allJobs = JSON.parse(stored);
+        const updated = allJobs.filter((job: any) => job.job_id !== jobId);
+        sessionStorage.setItem('processingJobs', JSON.stringify(updated));
+      }
+    } catch (error) {
+      console.error('Failed to update session storage:', error);
+    }
+  }
 
   async function fetchCourseData() {
     try {
@@ -396,6 +496,45 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
+                    {/* Processing Jobs */}
+                    {processingJobs.map((job) => (
+                      <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-shrink-0 w-10 h-10 bg-primary-500 dark:bg-primary-600 rounded-lg flex items-center justify-center animate-pulse">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-primary-900 dark:text-primary-300">
+                                  {job.title}
+                                </h4>
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <Badge variant="primary" size="sm">
+                                    Processing...
+                                  </Badge>
+                                  <span className="text-xs text-primary-700 dark:text-primary-400">
+                                    {job.status === 'processing' ? `${job.progress}%` : job.status}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {/* Progress bar */}
+                            {job.status === 'processing' && (
+                              <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
+                                <div
+                                  className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${job.progress}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+
                     {documentsByChapter[chapter].map((doc) => (
                       <Card key={doc.id} padding="md" hover className="group">
                         <div className="flex items-start justify-between">

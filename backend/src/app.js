@@ -9,6 +9,10 @@ import createSearchRouter from './routes/search.js';
 import createDocumentsRouter from './routes/documents.js';
 import createStudyRouter from './routes/study.js';
 import createCoursesRouter from './routes/courses.js';
+import createJobsRouter from './routes/jobs.js';
+import setupWorkers from './jobs/worker.js';
+import { uploadQueue, lessonQueue } from './jobs/queue.js';
+import { createJobTracker } from './jobs/tracking.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -66,6 +70,24 @@ export function createApp(options = {}) {
   const tenantHelpers = options.tenantHelpers ||
     (activePool ? createTenantHelpers(activePool) : null);
 
+  // Setup job infrastructure
+  let jobTracker = null;
+  if (activePool && tenantHelpers) {
+    // Create job tracker
+    jobTracker = createJobTracker(tenantHelpers);
+
+    // Setup job workers (processors)
+    setupWorkers({
+      tenantHelpers,
+      pool: activePool,
+      storageDir: options.storageDir,
+      llmProviderFactory: options.llmProviderFactory,
+      embeddingsProviderFactory
+    });
+
+    console.log('[App] Job infrastructure initialized');
+  }
+
   if (activePool) {
     app.use(requireUser);
 
@@ -79,7 +101,9 @@ export function createApp(options = {}) {
         chunker: options.chunker,
         embeddingsProviderFactory,
         extractOptions: options.extractOptions,
-        tenantHelpers
+        tenantHelpers,
+        jobTracker,
+        uploadQueue
       })
     );
 
@@ -116,7 +140,16 @@ export function createApp(options = {}) {
         studyService: options.studyService,
         embeddingsProviderFactory,
         llmProviderFactory: options.llmProviderFactory,
-        tenantHelpers
+        tenantHelpers,
+        jobTracker,
+        lessonQueue
+      })
+    );
+
+    app.use(
+      '/jobs',
+      createJobsRouter({
+        jobTracker
       })
     );
 
