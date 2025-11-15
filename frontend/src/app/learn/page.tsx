@@ -549,14 +549,81 @@ function LearnPageContent() {
       if (res.ok) {
         const rawData = await res.json();
         console.log('[learn] Received lesson data:', rawData);
-        const normalizedLesson = normalizeLesson(rawData);
-        console.log('[learn] Normalized lesson:', normalizedLesson);
-        setLesson(normalizedLesson);
 
-        // Update section to mark concepts as generated
-        setSections(prev => prev.map(s =>
-          s.id === section.id ? { ...s, concepts_generated: true } : s
-        ));
+        // Check if it's a job (async generation) or existing lesson
+        if (rawData.job_id) {
+          // Lesson is being generated - mark section as generating
+          console.log(`[learn] Lesson generation queued: job_id=${rawData.job_id}`);
+
+          // Update section state to show it's generating
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: true, generation_progress: 0, job_id: rawData.job_id }
+              : s
+          ));
+
+          // Keep generatingLesson true while polling
+          // Start polling for job completion
+          createJobPoller(rawData.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[learn] Generation progress:', job.progress);
+              // Update progress
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generation_progress: job.progress }
+                  : s
+              ));
+            },
+            onComplete: async (job: Job) => {
+              console.log('[learn] Generation completed:', job);
+              // Mark section as no longer generating
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false, concepts_generated: true }
+                  : s
+              ));
+
+              // Fetch the generated lesson
+              if (job.result?.lesson_id) {
+                await fetchLesson(job.result.lesson_id);
+              }
+
+              // fetchLesson will set generatingLesson to false
+            },
+            onError: (error: string) => {
+              console.error('[learn] Generation error:', error);
+              // Mark section as failed
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false }
+                  : s
+              ));
+              setGeneratingLesson(false);
+              setError({
+                message: `Failed to generate lesson: ${error}`,
+                retry: () => generateLessonForSection(section)
+              });
+            }
+          });
+
+          // Don't turn off generating yet - polling will handle it
+          return;
+        } else if (rawData.lesson_id) {
+          // Lesson already exists - fetch it
+          console.log(`[learn] Lesson already exists: lesson_id=${rawData.lesson_id}`);
+          await fetchLesson(rawData.lesson_id);
+        } else {
+          // Old format: lesson returned directly
+          const normalizedLesson = normalizeLesson(rawData);
+          console.log('[learn] Normalized lesson:', normalizedLesson);
+          setLesson(normalizedLesson);
+          setGeneratingLesson(false);
+
+          // Update section to mark concepts as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id ? { ...s, concepts_generated: true } : s
+          ));
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
@@ -592,7 +659,9 @@ function LearnPageContent() {
           setShowingSections(false);
           setShowingSummary(true);
         }
+        }
       } else {
+        setGeneratingLesson(false);
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.details
           ? `${errorData.error}\n\n${errorData.details}`
@@ -604,12 +673,11 @@ function LearnPageContent() {
       }
     } catch (err) {
       console.error('Failed to generate lesson:', err);
+      setGeneratingLesson(false);
       setError({
         message: 'Failed to generate lesson. Please check your connection and try again.',
         retry: () => generateLessonForSection(section)
       });
-    } finally {
-      setGeneratingLesson(false);
     }
   }
 
