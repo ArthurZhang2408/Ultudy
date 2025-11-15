@@ -59,7 +59,14 @@ export default function createUploadRouter(options = {}) {
       const ownerDir = path.join(storageDir, ownerId);
       const pdfPath = path.join(ownerDir, `${documentId}.pdf`);
 
+      // Extract metadata from form data
+      const courseId = req.body.course_id || null;
+      const chapter = req.body.chapter || null;
+      const materialType = req.body.material_type || null;
+      const title = req.body.title || null;
+
       console.log('[upload/pdf-structured] Saving PDF to storage...');
+      console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });
 
       // Save PDF to storage
       await fs.mkdir(ownerDir, { recursive: true });
@@ -67,20 +74,28 @@ export default function createUploadRouter(options = {}) {
 
       console.log(`[upload/pdf-structured] PDF saved: ${pdfPath}`);
 
-      // Create job in database
+      // Create job in database with metadata
       const jobId = await options.jobTracker.createJob(ownerId, 'upload_pdf', {
         document_id: documentId,
         original_filename: req.file.originalname,
-        pdf_path: pdfPath
+        pdf_path: pdfPath,
+        course_id: courseId,
+        chapter: chapter,
+        material_type: materialType,
+        title: title
       });
 
-      // Queue the job for background processing
+      // Queue the job for background processing with metadata
       await options.uploadQueue.add({
         jobId,
         ownerId,
         documentId,
         pdfPath,
-        originalFilename: req.file.originalname
+        originalFilename: req.file.originalname,
+        courseId,
+        chapter,
+        materialType,
+        title
       });
 
       console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId}`);

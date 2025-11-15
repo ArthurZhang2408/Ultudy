@@ -9,9 +9,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir }) {
-  const { jobId, ownerId, pdfPath, originalFilename, documentId } = job.data;
+  const { jobId, ownerId, pdfPath, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
+  console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
 
   try {
     // Mark job as processing
@@ -34,16 +35,19 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     // Update progress: 70% - Extraction complete
     await jobTracker.updateProgress(ownerId, jobId, 70);
 
+    // Use provided title or fall back to extracted title
+    const documentTitle = title || extraction.title;
+
     // Store in database
     await tenantHelpers.withTenant(ownerId, async (client) => {
-      // Insert document
+      // Insert document with metadata
       await client.query(
-        `INSERT INTO documents (id, title, pages, owner_id)
-         VALUES ($1, $2, $3, $4)`,
-        [documentId, extraction.title, extraction.sections.length, ownerId]
+        `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [documentId, documentTitle, extraction.sections.length, ownerId, courseId, chapter, materialType]
       );
 
-      console.log(`[UploadProcessor] Document created: ${documentId}`);
+      console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${chapter}`);
 
       // Update progress: 80% - Document created
       await jobTracker.updateProgress(ownerId, jobId, 80);
@@ -81,8 +85,11 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     // Mark job as completed
     await jobTracker.completeJob(ownerId, jobId, {
       document_id: documentId,
-      title: extraction.title,
+      title: documentTitle,
       section_count: extraction.sections.length,
+      course_id: courseId,
+      chapter: chapter,
+      material_type: materialType,
       sections: extraction.sections.map((s, i) => ({
         section_number: i + 1,
         name: s.name,
@@ -93,8 +100,10 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
 
     return {
       document_id: documentId,
-      title: extraction.title,
-      section_count: extraction.sections.length
+      title: documentTitle,
+      section_count: extraction.sections.length,
+      course_id: courseId,
+      chapter: chapter
     };
   } catch (error) {
     console.error(`[UploadProcessor] ❌ Job ${jobId} failed:`, error);

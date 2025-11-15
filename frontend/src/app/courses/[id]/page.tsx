@@ -31,6 +31,7 @@ type ProcessingJob = {
   type: 'upload';
   progress: number;
   status: string;
+  chapter?: string;
 };
 
 type ConceptWithMastery = {
@@ -496,8 +497,8 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
-                    {/* Processing Jobs */}
-                    {processingJobs.map((job) => (
+                    {/* Processing Jobs - Filter by chapter */}
+                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter).map((job) => (
                       <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">
