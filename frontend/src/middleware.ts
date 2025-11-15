@@ -17,7 +17,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',      // Sign up pages
 ])
 
-export default clerkMiddleware((auth, req) => {
+export default clerkMiddleware(async (auth, req) => {
   // Allow public routes without authentication
   if (isPublicRoute(req)) {
     return
@@ -25,7 +25,7 @@ export default clerkMiddleware((auth, req) => {
 
   // Protect all matched routes - will redirect to /sign-in if not authenticated
   if (isProtectedRoute(req)) {
-    auth().protect()
+    await auth.protect()
   }
 })
 
