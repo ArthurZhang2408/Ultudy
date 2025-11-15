@@ -198,7 +198,7 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
         const concept = conceptsForStorage[i];
 
         await client.query(
-          `INSERT INTO concepts (owner_id, lesson_id, document_id, section_id, course_id, chapter, concept, concept_number, mastery_level)
+          `INSERT INTO concepts (owner_id, lesson_id, document_id, section_id, course_id, chapter, name, concept_number, mastery_state)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             ownerId,

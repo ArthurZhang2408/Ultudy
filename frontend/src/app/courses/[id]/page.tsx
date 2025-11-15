@@ -312,6 +312,14 @@ export default function CoursePage() {
     return acc;
   }, {} as Record<string, Document[]>);
 
+  // Include chapters from processing jobs that don't have documents yet
+  processingJobs.forEach(job => {
+    const chapter = job.chapter || 'Uncategorized';
+    if (!documentsByChapter[chapter]) {
+      documentsByChapter[chapter] = [];
+    }
+  });
+
   const chapters = Object.keys(documentsByChapter).sort((a, b) => {
     if (a === 'Uncategorized') return 1;
     if (b === 'Uncategorized') return -1;
