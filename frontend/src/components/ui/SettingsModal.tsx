@@ -70,17 +70,17 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/60 backdrop-blur-md"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl h-[80vh] max-h-[700px] mx-4 bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex">
+      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
         {/* Sidebar */}
-        <div className="w-64 bg-neutral-50 dark:bg-neutral-800/50 border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col">
+        <div className="w-full md:w-64 bg-neutral-50 dark:bg-neutral-800/50 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col shrink-0">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4 px-2">
             Settings
           </h2>
@@ -104,9 +104,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
             <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
               {tabs.find(t => t.id === activeTab)?.label}
             </h3>
