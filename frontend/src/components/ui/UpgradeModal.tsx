@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -8,6 +9,12 @@ interface UpgradeModalProps {
 }
 
 export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Close on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -23,7 +30,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
     }
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const plans = [
     {
@@ -81,8 +88,8 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
     },
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md"
@@ -218,4 +225,6 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useUser } from '@clerk/nextjs';
 
 interface SettingsModalProps {
@@ -14,6 +15,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { user } = useUser();
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Initialize theme from localStorage
   useEffect(() => {
@@ -60,7 +66,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const tabs = [
     { id: 'general' as SettingsTab, label: 'General', icon: '⚙️' },
@@ -69,8 +75,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     { id: 'notifications' as SettingsTab, label: 'Notifications', icon: '🔔' },
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md"
@@ -248,4 +254,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
