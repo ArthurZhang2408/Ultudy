@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export type MasteryLevel = 'not_started' | 'in_progress' | 'completed' | 'incorrect';
+export type MasteryLevel = 'not_started' | 'in_progress' | 'completed' | 'incorrect' | 'loading';
 
 export type SkillSquare = {
   id: string;
@@ -31,6 +31,8 @@ function getMasteryColor(level: MasteryLevel): string {
       return 'bg-gradient-to-br from-warning-400 to-warning-500 hover:from-warning-500 hover:to-warning-600 shadow-warning-500/20';
     case 'incorrect':
       return 'bg-gradient-to-br from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 shadow-danger-500/20';
+    case 'loading':
+      return 'bg-gradient-to-br from-primary-400 to-primary-500 shadow-primary-500/20 animate-pulse';
     case 'not_started':
     default:
       return 'bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 shadow-neutral-500/10';
@@ -45,6 +47,8 @@ function getMasteryRing(level: MasteryLevel): string {
       return 'ring-warning-500';
     case 'incorrect':
       return 'ring-danger-500';
+    case 'loading':
+      return 'ring-primary-500';
     case 'not_started':
     default:
       return 'ring-neutral-400';
@@ -59,6 +63,8 @@ function getMasteryLabel(level: MasteryLevel): string {
       return 'In Progress';
     case 'incorrect':
       return 'Needs Review';
+    case 'loading':
+      return 'Generating...';
     case 'not_started':
     default:
       return 'Not Started';

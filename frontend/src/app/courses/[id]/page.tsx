@@ -27,8 +27,10 @@ type Document = {
 type ProcessingJob = {
   job_id: string;
   document_id: string;
-  title: string;
-  type: 'upload';
+  title?: string;
+  section_name?: string;
+  section_id?: string;
+  type: 'upload' | 'lesson';
   progress: number;
   status: string;
   chapter?: string;
@@ -136,34 +138,85 @@ export default function CoursePage() {
 
   function loadProcessingJobs() {
     try {
+      const allJobs: ProcessingJob[] = [];
+
+      // Load upload jobs from 'processingJobs' sessionStorage
       const stored = sessionStorage.getItem('processingJobs');
       if (stored) {
-        const allJobs = JSON.parse(stored);
-        const courseJobs = allJobs.filter((job: any) => job.course_id === courseId);
-        setProcessingJobs(courseJobs.map((job: any) => ({
-          ...job,
-          progress: 0,
-          status: 'queued'
-        })));
-
-        // Start polling for each job
-        courseJobs.forEach((job: any) => {
-          createJobPoller(job.job_id, {
-            interval: 2000,
-            onProgress: (jobData: Job) => {
-              updateJobProgress(job.job_id, jobData.progress, jobData.status);
-            },
-            onComplete: (jobData: Job) => {
-              removeProcessingJob(job.job_id);
-              fetchCourseData();
-            },
-            onError: (error: string) => {
-              console.error('Job error:', error);
-              removeProcessingJob(job.job_id);
-            }
-          });
-        });
+        const uploadJobs = JSON.parse(stored);
+        const courseUploadJobs = uploadJobs
+          .filter((job: any) => job.course_id === courseId)
+          .map((job: any) => ({
+            job_id: job.job_id,
+            document_id: job.document_id,
+            title: job.title,
+            type: 'upload' as const,
+            progress: 0,
+            status: 'queued',
+            chapter: job.chapter
+          }));
+        allJobs.push(...courseUploadJobs);
       }
+
+      // Load lesson generation jobs from 'lesson-job-*' sessionStorage entries
+      const storageKeys = Object.keys(sessionStorage);
+      const lessonJobKeys = storageKeys.filter(key => key.startsWith('lesson-job-'));
+
+      lessonJobKeys.forEach(key => {
+        try {
+          const jobData = JSON.parse(sessionStorage.getItem(key) || '{}');
+          if (jobData.course_id === courseId && jobData.job_id) {
+            allJobs.push({
+              job_id: jobData.job_id,
+              document_id: jobData.document_id,
+              section_name: jobData.section_name,
+              section_id: jobData.section_id,
+              type: 'lesson' as const,
+              progress: 0,
+              status: 'queued',
+              chapter: jobData.chapter
+            });
+          }
+        } catch (e) {
+          console.error('[courses] Failed to parse lesson job:', e);
+        }
+      });
+
+      setProcessingJobs(allJobs);
+
+      // Start polling for each job
+      allJobs.forEach((job) => {
+        if (pollingJobsRef.current.has(job.job_id)) {
+          return; // Already polling
+        }
+
+        pollingJobsRef.current.add(job.job_id);
+
+        createJobPoller(job.job_id, {
+          interval: 2000,
+          onProgress: (jobData: Job) => {
+            updateJobProgress(job.job_id, jobData.progress, jobData.status);
+          },
+          onComplete: (jobData: Job) => {
+            pollingJobsRef.current.delete(job.job_id);
+            removeProcessingJob(job.job_id);
+
+            // For lesson generation, only refresh concepts for that chapter
+            if (job.type === 'lesson') {
+              console.log('[courses] Lesson generation completed, refreshing concepts');
+              fetchConceptsForCourse();
+            } else {
+              // For uploads, refresh everything
+              fetchCourseData();
+            }
+          },
+          onError: (error: string) => {
+            console.error('Job error:', error);
+            pollingJobsRef.current.delete(job.job_id);
+            removeProcessingJob(job.job_id);
+          }
+        });
+      });
     } catch (error) {
       console.error('Failed to load processing jobs:', error);
     }
@@ -180,12 +233,16 @@ export default function CoursePage() {
 
     // Also remove from session storage
     try {
+      // Remove from upload jobs
       const stored = sessionStorage.getItem('processingJobs');
       if (stored) {
         const allJobs = JSON.parse(stored);
         const updated = allJobs.filter((job: any) => job.job_id !== jobId);
         sessionStorage.setItem('processingJobs', JSON.stringify(updated));
       }
+
+      // Remove from lesson jobs
+      sessionStorage.removeItem(`lesson-job-${jobId}`);
     } catch (error) {
       console.error('Failed to update session storage:', error);
     }
@@ -475,8 +532,21 @@ export default function CoursePage() {
               return a.name.localeCompare(b.name);
             });
 
+            // Add lesson generation jobs as loading placeholders
+            const lessonJobs = processingJobs.filter(
+              job => job.type === 'lesson' && (job.chapter || 'Uncategorized') === chapter
+            );
+
+            const loadingSkills: SkillSquare[] = lessonJobs.map((job) => ({
+              id: `loading-${job.job_id}`,
+              name: job.section_name || 'Generating...',
+              masteryLevel: 'loading' as MasteryLevel,
+              description: `Generating concepts... ${job.progress}%`,
+              onClick: () => {}
+            }));
+
             // Convert concepts to skills for the mastery grid
-            const skills: SkillSquare[] = orderedConcepts.map((concept) => {
+            const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
               return {
                 id: concept.id,
                 name: concept.name,
@@ -500,6 +570,9 @@ export default function CoursePage() {
                 }
               };
             });
+
+            // Combine loading and concept skills
+            const skills: SkillSquare[] = [...loadingSkills, ...conceptSkills];
 
             return (
               <div key={chapter} className="space-y-6">
@@ -541,7 +614,7 @@ export default function CoursePage() {
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
                     {/* Processing Jobs - Filter by chapter */}
-                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter).map((job) => (
+                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter && job.type === 'upload').map((job) => (
                       <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">
@@ -557,7 +630,7 @@ export default function CoursePage() {
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                   <Badge variant="primary" size="sm">
-                                    Processing...
+                                    Uploading...
                                   </Badge>
                                   <span className="text-xs text-primary-700 dark:text-primary-400">
                                     {job.status === 'processing' ? `${job.progress}%` : job.status}

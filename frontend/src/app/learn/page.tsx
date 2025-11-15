@@ -189,6 +189,9 @@ function LearnPageContent() {
   // Prevent duplicate API calls in StrictMode
   const hasGeneratedRef = useState({ current: false })[0];
 
+  // Track active pollers to prevent duplicates
+  const pollingJobsRef = useRef<Set<string>>(new Set());
+
   function makeQuestionKey(conceptIndex: number, mcqIndex: number) {
     return `${conceptIndex}-${mcqIndex}`;
   }
@@ -241,6 +244,88 @@ function LearnPageContent() {
       loadOrGenerateLesson(targetSection);
     }
   }, [urlSectionId, documentId, sections]);
+
+  // Restore generating sections from sessionStorage on mount
+  useEffect(() => {
+    if (!documentId || sections.length === 0 || typeof window === 'undefined') {
+      return;
+    }
+
+    // Look for any lesson generation jobs in sessionStorage
+    const storageKeys = Object.keys(sessionStorage);
+    const lessonJobKeys = storageKeys.filter(key => key.startsWith('lesson-job-'));
+
+    lessonJobKeys.forEach(key => {
+      try {
+        const jobData = JSON.parse(sessionStorage.getItem(key) || '{}');
+
+        // Only restore if it's for this document
+        if (jobData.document_id === documentId && jobData.job_id) {
+          const section = sections.find(s => s.id === jobData.section_id);
+
+          if (section && !pollingJobsRef.current.has(jobData.job_id)) {
+            console.log(`[learn] Restoring generation job for section ${section.name}`);
+
+            // Mark section as generating
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: true, generation_progress: 0, job_id: jobData.job_id }
+                : s
+            ));
+
+            // Resume polling
+            pollingJobsRef.current.add(jobData.job_id);
+            resumeLessonGenerationPolling(jobData.job_id, section);
+          }
+        }
+      } catch (error) {
+        console.error('[learn] Failed to restore job from sessionStorage:', error);
+      }
+    });
+  }, [documentId, sections]);
+
+  // Helper function to resume polling for a lesson generation job
+  function resumeLessonGenerationPolling(jobId: string, section: Section) {
+    createJobPoller(jobId, {
+      interval: 2000,
+      onProgress: (job: Job) => {
+        console.log('[learn] Generation progress:', job.progress);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generation_progress: job.progress }
+            : s
+        ));
+      },
+      onComplete: async (job: Job) => {
+        console.log('[learn] Generation completed:', job);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generating: false, concepts_generated: true }
+            : s
+        ));
+
+        // Remove from polling set and sessionStorage
+        pollingJobsRef.current.delete(jobId);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(`lesson-job-${jobId}`);
+        }
+      },
+      onError: (error: string) => {
+        console.error('[learn] Generation error:', error);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generating: false }
+            : s
+        ));
+
+        // Remove from polling set and sessionStorage
+        pollingJobsRef.current.delete(jobId);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(`lesson-job-${jobId}`);
+        }
+      }
+    });
+  }
 
   async function loadDocumentAndSections() {
     setLoading(true);
@@ -541,12 +626,28 @@ function LearnPageContent() {
           // Lesson is being generated - mark section as generating
           console.log(`[learn] Lesson generation queued: job_id=${rawData.job_id}`);
 
+          // Store job in sessionStorage for persistence across navigation
+          if (typeof window !== 'undefined') {
+            const jobData = {
+              job_id: rawData.job_id,
+              document_id: documentId,
+              section_id: section.id,
+              section_name: section.name,
+              chapter: chapter || null,
+              course_id: documentInfo?.course_id || null
+            };
+            sessionStorage.setItem(`lesson-job-${rawData.job_id}`, JSON.stringify(jobData));
+          }
+
           // Update section state to show it's generating
           setSections(prev => prev.map(s =>
             s.id === section.id
               ? { ...s, generating: true, generation_progress: 0, job_id: rawData.job_id }
               : s
           ));
+
+          // Add to polling set to prevent duplicates
+          pollingJobsRef.current.add(rawData.job_id);
 
           // Start polling for job completion
           createJobPoller(rawData.job_id, {
@@ -568,6 +669,12 @@ function LearnPageContent() {
                   ? { ...s, generating: false, concepts_generated: true }
                   : s
               ));
+
+              // Remove from polling set and sessionStorage
+              pollingJobsRef.current.delete(rawData.job_id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem(`lesson-job-${rawData.job_id}`);
+              }
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -577,6 +684,13 @@ function LearnPageContent() {
                   ? { ...s, generating: false }
                   : s
               ));
+
+              // Remove from polling set and sessionStorage
+              pollingJobsRef.current.delete(rawData.job_id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem(`lesson-job-${rawData.job_id}`);
+              }
+
               setError({
                 message: `Failed to generate lesson: ${error}`,
                 retry: () => generateLessonForSection(section)
