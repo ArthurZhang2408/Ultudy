@@ -8,6 +8,7 @@ import {
   UserButton,
 } from '@clerk/nextjs';
 import { ThemeToggle } from '@/components/ui';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: 'Ultudy — AI Study Guide',
@@ -22,6 +23,11 @@ type LayoutShellProps = {
 function LayoutShell({ children, authEnabled }: LayoutShellProps) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+      </head>
       <body className="min-h-screen">
         <div className="flex min-h-screen flex-col">
           <header className="sticky top-0 z-40 border-b border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-sm dark:shadow-dark-soft">
