@@ -378,6 +378,7 @@ function LearnPageContent() {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
     setSelectedSection(section);
     setError(null);
+    setGeneratingLesson(true); // Show generating UI immediately
 
     try {
       // Call generate endpoint - it will return job_id if needs generation, or lesson_id if already exists
@@ -409,6 +410,7 @@ function LearnPageContent() {
               : s
           ));
 
+          // Keep generatingLesson true while polling
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
@@ -434,6 +436,8 @@ function LearnPageContent() {
               if (job.result?.lesson_id) {
                 await fetchLesson(job.result.lesson_id);
               }
+
+              // fetchLesson will set generatingLesson to false
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -443,6 +447,7 @@ function LearnPageContent() {
                   ? { ...s, generating: false }
                   : s
               ));
+              setGeneratingLesson(false);
               setError({
                 message: `Failed to generate lesson: ${error}`,
                 retry: () => loadOrGenerateLesson(section)
@@ -461,6 +466,7 @@ function LearnPageContent() {
           const normalizedLesson = normalizeLesson(data);
           console.log('[learn] Normalized lesson:', normalizedLesson);
           setLesson(normalizedLesson);
+          setGeneratingLesson(false); // Turn off generating state
 
           // Update section to mark concepts as generated
           setSections(prev => prev.map(s =>
@@ -503,6 +509,7 @@ function LearnPageContent() {
         }
       }
     } else {
+      setGeneratingLesson(false); // Turn off generating state on error
       const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
       const errorMessage = errorData.details
         ? `${errorData.error}\n\n${errorData.details}`
@@ -514,6 +521,7 @@ function LearnPageContent() {
     }
   } catch (error) {
     console.error('[learn] Error loading/generating lesson:', error);
+    setGeneratingLesson(false); // Turn off generating state on exception
     setError({
       message: 'Failed to load lesson. Please check your connection and try again.',
       retry: () => loadOrGenerateLesson(section)

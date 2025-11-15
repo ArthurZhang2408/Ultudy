@@ -74,21 +74,34 @@ export default function CoursePage() {
   useEffect(() => {
     const uploadJobId = searchParams.get('upload_job_id');
     if (uploadJobId) {
+      console.log('[courses] Upload job detected in URL:', uploadJobId);
+
+      // Ensure the job is in processingJobs state (might have been added to sessionStorage but not state yet)
+      const stored = sessionStorage.getItem('processingJobs');
+      if (stored) {
+        const allJobs = JSON.parse(stored);
+        const uploadJob = allJobs.find((j: any) => j.job_id === uploadJobId);
+        if (uploadJob && !processingJobs.find(j => j.job_id === uploadJobId)) {
+          console.log('[courses] Adding job from sessionStorage to state:', uploadJob);
+          setProcessingJobs(prev => [...prev, { ...uploadJob, progress: 0, status: 'queued' }]);
+        }
+      }
+
       // Start polling for this specific job
       const cancelPoller = createJobPoller(uploadJobId, {
         interval: 2000,
         onProgress: (job: Job) => {
-          console.log('Upload progress:', job.progress);
+          console.log('[courses] Upload progress:', job.progress, job.status);
           updateJobProgress(uploadJobId, job.progress, job.status);
         },
         onComplete: (job: Job) => {
-          console.log('Upload completed:', job);
+          console.log('[courses] Upload completed:', job);
           removeProcessingJob(uploadJobId);
           // Refresh course data to show the new document
           fetchCourseData();
         },
         onError: (error: string) => {
-          console.error('Upload job error:', error);
+          console.error('[courses] Upload job error:', error);
           removeProcessingJob(uploadJobId);
         }
       });
