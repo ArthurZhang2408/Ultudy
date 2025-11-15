@@ -378,7 +378,6 @@ function LearnPageContent() {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
     setSelectedSection(section);
     setError(null);
-    setGeneratingLesson(true); // Show generating UI immediately
 
     try {
       // Call generate endpoint - it will return job_id if needs generation, or lesson_id if already exists
@@ -410,7 +409,6 @@ function LearnPageContent() {
               : s
           ));
 
-          // Keep generatingLesson true while polling
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
@@ -425,19 +423,12 @@ function LearnPageContent() {
             },
             onComplete: async (job: Job) => {
               console.log('[learn] Generation completed:', job);
-              // Mark section as no longer generating
+              // Mark section as ready - user can click to view it
               setSections(prev => prev.map(s =>
                 s.id === section.id
                   ? { ...s, generating: false, concepts_generated: true }
                   : s
               ));
-
-              // Fetch the generated lesson
-              if (job.result?.lesson_id) {
-                await fetchLesson(job.result.lesson_id);
-              }
-
-              // fetchLesson will set generatingLesson to false
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -447,7 +438,6 @@ function LearnPageContent() {
                   ? { ...s, generating: false }
                   : s
               ));
-              setGeneratingLesson(false);
               setError({
                 message: `Failed to generate lesson: ${error}`,
                 retry: () => loadOrGenerateLesson(section)
@@ -466,7 +456,6 @@ function LearnPageContent() {
           const normalizedLesson = normalizeLesson(data);
           console.log('[learn] Normalized lesson:', normalizedLesson);
           setLesson(normalizedLesson);
-          setGeneratingLesson(false); // Turn off generating state
 
           // Update section to mark concepts as generated
           setSections(prev => prev.map(s =>
@@ -509,7 +498,6 @@ function LearnPageContent() {
         }
       }
     } else {
-      setGeneratingLesson(false); // Turn off generating state on error
       const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
       const errorMessage = errorData.details
         ? `${errorData.error}\n\n${errorData.details}`
@@ -521,7 +509,6 @@ function LearnPageContent() {
     }
   } catch (error) {
     console.error('[learn] Error loading/generating lesson:', error);
-    setGeneratingLesson(false); // Turn off generating state on exception
     setError({
       message: 'Failed to load lesson. Please check your connection and try again.',
       retry: () => loadOrGenerateLesson(section)
@@ -531,7 +518,6 @@ function LearnPageContent() {
 
   // Generate lesson for a specific section
   async function generateLessonForSection(section: Section) {
-    setGeneratingLesson(true);
     setSelectedSection(section);
     setError(null);
     try {
@@ -562,7 +548,6 @@ function LearnPageContent() {
               : s
           ));
 
-          // Keep generatingLesson true while polling
           // Start polling for job completion
           createJobPoller(rawData.job_id, {
             interval: 2000,
@@ -577,19 +562,12 @@ function LearnPageContent() {
             },
             onComplete: async (job: Job) => {
               console.log('[learn] Generation completed:', job);
-              // Mark section as no longer generating
+              // Mark section as ready - user can click to view it
               setSections(prev => prev.map(s =>
                 s.id === section.id
                   ? { ...s, generating: false, concepts_generated: true }
                   : s
               ));
-
-              // Fetch the generated lesson
-              if (job.result?.lesson_id) {
-                await fetchLesson(job.result.lesson_id);
-              }
-
-              // fetchLesson will set generatingLesson to false
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -599,7 +577,6 @@ function LearnPageContent() {
                   ? { ...s, generating: false }
                   : s
               ));
-              setGeneratingLesson(false);
               setError({
                 message: `Failed to generate lesson: ${error}`,
                 retry: () => generateLessonForSection(section)
@@ -607,7 +584,7 @@ function LearnPageContent() {
             }
           });
 
-          // Don't turn off generating yet - polling will handle it
+          // Don't block the UI - user can click other sections
           return;
         } else if (rawData.lesson_id) {
           // Lesson already exists - fetch it
@@ -618,7 +595,6 @@ function LearnPageContent() {
           const normalizedLesson = normalizeLesson(rawData);
           console.log('[learn] Normalized lesson:', normalizedLesson);
           setLesson(normalizedLesson);
-          setGeneratingLesson(false);
 
           // Update section to mark concepts as generated
           setSections(prev => prev.map(s =>
@@ -661,7 +637,6 @@ function LearnPageContent() {
         }
         }
       } else {
-        setGeneratingLesson(false);
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.details
           ? `${errorData.error}\n\n${errorData.details}`
@@ -673,7 +648,6 @@ function LearnPageContent() {
       }
     } catch (err) {
       console.error('Failed to generate lesson:', err);
-      setGeneratingLesson(false);
       setError({
         message: 'Failed to generate lesson. Please check your connection and try again.',
         retry: () => generateLessonForSection(section)
@@ -1249,25 +1223,37 @@ function LearnPageContent() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {sections.map((section) => (
+            {sections.map((section) => {
+              const isGenerating = section.generating || false;
+              const progress = section.generation_progress || 0;
+
+              return (
               <button
                 key={section.id}
                 onClick={() => generateLessonForSection(section)}
-                disabled={generatingLesson}
+                disabled={isGenerating}
                 className={`
                   relative rounded-lg border-2 p-6 text-left transition-all
                   ${section.concepts_generated
                     ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
+                    : isGenerating
+                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}
-                  ${generatingLesson ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  ${isGenerating ? 'cursor-not-allowed' : 'cursor-pointer'}
                 `}
               >
                 <div className="flex items-start justify-between mb-2">
                   <span className="inline-block rounded-full bg-slate-200 dark:bg-neutral-700 px-3 py-1 text-sm font-semibold text-slate-700 dark:text-neutral-300">
                     Section {section.section_number}
                   </span>
-                  {section.concepts_generated && (
+                  {section.concepts_generated && !isGenerating && (
                     <span className="text-green-600 dark:text-green-400 text-sm font-medium">✓ Ready</span>
+                  )}
+                  {isGenerating && (
+                    <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                      {progress}%
+                    </span>
                   )}
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mb-2">
@@ -1283,28 +1269,36 @@ function LearnPageContent() {
                     Pages {section.page_start}-{section.page_end}
                   </p>
                 )}
-                <div className="mt-4">
-                  <span className={`
-                    text-sm font-medium
-                    ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
-                  `}>
-                    {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
 
-          {generatingLesson && selectedSection && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
-              <p className="text-blue-900 dark:text-blue-300 font-medium">
-                Generating concepts for "{selectedSection.name}"...
-              </p>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                This usually takes 10-20 seconds
-              </p>
-            </div>
-          )}
+                {/* Progress bar for generating sections */}
+                {isGenerating && (
+                  <div className="mt-4">
+                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                      Generating concepts...
+                    </p>
+                  </div>
+                )}
+
+                {!isGenerating && (
+                  <div className="mt-4">
+                    <span className={`
+                      text-sm font-medium
+                      ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
+                    `}>
+                      {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
+                    </span>
+                  </div>
+                )}
+              </button>
+              );
+            })}
+          </div>
 
           {generatingSections && (
             <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
@@ -1313,47 +1307,6 @@ function LearnPageContent() {
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
                 Extracting major sections from the document
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Show generating UI if lesson is being generated
-  if (generatingLesson && selectedSection) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <button
-            onClick={() => router.push(`/courses/${documentInfo?.course_id || ''}`)}
-            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
-          >
-            ← Back to courses
-          </button>
-        </div>
-
-        <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-8 text-center space-y-4">
-          <div className="flex items-center justify-center gap-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
-            <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-300">
-              Generating lesson for "{selectedSection.name}"
-            </h2>
-          </div>
-          <p className="text-blue-800 dark:text-blue-400">
-            Creating concepts and practice questions... This usually takes 10-20 seconds.
-          </p>
-          {selectedSection.generation_progress !== undefined && selectedSection.generation_progress > 0 && (
-            <div className="mt-4">
-              <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
-                <div
-                  className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${selectedSection.generation_progress}%` }}
-                />
-              </div>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-2">
-                {selectedSection.generation_progress}% complete
               </p>
             </div>
           )}
