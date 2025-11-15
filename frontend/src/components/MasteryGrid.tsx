@@ -199,7 +199,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-sm pt-3 border-t border-neutral-200 dark:border-neutral-700">
-        {(['completed', 'in_progress', 'incorrect', 'not_started'] as MasteryLevel[]).map((level) => {
+        {(['loading', 'completed', 'in_progress', 'incorrect', 'not_started'] as MasteryLevel[]).map((level) => {
           const count = counts[level] || 0;
           if (count === 0) return null;
 

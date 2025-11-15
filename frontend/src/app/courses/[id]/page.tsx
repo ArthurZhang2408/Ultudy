@@ -30,6 +30,7 @@ type ProcessingJob = {
   title?: string;
   section_name?: string;
   section_id?: string;
+  section_number?: number;
   type: 'upload' | 'lesson';
   progress: number;
   status: string;
@@ -171,6 +172,7 @@ export default function CoursePage() {
               document_id: jobData.document_id,
               section_name: jobData.section_name,
               section_id: jobData.section_id,
+              section_number: jobData.section_number,
               type: 'lesson' as const,
               progress: 0,
               status: 'queued',
@@ -541,6 +543,8 @@ export default function CoursePage() {
               id: `loading-${job.job_id}`,
               name: job.section_name || 'Generating...',
               masteryLevel: 'loading' as MasteryLevel,
+              sectionNumber: job.section_number,
+              sectionName: job.section_name,
               description: `Generating concepts... ${job.progress}%`,
               onClick: () => {}
             }));
@@ -588,26 +592,24 @@ export default function CoursePage() {
                       }
                     }}
                     variant="primary"
-                    disabled={processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter)}
+                    disabled={processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter)}
                   >
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
-                    {processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter) ? 'Processing...' : 'Start Studying'}
+                    {processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter) ? 'Uploading...' : 'Start Studying'}
                   </Button>
                 </div>
 
                 {/* Concept Mastery Grid */}
-                {skills.length > 0 && (
-                  <Card hover={false}>
-                    <MasteryGrid
-                      title="Concept Progress"
-                      skills={skills}
-                      columns={15}
-                      showSectionDividers={true}
-                    />
-                  </Card>
-                )}
+                <Card hover={false}>
+                  <MasteryGrid
+                    title="Concept Progress"
+                    skills={skills}
+                    columns={15}
+                    showSectionDividers={true}
+                  />
+                </Card>
 
                 {/* Documents List */}
                 <div className="space-y-4">

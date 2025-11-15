@@ -633,6 +633,7 @@ function LearnPageContent() {
               document_id: documentId,
               section_id: section.id,
               section_name: section.name,
+              section_number: section.section_number,
               chapter: chapter || null,
               course_id: documentInfo?.course_id || null
             };
