@@ -8,6 +8,8 @@ export default function ThemeProvider() {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
+    console.log('[ThemeProvider] savedTheme:', savedTheme, '| prefersDark:', prefersDark);
+
     if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       document.documentElement.classList.add('dark');
     } else if (savedTheme === 'light') {
