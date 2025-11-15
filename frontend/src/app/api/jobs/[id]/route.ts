@@ -1,45 +1,38 @@
-/**
- * Job Status API Route
- * GET /api/jobs/[id] - Get status of a specific job
- */
-
-import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendToken } from '../../_utils/get-backend-token';
+import { getBackendUrl } from '@/lib/api';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await auth();
+    const token = await getBackendToken();
 
-    if (!userId) {
+    if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const jobId = params.id;
+    const { id } = params;
 
-    const response = await fetch(`${BACKEND_URL}/jobs/${jobId}`, {
+    const backendResponse = await fetch(`${getBackendUrl()}/jobs/${id}`, {
+      method: 'GET',
       headers: {
-        'X-User-ID': userId
+        Authorization: `Bearer ${token}`
       }
     });
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json({ error: 'Job not found' }, { status: 404 });
-      }
-      throw new Error('Failed to fetch job status');
-    }
+    const data = await backendResponse.json();
 
-    const job = await response.json();
-    return NextResponse.json(job);
+    return NextResponse.json(data, { status: backendResponse.status });
   } catch (error) {
-    console.error('Error fetching job status:', error);
+    console.error('[api/jobs/[id]] Error:', error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to fetch job status' },
+      { error: 'Failed to fetch job status', detail: message },
       { status: 500 }
     );
   }
