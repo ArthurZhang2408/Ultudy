@@ -7,6 +7,7 @@ import {
   SignedOut,
 } from '@clerk/nextjs';
 import { UserMenu } from '@/components/ui';
+import ThemeProvider from '@/components/ThemeProvider';
 import Script from 'next/script';
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-screen">
+        <ThemeProvider />
         <div className="flex min-h-screen flex-col">
           <header className="sticky top-0 z-40 border-b border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md shadow-sm dark:shadow-dark-soft">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8 py-4">

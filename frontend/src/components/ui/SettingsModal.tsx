@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useUser } from '@clerk/nextjs';
 
@@ -16,6 +16,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [theme, setTheme] = useState<'system' | 'light' | 'dark'>('system');
   const [mounted, setMounted] = useState(false);
+  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
+  const themeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -46,8 +48,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }, [isOpen, onClose]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
+        setThemeDropdownOpen(false);
+      }
+    };
+
+    if (themeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [themeDropdownOpen]);
+
   const handleThemeChange = (newTheme: 'system' | 'light' | 'dark') => {
     setTheme(newTheme);
+    setThemeDropdownOpen(false);
 
     if (newTheme === 'system') {
       localStorage.removeItem('theme');
@@ -83,7 +100,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300">
+      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
         {/* Sidebar */}
         <div className="w-full md:w-64 bg-neutral-50 dark:bg-neutral-800/50 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col shrink-0">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4 px-2">
@@ -160,24 +177,38 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-                      Appearance
-                    </h4>
-                    <select
-                      value={theme}
-                      onChange={(e) => handleThemeChange(e.target.value as 'system' | 'light' | 'dark')}
-                      className="px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-neutral-100 hover:border-neutral-400 dark:hover:border-neutral-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer"
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                    Appearance
+                  </h4>
+                  <div className="relative" ref={themeDropdownRef}>
+                    <button
+                      onClick={() => setThemeDropdownOpen(!themeDropdownOpen)}
+                      className="px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-neutral-100 hover:border-neutral-400 dark:hover:border-neutral-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer flex items-center gap-2 min-w-[120px] justify-between"
                     >
-                      <option value="system">System</option>
-                      <option value="light">Light</option>
-                      <option value="dark">Dark</option>
-                    </select>
+                      <span className="capitalize">{theme}</span>
+                      <svg className={`w-4 h-4 transition-transform ${themeDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {themeDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-lg overflow-hidden z-10">
+                        {['system', 'light', 'dark'].map((option) => (
+                          <button
+                            key={option}
+                            onClick={() => handleThemeChange(option as 'system' | 'light' | 'dark')}
+                            className={`w-full px-4 py-2 text-left text-sm transition-colors ${
+                              theme === option
+                                ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400'
+                                : 'text-neutral-900 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                            }`}
+                          >
+                            <span className="capitalize">{option}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                    Choose how Ultudy looks to you. Select a single theme, or sync with your system.
-                  </p>
                 </div>
               </div>
             )}
