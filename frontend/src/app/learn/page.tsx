@@ -501,26 +501,25 @@ function LearnPageContent() {
           setShowingSections(false);
           setShowingSummary(true);
         }
-      } else {
-        const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
-        const errorMessage = errorData.details
-          ? `${errorData.error}\n\n${errorData.details}`
-          : errorData.error || 'Failed to load lesson';
-        setError({
-          message: errorMessage,
-          retry: () => loadOrGenerateLesson(section)
-        });
       }
-    } catch (error) {
-      console.error('[learn] Error loading/generating lesson:', error);
+    } else {
+      const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
+      const errorMessage = errorData.details
+        ? `${errorData.error}\n\n${errorData.details}`
+        : errorData.error || 'Failed to load lesson';
       setError({
-        message: 'Failed to load lesson. Please check your connection and try again.',
+        message: errorMessage,
         retry: () => loadOrGenerateLesson(section)
       });
-    } finally {
-      setGeneratingLesson(false);
     }
+  } catch (error) {
+    console.error('[learn] Error loading/generating lesson:', error);
+    setError({
+      message: 'Failed to load lesson. Please check your connection and try again.',
+      retry: () => loadOrGenerateLesson(section)
+    });
   }
+}
 
   // Generate lesson for a specific section
   async function generateLessonForSection(section: Section) {
