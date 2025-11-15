@@ -238,8 +238,10 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
             <p className="mb-2 last:mb-0" {...props} />
           ),
           // Style code blocks (wrapped in pre tags)
+          // Light mode: Dark background like a terminal
+          // Dark mode: Slightly darker than page background for distinction
           pre: ({ node, ...props }) => (
-            <pre className="my-3 p-4 bg-slate-900 text-slate-100 rounded-lg overflow-x-auto" {...props} />
+            <pre className="my-3 p-4 bg-slate-900 dark:bg-neutral-950 text-slate-100 dark:text-neutral-200 rounded-lg overflow-x-auto border border-slate-800 dark:border-neutral-800" {...props} />
           ),
           // Style inline code and code blocks
           code: ({ className, children, ...props }) => {
@@ -254,20 +256,22 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
               );
             }
 
-            // Inline code
+            // Inline code - subtle background contrast in both modes
+            // Light mode: Light gray background like GitHub
+            // Dark mode: Darker background with slight warmth
             return (
-              <code className="px-1.5 py-0.5 bg-slate-100 text-slate-900 rounded text-sm font-mono" {...props}>
+              <code className="px-1.5 py-0.5 bg-slate-100 dark:bg-neutral-800 text-slate-900 dark:text-neutral-200 rounded text-sm font-mono border border-slate-200 dark:border-neutral-700" {...props}>
                 {children}
               </code>
             );
           },
-          // Style strong (bold) elements
+          // Style strong (bold) elements - use high contrast in both modes
           strong: ({ node, ...props }) => (
-            <strong className="font-bold text-slate-900" {...props} />
+            <strong className="font-bold text-slate-900 dark:text-neutral-100" {...props} />
           ),
           // Style emphasis (italic) elements
           em: ({ node, ...props }) => (
-            <em className="italic text-slate-800" {...props} />
+            <em className="italic text-slate-800 dark:text-neutral-300" {...props} />
           ),
           // Style lists
           ul: ({ node, ...props }) => (
@@ -277,11 +281,53 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
             <ol className="list-decimal pl-6 space-y-1" {...props} />
           ),
           li: ({ node, ...props }) => (
-            <li className="text-slate-700" {...props} />
+            <li className="text-slate-700 dark:text-neutral-300" {...props} />
           ),
-          // Style links
+          // Style links - vibrant and accessible in both modes
           a: ({ node, ...props }) => (
-            <a className="text-blue-600 hover:text-blue-800 underline" {...props} />
+            <a className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 underline" {...props} />
+          ),
+          // Style blockquotes - visually distinct with left border (like GitHub/Notion)
+          blockquote: ({ node, ...props }) => (
+            <blockquote className="border-l-4 border-blue-500 dark:border-blue-600 pl-4 py-2 my-3 bg-blue-50/50 dark:bg-blue-950/20 text-slate-700 dark:text-neutral-300 italic" {...props} />
+          ),
+          // Style headings with proper hierarchy
+          h1: ({ node, ...props }) => (
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-neutral-100 mt-6 mb-3 first:mt-0" {...props} />
+          ),
+          h2: ({ node, ...props }) => (
+            <h2 className="text-xl font-bold text-slate-900 dark:text-neutral-100 mt-5 mb-2 first:mt-0" {...props} />
+          ),
+          h3: ({ node, ...props }) => (
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mt-4 mb-2 first:mt-0" {...props} />
+          ),
+          h4: ({ node, ...props }) => (
+            <h4 className="text-base font-semibold text-slate-900 dark:text-neutral-100 mt-3 mb-1 first:mt-0" {...props} />
+          ),
+          // Style horizontal rules
+          hr: ({ node, ...props }) => (
+            <hr className="my-6 border-t border-slate-200 dark:border-neutral-700" {...props} />
+          ),
+          // Style tables with proper borders and alternating rows
+          table: ({ node, ...props }) => (
+            <div className="overflow-x-auto my-4">
+              <table className="min-w-full border border-slate-200 dark:border-neutral-700 rounded-lg" {...props} />
+            </div>
+          ),
+          thead: ({ node, ...props }) => (
+            <thead className="bg-slate-100 dark:bg-neutral-800" {...props} />
+          ),
+          tbody: ({ node, ...props }) => (
+            <tbody className="divide-y divide-slate-200 dark:divide-neutral-700" {...props} />
+          ),
+          tr: ({ node, ...props }) => (
+            <tr className="hover:bg-slate-50 dark:hover:bg-neutral-800/50" {...props} />
+          ),
+          th: ({ node, ...props }) => (
+            <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900 dark:text-neutral-100" {...props} />
+          ),
+          td: ({ node, ...props }) => (
+            <td className="px-4 py-2 text-sm text-slate-700 dark:text-neutral-300" {...props} />
           ),
         }}
       >

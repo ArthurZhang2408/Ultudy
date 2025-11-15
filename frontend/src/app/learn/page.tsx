@@ -174,6 +174,7 @@ function LearnPageContent() {
   const [currentMCQIndex, setCurrentMCQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showingExplanations, setShowingExplanations] = useState(false);
+  const [hoveredOption, setHoveredOption] = useState<string | null>(null);
   const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong'>>(new Map());
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [answerHistory, setAnswerHistory] = useState<Record<string, AnswerRecord>>({});
@@ -611,19 +612,21 @@ function LearnPageContent() {
       setSelectedOption(null);
       setShowingExplanations(false);
     }
+    setHoveredOption(null);
   }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
+
+  // Helper function to scroll to top of page
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   useEffect(() => {
     if (showingSummary) {
       return;
     }
 
-    if (!activeConceptRef.current) {
-      return;
-    }
-
-    activeConceptRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [showingSummary, currentConceptIndex]);
+    scrollToTop();
+  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
 
   async function startStudySession(): Promise<string | null> {
     if (sessionId) {
@@ -978,20 +981,20 @@ function LearnPageContent() {
               setError(null);
               router.push('/courses');
             }}
-            className="text-sm text-slate-600 hover:text-slate-900"
+            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← Back to courses
           </button>
         </div>
 
-        <div className="rounded-lg border border-red-200 bg-red-50 p-8 shadow-sm space-y-6">
+        <div className="rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 p-8 shadow-sm space-y-6">
           <div className="flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
             <div className="flex-1">
-              <h2 className="text-xl font-semibold text-red-900">
+              <h2 className="text-xl font-semibold text-red-900 dark:text-red-300">
                 Something went wrong
               </h2>
-              <p className="mt-2 text-red-800 whitespace-pre-wrap">
+              <p className="mt-2 text-red-800 dark:text-red-400 whitespace-pre-wrap">
                 {error.message}
               </p>
             </div>
@@ -1003,7 +1006,7 @@ function LearnPageContent() {
                 setError(null);
                 router.push('/courses');
               }}
-              className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-50"
+              className="rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-red-900 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
             >
               Go Back
             </button>
@@ -1013,7 +1016,7 @@ function LearnPageContent() {
                   setError(null);
                   error.retry?.();
                 }}
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+                className="rounded-md bg-red-600 dark:bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 dark:hover:bg-red-800"
               >
                 Try Again
               </button>
@@ -1039,18 +1042,18 @@ function LearnPageContent() {
                 router.push('/courses');
               }
             }}
-            className="text-sm text-slate-600 hover:text-slate-900"
+            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← Back to course
           </button>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+        <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-neutral-100">
               Select a Section to Study
             </h1>
-            <p className="mt-2 text-slate-600">
+            <p className="mt-2 text-slate-600 dark:text-neutral-300">
               This document has been divided into {sections.length} major sections.
               Click on a section to generate concepts and start learning.
             </p>
@@ -1065,36 +1068,36 @@ function LearnPageContent() {
                 className={`
                   relative rounded-lg border-2 p-6 text-left transition-all
                   ${section.concepts_generated
-                    ? 'border-green-300 bg-green-50 hover:bg-green-100'
-                    : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50'}
+                    ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
+                    : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}
                   ${generatingLesson ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                 `}
               >
                 <div className="flex items-start justify-between mb-2">
-                  <span className="inline-block rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
+                  <span className="inline-block rounded-full bg-slate-200 dark:bg-neutral-700 px-3 py-1 text-sm font-semibold text-slate-700 dark:text-neutral-300">
                     Section {section.section_number}
                   </span>
                   {section.concepts_generated && (
-                    <span className="text-green-600 text-sm font-medium">✓ Ready</span>
+                    <span className="text-green-600 dark:text-green-400 text-sm font-medium">✓ Ready</span>
                   )}
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mb-2">
                   {section.name}
                 </h3>
                 {section.description && (
-                  <p className="text-sm text-slate-600 mb-3">
+                  <p className="text-sm text-slate-600 dark:text-neutral-300 mb-3">
                     {section.description}
                   </p>
                 )}
                 {section.page_start && section.page_end && (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-neutral-400">
                     Pages {section.page_start}-{section.page_end}
                   </p>
                 )}
                 <div className="mt-4">
                   <span className={`
                     text-sm font-medium
-                    ${section.concepts_generated ? 'text-green-700' : 'text-blue-600'}
+                    ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
                   `}>
                     {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
                   </span>
@@ -1104,22 +1107,22 @@ function LearnPageContent() {
           </div>
 
           {generatingLesson && selectedSection && (
-            <div className="rounded-lg bg-blue-50 p-4 text-center">
-              <p className="text-blue-900 font-medium">
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
+              <p className="text-blue-900 dark:text-blue-300 font-medium">
                 Generating concepts for "{selectedSection.name}"...
               </p>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
                 This usually takes 10-20 seconds
               </p>
             </div>
           )}
 
           {generatingSections && (
-            <div className="rounded-lg bg-blue-50 p-4 text-center">
-              <p className="text-blue-900 font-medium">
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
+              <p className="text-blue-900 dark:text-blue-300 font-medium">
                 Analyzing document structure...
               </p>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
                 Extracting major sections from the document
               </p>
             </div>
@@ -1132,10 +1135,10 @@ function LearnPageContent() {
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-slate-900">Failed to load lesson</h2>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-neutral-100">Failed to load lesson</h2>
         <button
           onClick={() => router.push('/courses')}
-          className="mt-4 text-slate-600 hover:text-slate-900"
+          className="mt-4 text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
         >
           ← Back to courses
         </button>
@@ -1177,38 +1180,38 @@ function LearnPageContent() {
         <div>
           <button
             onClick={() => router.push('/courses')}
-            className="text-sm text-slate-600 hover:text-slate-900"
+            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← Back to courses
           </button>
         </div>
 
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-8 shadow-sm space-y-4">
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-8 shadow-sm space-y-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl">⚠️</span>
             <div className="flex-1">
-              <h2 className="text-xl font-semibold text-amber-900">
+              <h2 className="text-xl font-semibold text-amber-900 dark:text-amber-300">
                 Lesson Format Update Available
               </h2>
-              <p className="mt-2 text-amber-800">
+              <p className="mt-2 text-amber-800 dark:text-amber-400">
                 This lesson was generated with an older format. To experience the new interactive,
                 concept-by-concept learning with multiple-choice questions and instant feedback,
                 you'll need to regenerate it.
               </p>
-              <p className="mt-2 text-amber-800">
+              <p className="mt-2 text-amber-800 dark:text-amber-400">
                 The new format features:
               </p>
-              <ul className="mt-2 ml-6 list-disc text-amber-800">
+              <ul className="mt-2 ml-6 list-disc text-amber-800 dark:text-amber-400">
                 <li>Bite-sized explanations (no walls of text)</li>
                 <li>Interactive MCQs with instant feedback</li>
                 <li>Detailed explanations for each answer option</li>
                 <li>Progress tracking across concepts</li>
               </ul>
-              <p className="mt-4 text-sm text-amber-700">
+              <p className="mt-4 text-sm text-amber-700 dark:text-amber-400">
                 Note: This will delete the cached lesson and generate a new one (takes ~10 seconds).
               </p>
               {regenerateError && (
-                <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="mt-4 rounded-md border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
                   {regenerateError}
                 </div>
               )}
@@ -1217,7 +1220,7 @@ function LearnPageContent() {
           <div className="flex gap-3">
             <button
               onClick={() => router.push('/courses')}
-              className="rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-50"
+              className="rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-amber-900 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
             >
               Go Back
             </button>
@@ -1246,7 +1249,7 @@ function LearnPageContent() {
                   setRegenerateError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
                 }
               }}
-              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+              className="rounded-md bg-amber-600 dark:bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:hover:bg-amber-800"
             >
               Regenerate Lesson
             </button>
@@ -1271,20 +1274,20 @@ function LearnPageContent() {
                 router.push('/courses');
               }
             }}
-            className="text-sm text-slate-600 hover:text-slate-900"
+            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← {sections.length > 0 ? 'Back to sections' : 'Back to courses'}
           </button>
           {chapter && (
-            <span className="text-sm text-slate-600">
+            <span className="text-sm text-slate-600 dark:text-neutral-300">
               Chapter {chapter}
             </span>
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+        <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-neutral-100">
               {selectedSection
                 ? `Section ${selectedSection.section_number}: ${selectedSection.name}`
                 : (lesson.topic || 'Lesson')}
@@ -1292,19 +1295,19 @@ function LearnPageContent() {
           </div>
 
           {lesson.summary && (
-            <div className="prose prose-slate max-w-none">
-              <FormattedText className="text-slate-700 text-lg leading-relaxed">
+            <div className="prose prose-slate dark:prose-invert max-w-none">
+              <FormattedText className="text-slate-700 dark:text-neutral-300 text-lg leading-relaxed">
                 {lesson.summary}
               </FormattedText>
             </div>
           )}
 
-          <div className="rounded-lg bg-blue-50 p-6">
-            <h3 className="font-semibold text-blue-900 mb-3">In this lesson:</h3>
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-6">
+            <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-3">In this lesson:</h3>
             <div className="space-y-2">
               {lesson.concepts.map((concept, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-blue-800">
-                  <span className="text-blue-600 font-semibold">{idx + 1}.</span>
+                <div key={idx} className="flex items-start gap-2 text-blue-800 dark:text-blue-400">
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{idx + 1}.</span>
                   <span>{concept.name}</span>
                 </div>
               ))}
@@ -1312,7 +1315,7 @@ function LearnPageContent() {
           </div>
 
           {hasResumeProgress && (
-            <div className="rounded-md bg-slate-100 px-4 py-3 text-sm text-slate-700">
+            <div className="rounded-md bg-slate-100 dark:bg-neutral-700 px-4 py-3 text-sm text-slate-700 dark:text-neutral-300">
               Resume from concept {resumeConceptNumber}, question {resumeQuestionNumber}.
             </div>
           )}
@@ -1321,7 +1324,7 @@ function LearnPageContent() {
             onClick={() => {
               void handleStartLearning();
             }}
-            className="w-full rounded-md bg-blue-600 px-6 py-3 text-base font-medium text-white hover:bg-blue-700"
+            className="w-full rounded-md bg-blue-600 dark:bg-blue-700 px-6 py-3 text-base font-medium text-white hover:bg-blue-700 dark:hover:bg-blue-800"
           >
             {startButtonLabel}
           </button>
@@ -1339,28 +1342,28 @@ function LearnPageContent() {
             clearConceptNavigation();
             setShowingSummary(true);
           }}
-          className="text-sm text-slate-600 hover:text-slate-900"
+          className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
         >
           ← Back to summary
         </button>
-        <span className="text-sm text-slate-600">
+        <span className="text-sm text-slate-600 dark:text-neutral-300">
           Concept {currentConceptIndex + 1} of {totalConcepts}
         </span>
       </div>
 
       {/* Concept Explanation */}
-      <div ref={activeConceptRef} className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm space-y-4">
-        <h2 className="text-2xl font-bold text-slate-900">{currentConcept.name}</h2>
+      <div ref={activeConceptRef} className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-4">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-neutral-100">{currentConcept.name}</h2>
 
-        <FormattedText className="text-slate-700 text-base leading-relaxed">
+        <FormattedText className="text-slate-700 dark:text-neutral-300 text-base leading-relaxed">
           {currentConcept.explanation}
         </FormattedText>
 
         {currentConcept.analogies && currentConcept.analogies.length > 0 && (
-          <div className="rounded-lg bg-green-50 p-4 mt-4">
+          <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-4 mt-4">
             <div className="flex items-start gap-2">
-              <span className="text-green-700 font-semibold">💡</span>
-              <FormattedText className="text-green-800 text-sm flex-1">
+              <span className="text-green-700 dark:text-green-400 font-semibold">💡</span>
+              <FormattedText className="text-green-800 dark:text-green-400 text-sm flex-1">
                 {currentConcept.analogies[0]}
               </FormattedText>
             </div>
@@ -1368,9 +1371,9 @@ function LearnPageContent() {
         )}
 
         {currentConcept.examples && currentConcept.examples.length > 0 && (
-          <div className="rounded-lg bg-indigo-50 p-4 space-y-2">
-            <div className="text-sm font-semibold uppercase tracking-wide text-indigo-900">Examples</div>
-            <div className="space-y-2 text-indigo-800 text-sm leading-relaxed">
+          <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 p-4 space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-wide text-indigo-900 dark:text-indigo-300">Examples</div>
+            <div className="space-y-2 text-indigo-800 dark:text-indigo-400 text-sm leading-relaxed">
               {currentConcept.examples.map((example, index) => (
                 <FormattedText key={index} className="pl-5">
                   {example}
@@ -1399,9 +1402,9 @@ function LearnPageContent() {
         )}
 
         {currentConcept.important_notes && currentConcept.important_notes.length > 0 && (
-          <div className="rounded-lg bg-amber-50 p-4 space-y-2">
-            <div className="text-sm font-semibold uppercase tracking-wide text-amber-900">Important Notes</div>
-            <div className="space-y-2 text-amber-800 text-sm leading-relaxed">
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
+            <div className="text-sm font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-300">Important Notes</div>
+            <div className="space-y-2 text-amber-800 dark:text-amber-400 text-sm leading-relaxed">
               {currentConcept.important_notes.map((note, index) => (
                 <FormattedText key={index} className="pl-5">
                   {note}
@@ -1414,15 +1417,15 @@ function LearnPageContent() {
 
       {/* MCQ Section */}
       {currentMCQ && (
-        <div className="rounded-lg border-2 border-slate-300 bg-white p-8 shadow-md space-y-6">
+        <div className="rounded-lg border-2 border-slate-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-md space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Check Your Understanding</h3>
-            <span className="text-sm text-slate-600">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100">Check Your Understanding</h3>
+            <span className="text-sm text-slate-600 dark:text-neutral-300">
               Question {currentMCQIndex + 1} of {totalMCQsInConcept}
             </span>
           </div>
 
-          <FormattedText className="text-base text-slate-900">
+          <FormattedText className="text-base text-slate-900 dark:text-neutral-100">
             {currentMCQ.question}
           </FormattedText>
 
@@ -1430,51 +1433,58 @@ function LearnPageContent() {
             {currentMCQ.options.map((option) => {
               const isSelected = selectedOption === option.letter;
               const isCorrect = option.correct;
+              const isHovered = hoveredOption === option.letter;
               const showAsCorrect = showingExplanations && isCorrect;
               const showAsWrong = showingExplanations && isSelected && !isCorrect;
+              const shouldShowExplanation = showingExplanations && (isSelected || isCorrect || isHovered);
 
               return (
-                <div key={option.letter} className="space-y-2">
+                <div
+                  key={option.letter}
+                  className="space-y-2"
+                  onMouseEnter={() => showingExplanations && setHoveredOption(option.letter)}
+                  onMouseLeave={() => showingExplanations && setHoveredOption(null)}
+                >
                   <button
                     onClick={() => !showingExplanations && handleSelectOption(option.letter)}
                     disabled={showingExplanations}
                     className={`w-full text-left rounded-lg border-2 p-4 transition-colors ${
                       showAsCorrect
-                        ? 'border-green-500 bg-green-50'
+                        ? 'border-green-500 dark:border-green-600 bg-green-50 dark:bg-green-900/20'
                         : showAsWrong
-                        ? 'border-red-500 bg-red-50'
+                        ? 'border-red-500 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                         : isSelected
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-300 bg-white hover:border-slate-400'
+                        ? 'border-blue-500 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-slate-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-slate-400 dark:hover:border-neutral-600'
                     } ${showingExplanations ? 'cursor-default' : 'cursor-pointer'}`}
                   >
                     <div className="flex items-start gap-3">
                       <span className={`font-semibold ${
-                        showAsCorrect ? 'text-green-700' :
-                        showAsWrong ? 'text-red-700' :
-                        isSelected ? 'text-blue-700' :
-                        'text-slate-700'
+                        showAsCorrect ? 'text-green-700 dark:text-green-400' :
+                        showAsWrong ? 'text-red-700 dark:text-red-400' :
+                        isSelected ? 'text-blue-700 dark:text-blue-400' :
+                        'text-slate-700 dark:text-neutral-300'
                       }`}>
                         {option.letter}.
                       </span>
                       <div className={`flex-1 ${
-                        showAsCorrect ? 'text-green-900' :
-                        showAsWrong ? 'text-red-900' :
-                        isSelected ? 'text-blue-900' :
-                        'text-slate-900'
+                        showAsCorrect ? 'text-green-900 dark:text-green-300' :
+                        showAsWrong ? 'text-red-900 dark:text-red-300' :
+                        isSelected ? 'text-blue-900 dark:text-blue-300' :
+                        'text-slate-900 dark:text-neutral-100'
                       }`}>
                         <FormattedText>
                           {option.text}
                         </FormattedText>
                       </div>
-                      {showAsCorrect && <span className="text-green-600 text-xl">✓</span>}
-                      {showAsWrong && <span className="text-red-600 text-xl">✗</span>}
+                      {showAsCorrect && <span className="text-green-600 dark:text-green-400 text-xl">✓</span>}
+                      {showAsWrong && <span className="text-red-600 dark:text-red-400 text-xl">✗</span>}
                     </div>
                   </button>
 
-                  {showingExplanations && (isSelected || isCorrect) && (
+                  {shouldShowExplanation && (
                     <div className={`rounded-lg p-3 text-sm ${
-                      isCorrect ? 'bg-green-50 text-green-900' : 'bg-slate-50 text-slate-800'
+                      isCorrect ? 'bg-green-50 dark:bg-green-900/20 text-green-900 dark:text-green-300' : 'bg-slate-50 dark:bg-neutral-700 text-slate-800 dark:text-neutral-300'
                     }`}>
                       <span className="font-semibold">
                         {isCorrect ? 'Why this is correct: ' : 'Why not: '}
@@ -1494,13 +1504,14 @@ function LearnPageContent() {
               <button
                 onClick={handlePreviousMCQ}
                 disabled={currentConceptIndex === 0 && currentMCQIndex === 0}
-                className="text-sm text-slate-600 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Previous question
               </button>
               <button
                 onClick={handleSkipConcept}
-                className="text-sm text-slate-600 hover:text-slate-900"
+                disabled={selectedOption !== null}
+                className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Skip concept
               </button>
@@ -1510,7 +1521,7 @@ function LearnPageContent() {
                 void handleNextMCQ();
               }}
               disabled={!showingExplanations}
-              className="rounded-md bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-md bg-slate-900 dark:bg-neutral-700 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {currentMCQIndex === totalMCQsInConcept - 1
                 ? currentConceptIndex === totalConcepts - 1
@@ -1524,7 +1535,7 @@ function LearnPageContent() {
 
       {/* Progress Indicator */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-sm text-slate-600">
+        <div className="flex items-center justify-between text-sm text-slate-600 dark:text-neutral-300">
           <span>Progress</span>
           <span>
             {conceptProgress.size} of {totalConcepts} concepts visited
@@ -1540,14 +1551,14 @@ function LearnPageContent() {
                 key={i}
                 className={`h-2 flex-1 rounded-full ${
                   isCurrent
-                    ? 'bg-yellow-500'
+                    ? 'bg-yellow-500 dark:bg-yellow-600'
                     : status === 'completed'
-                    ? 'bg-green-500'
+                    ? 'bg-green-500 dark:bg-green-600'
                     : status === 'wrong'
-                    ? 'bg-red-500'
+                    ? 'bg-red-500 dark:bg-red-600'
                     : status === 'skipped'
-                    ? 'bg-slate-300'
-                    : 'bg-slate-300'
+                    ? 'bg-slate-300 dark:bg-neutral-600'
+                    : 'bg-slate-300 dark:bg-neutral-600'
                 }`}
                 title={
                   isCurrent
@@ -1573,8 +1584,8 @@ function LearnPageFallback() {
   return (
     <div className="flex items-center justify-center py-12">
       <div className="text-center space-y-4">
-        <div className="text-slate-600">Loading your lesson...</div>
-        <div className="text-sm text-slate-500">
+        <div className="text-slate-600 dark:text-neutral-300">Loading your lesson...</div>
+        <div className="text-sm text-slate-500 dark:text-neutral-400">
           Checking for cached lesson or generating new one (up to 10 seconds for first time)
         </div>
       </div>

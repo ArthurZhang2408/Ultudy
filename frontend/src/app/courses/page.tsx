@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { Button, Card, Input, Badge } from '@/components/ui';
 
 type Course = {
   id: string;
@@ -74,146 +75,225 @@ export default function CoursesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-slate-600">Loading courses...</div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-9 w-48 skeleton rounded-lg" />
+          <div className="h-10 w-32 skeleton rounded-lg" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 skeleton rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-semibold text-slate-900">My Courses</h1>
-        <button
+        <div>
+          <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">My Courses</h1>
+          <p className="mt-2 text-neutral-600 dark:text-neutral-300">
+            Manage your courses and track your learning progress
+          </p>
+        </div>
+        <Button
           onClick={() => {
             setShowCreateForm(!showCreateForm);
             setCreateError(null);
           }}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          variant={showCreateForm ? 'secondary' : 'primary'}
         >
-          {showCreateForm ? 'Cancel' : 'Create Course'}
-        </button>
+          {showCreateForm ? (
+            <>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Cancel
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Course
+            </>
+          )}
+        </Button>
       </div>
 
       {showCreateForm && (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-slate-900">Create New Course</h2>
+        <Card className="animate-slide-down">
+          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100 mb-6">Create New Course</h2>
           {createError && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {createError}
+            <div className="mb-6 flex items-start gap-3 rounded-lg border border-danger-200 dark:border-danger-800/50 bg-danger-50 dark:bg-danger-900/20 p-4 animate-slide-down">
+              <svg className="w-5 h-5 text-danger-600 dark:text-danger-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-danger-800 dark:text-danger-300">Error creating course</p>
+                <p className="text-sm text-danger-700 dark:text-danger-400 mt-1">{createError}</p>
+              </div>
             </div>
           )}
-          <form onSubmit={handleCreateCourse} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Course Name <span className="text-red-500">*</span>
-              </label>
-              <input
+          <form onSubmit={handleCreateCourse} className="space-y-6">
+            <Input
+              label="Course Name"
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Signals and Systems"
+              fullWidth
+              leftIcon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              }
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Course Code"
                 type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Signals and Systems"
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                placeholder="e.g., ECE 358"
+                fullWidth
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                  </svg>
+                }
+              />
+
+              <Input
+                label="Term"
+                type="text"
+                value={formData.term}
+                onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+                placeholder="e.g., Fall 2025"
+                fullWidth
+                leftIcon={
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                }
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Course Code</label>
-                <input
-                  type="text"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  placeholder="e.g., ECE 358"
-                  className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                />
-              </div>
+            <Input
+              label="Exam Date"
+              type="date"
+              value={formData.exam_date}
+              onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
+              fullWidth
+              helperText="Optional: Set your exam date to help track your study timeline"
+            />
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700">Term</label>
-                <input
-                  type="text"
-                  value={formData.term}
-                  onChange={(e) => setFormData({ ...formData, term: e.target.value })}
-                  placeholder="e.g., Fall 2025"
-                  className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700">Exam Date</label>
-              <input
-                type="date"
-                value={formData.exam_date}
-                onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <button
+            <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+              <Button
                 type="button"
                 onClick={() => {
                   setShowCreateForm(false);
                   setCreateError(null);
                 }}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                variant="secondary"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={creating}
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                loading={creating}
+                variant="primary"
               >
-                {creating ? 'Creating...' : 'Create Course'}
-              </button>
+                Create Course
+              </Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {courses.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-12 text-center">
-          <h3 className="text-lg font-medium text-slate-900">No courses yet</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Create your first course to start organizing your study materials.
-          </p>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Create Your First Course
-          </button>
-        </div>
+        <Card className="text-center py-16 animate-fade-in">
+          <div className="max-w-md mx-auto space-y-4">
+            <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-10 h-10 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">No courses yet</h3>
+            <p className="text-neutral-600 dark:text-neutral-300">
+              Create your first course to start organizing your study materials and tracking your progress.
+            </p>
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              variant="primary"
+              size="lg"
+            >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Your First Course
+            </Button>
+          </div>
+        </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {courses.map((course) => (
             <Link
               key={course.id}
               href={`/courses/${course.id}`}
-              className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+              className="block group"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-slate-900 group-hover:text-slate-700">
+              <Card interactive className="h-full group-hover:border-primary-400 dark:group-hover:border-primary-500 transition-all">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  </div>
+                  <svg className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">
                     {course.name}
                   </h3>
-                  {course.code && (
-                    <p className="mt-1 text-sm text-slate-600">{course.code}</p>
-                  )}
-                  {course.term && (
-                    <p className="mt-1 text-xs text-slate-500">{course.term}</p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {course.code && (
+                      <Badge variant="primary">
+                        {course.code}
+                      </Badge>
+                    )}
+                    {course.term && (
+                      <Badge variant="neutral">
+                        {course.term}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {course.exam_date && (
+                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                      <svg className="w-4 h-4 text-warning-600 dark:text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                        Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
                   )}
                 </div>
-              </div>
-              {course.exam_date && (
-                <div className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                  Exam: {new Date(course.exam_date).toLocaleDateString()}
-                </div>
-              )}
+              </Card>
             </Link>
           ))}
         </div>
