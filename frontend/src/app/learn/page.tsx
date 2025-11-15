@@ -1253,6 +1253,47 @@ function LearnPageContent() {
     );
   }
 
+  // Show generating UI if lesson is being generated
+  if (generatingLesson && selectedSection) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <button
+            onClick={() => router.push(`/courses/${documentInfo?.course_id || ''}`)}
+            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
+          >
+            ← Back to courses
+          </button>
+        </div>
+
+        <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 p-8 text-center space-y-4">
+          <div className="flex items-center justify-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 dark:border-blue-400"></div>
+            <h2 className="text-xl font-semibold text-blue-900 dark:text-blue-300">
+              Generating lesson for "{selectedSection.name}"
+            </h2>
+          </div>
+          <p className="text-blue-800 dark:text-blue-400">
+            Creating concepts and practice questions... This usually takes 10-20 seconds.
+          </p>
+          {selectedSection.generation_progress !== undefined && selectedSection.generation_progress > 0 && (
+            <div className="mt-4">
+              <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                <div
+                  className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${selectedSection.generation_progress}%` }}
+                />
+              </div>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-2">
+                {selectedSection.generation_progress}% complete
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
     return (
       <div className="text-center py-12">

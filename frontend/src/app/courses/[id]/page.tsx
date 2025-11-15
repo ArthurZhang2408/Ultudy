@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
@@ -62,6 +62,7 @@ export default function CoursePage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
+  const pollingJobsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (courseId) {
@@ -73,44 +74,64 @@ export default function CoursePage() {
   // Poll for upload job completion when redirected from upload page
   useEffect(() => {
     const uploadJobId = searchParams.get('upload_job_id');
-    if (uploadJobId) {
-      console.log('[courses] Upload job detected in URL:', uploadJobId);
+    if (!uploadJobId) return;
 
-      // Ensure the job is in processingJobs state (might have been added to sessionStorage but not state yet)
-      const stored = sessionStorage.getItem('processingJobs');
-      if (stored) {
+    // Prevent duplicate pollers
+    if (pollingJobsRef.current.has(uploadJobId)) {
+      console.log('[courses] Already polling for job:', uploadJobId);
+      return;
+    }
+
+    console.log('[courses] Upload job detected in URL:', uploadJobId);
+
+    // Mark as polling
+    pollingJobsRef.current.add(uploadJobId);
+
+    // Load from sessionStorage and add to state
+    const stored = sessionStorage.getItem('processingJobs');
+    if (stored) {
+      try {
         const allJobs = JSON.parse(stored);
         const uploadJob = allJobs.find((j: any) => j.job_id === uploadJobId);
-        if (uploadJob && !processingJobs.find(j => j.job_id === uploadJobId)) {
+        if (uploadJob) {
           console.log('[courses] Adding job from sessionStorage to state:', uploadJob);
-          setProcessingJobs(prev => [...prev, { ...uploadJob, progress: 0, status: 'queued' }]);
+          setProcessingJobs(prev => {
+            // Double-check it's not already there
+            if (prev.some(j => j.job_id === uploadJobId)) return prev;
+            return [...prev, { ...uploadJob, progress: 0, status: 'queued' }];
+          });
         }
+      } catch (e) {
+        console.error('[courses] Failed to parse processingJobs:', e);
       }
-
-      // Start polling for this specific job
-      const cancelPoller = createJobPoller(uploadJobId, {
-        interval: 2000,
-        onProgress: (job: Job) => {
-          console.log('[courses] Upload progress:', job.progress, job.status);
-          updateJobProgress(uploadJobId, job.progress, job.status);
-        },
-        onComplete: (job: Job) => {
-          console.log('[courses] Upload completed:', job);
-          removeProcessingJob(uploadJobId);
-          // Refresh course data to show the new document
-          fetchCourseData();
-        },
-        onError: (error: string) => {
-          console.error('[courses] Upload job error:', error);
-          removeProcessingJob(uploadJobId);
-        }
-      });
-
-      // Cleanup on unmount
-      return () => {
-        cancelPoller();
-      };
     }
+
+    // Start polling for this specific job
+    const cancelPoller = createJobPoller(uploadJobId, {
+      interval: 2000,
+      onProgress: (job: Job) => {
+        console.log('[courses] Upload progress:', job.progress, job.status);
+        updateJobProgress(uploadJobId, job.progress, job.status);
+      },
+      onComplete: (job: Job) => {
+        console.log('[courses] Upload completed:', job);
+        pollingJobsRef.current.delete(uploadJobId);
+        removeProcessingJob(uploadJobId);
+        // Refresh course data to show the new document
+        fetchCourseData();
+      },
+      onError: (error: string) => {
+        console.error('[courses] Upload job error:', error);
+        pollingJobsRef.current.delete(uploadJobId);
+        removeProcessingJob(uploadJobId);
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      cancelPoller();
+      pollingJobsRef.current.delete(uploadJobId);
+    };
   }, [searchParams]);
 
   function loadProcessingJobs() {
