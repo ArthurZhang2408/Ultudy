@@ -75,7 +75,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   ];
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-100">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-300">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md"
@@ -83,7 +83,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-100">
+      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300">
         {/* Sidebar */}
         <div className="w-full md:w-64 bg-neutral-50 dark:bg-neutral-800/50 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col shrink-0">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4 px-2">
@@ -161,26 +161,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 <div>
-                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
-                    Appearance
-                  </h4>
-                  <div>
-                    <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
-                      Theme
-                    </label>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                      Appearance
+                    </h4>
                     <select
                       value={theme}
                       onChange={(e) => handleThemeChange(e.target.value as 'system' | 'light' | 'dark')}
-                      className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                      className="px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-neutral-100 hover:border-neutral-400 dark:hover:border-neutral-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all cursor-pointer"
                     >
                       <option value="system">System</option>
                       <option value="light">Light</option>
                       <option value="dark">Dark</option>
                     </select>
-                    <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                      Choose how Ultudy looks to you. Select a single theme, or sync with your system.
-                    </p>
                   </div>
+                  <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                    Choose how Ultudy looks to you. Select a single theme, or sync with your system.
+                  </p>
                 </div>
               </div>
             )}
