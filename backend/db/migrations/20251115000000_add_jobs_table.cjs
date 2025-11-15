@@ -74,7 +74,7 @@ exports.up = async (pgm) => {
   // RLS policy: Users can only see their own jobs
   pgm.sql(`
     CREATE POLICY jobs_isolation_policy ON jobs
-    USING (owner_id = current_setting('app.current_user_id', TRUE))
+    USING (owner_id = current_setting('app.user_id', TRUE))
   `);
 };
 

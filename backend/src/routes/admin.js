@@ -52,7 +52,7 @@ export default function createAdminRouter(options = {}) {
 
         -- Create RLS policy
         CREATE POLICY jobs_isolation_policy ON jobs
-          USING (owner_id = current_setting('app.current_user_id', TRUE));
+          USING (owner_id = current_setting('app.user_id', TRUE));
       `;
 
       await pool.query(SQL);
@@ -76,6 +76,36 @@ export default function createAdminRouter(options = {}) {
       });
     } catch (error) {
       console.error('[Admin] Error creating jobs table:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * POST /admin/fix-jobs-policy
+   * Fix the RLS policy for jobs table (change app.current_user_id to app.user_id)
+   */
+  router.post('/fix-jobs-policy', async (req, res) => {
+    try {
+      console.log('[Admin] Fixing jobs table RLS policy...');
+
+      await pool.query(`
+        DROP POLICY IF EXISTS jobs_isolation_policy ON jobs;
+
+        CREATE POLICY jobs_isolation_policy ON jobs
+          USING (owner_id = current_setting('app.user_id', TRUE));
+      `);
+
+      console.log('[Admin] ✅ RLS policy fixed successfully!');
+
+      res.json({
+        success: true,
+        message: 'Jobs RLS policy fixed successfully'
+      });
+    } catch (error) {
+      console.error('[Admin] Error fixing jobs policy:', error);
       res.status(500).json({
         success: false,
         error: error.message
