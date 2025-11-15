@@ -4,6 +4,8 @@ import createStudyService from '../study/service.js';
 import { evaluateAnswer, updateConceptMastery } from '../study/checkin.service.js';
 import { createTenantHelpers } from '../db/tenant.js';
 import { extractSections, extractSectionText } from '../study/section.service.js';
+import { lessonGenerationQueue, checkInEvaluationQueue } from '../jobs/queue.js';
+import { createJob } from '../jobs/helpers.js';
 
 const DEFAULT_LESSON_K = 6;
 const DEFAULT_MCQ_COUNT = 5;
@@ -297,7 +299,62 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
-  // MVP v1.0: Full-context lesson generation from document
+  // ASYNC ENDPOINT: Non-blocking lesson generation with job queue
+  router.post('/lessons/generate-async', async (req, res) => {
+    const { document_id, section_id, chapter, include_check_ins = true } = req.body || {};
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      console.log(`[lessons/generate-async] Creating async job for ${section_id ? `section ${section_id}` : `document ${document_id}`}`);
+
+      // Create Bull job
+      const bullJob = await lessonGenerationQueue.add({
+        jobId: null,
+        ownerId,
+        documentId: document_id,
+        sectionId: section_id,
+        chapter,
+        includeCheckIns: include_check_ins
+      });
+
+      // Create job record in database
+      const dbJob = await createJob(pool, {
+        ownerId,
+        type: 'lesson-generation',
+        inputData: {
+          documentId: document_id,
+          sectionId: section_id,
+          chapter,
+          includeCheckIns: include_check_ins
+        },
+        bullJobId: String(bullJob.id)
+      });
+
+      // Update Bull job with database job ID
+      await bullJob.update({
+        ...bullJob.data,
+        jobId: dbJob.id
+      });
+
+      console.log(`[lessons/generate-async] Job created: ${dbJob.id}`);
+
+      // Return job ID immediately
+      res.json({
+        job_id: dbJob.id,
+        status: 'pending',
+        message: 'Lesson generation started. Use GET /jobs/:jobId to check progress.'
+      });
+    } catch (error) {
+      console.error('[lessons/generate-async] ❌ Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to create lesson generation job' });
+    }
+  });
+
+  // SYNC ENDPOINT: Full-context lesson generation from document (kept for backward compatibility)
   // IMPORTANT: Generates lesson ONCE and persists it. No re-generation!
   // Now supports section-scoped generation for multi-layer structure
   router.post('/lessons/generate', async (req, res) => {
@@ -742,7 +799,94 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
-  // MVP v1.0: Check-in submission and mastery tracking
+  // ASYNC ENDPOINT: Non-blocking check-in evaluation with job queue
+  router.post('/check-ins/submit-async', async (req, res) => {
+    const {
+      concept_id,
+      concept_name,
+      course_id,
+      chapter,
+      document_id,
+      question,
+      user_answer,
+      expected_answer,
+      context,
+      evaluation_mode,
+      mcq
+    } = req.body || {};
+
+    const ownerId = req.userId;
+
+    // Validate required fields
+    if (!concept_name) {
+      return res.status(400).json({ error: 'concept_name is required' });
+    }
+
+    if (!question) {
+      return res.status(400).json({ error: 'question is required' });
+    }
+
+    if (!user_answer || typeof user_answer !== 'string' || !user_answer.trim()) {
+      return res.status(400).json({ error: 'user_answer is required and must be non-empty' });
+    }
+
+    if (!expected_answer) {
+      return res.status(400).json({ error: 'expected_answer is required' });
+    }
+
+    try {
+      console.log(`[check-ins/submit-async] Creating async job for concept: ${concept_name}`);
+
+      // Create Bull job
+      const bullJob = await checkInEvaluationQueue.add({
+        jobId: null,
+        ownerId,
+        conceptId: concept_id,
+        conceptName: concept_name,
+        courseId: course_id,
+        chapter,
+        documentId: document_id,
+        question,
+        userAnswer: user_answer,
+        expectedAnswer: expected_answer,
+        context: context || '',
+        evaluationMode: typeof evaluation_mode === 'string' ? evaluation_mode.toLowerCase() : 'llm',
+        mcq
+      });
+
+      // Create job record in database
+      const dbJob = await createJob(pool, {
+        ownerId,
+        type: 'check-in-evaluation',
+        inputData: {
+          conceptName: concept_name,
+          question,
+          evaluationMode: typeof evaluation_mode === 'string' ? evaluation_mode.toLowerCase() : 'llm'
+        },
+        bullJobId: String(bullJob.id)
+      });
+
+      // Update Bull job with database job ID
+      await bullJob.update({
+        ...bullJob.data,
+        jobId: dbJob.id
+      });
+
+      console.log(`[check-ins/submit-async] Job created: ${dbJob.id}`);
+
+      // Return job ID immediately
+      res.json({
+        job_id: dbJob.id,
+        status: 'pending',
+        message: 'Check-in evaluation started. Use GET /jobs/:jobId to check progress.'
+      });
+    } catch (error) {
+      console.error('[check-ins/submit-async] ❌ Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to create evaluation job' });
+    }
+  });
+
+  // SYNC ENDPOINT: Check-in submission and mastery tracking (kept for backward compatibility)
   router.post('/check-ins/submit', async (req, res) => {
     const {
       concept_id,

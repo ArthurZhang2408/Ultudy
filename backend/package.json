@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "worker": "node src/jobs/worker.js",
+    "dev:worker": "nodemon src/jobs/worker.js",
     "test": "EMBEDDINGS_PROVIDER=mock LLM_PROVIDER=mock node --test",
     "check:pgvector": "node scripts/check-ivfflat-support.js",
     "migrate": "node-pg-migrate -m db/migrations -d $DATABASE_URL up",
@@ -16,9 +18,11 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "bull": "^4.16.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "ioredis": "^5.8.2",
     "jose": "^5.2.3",
     "multer": "^1.4.5-lts.1",
     "openai": "^4.56.0",

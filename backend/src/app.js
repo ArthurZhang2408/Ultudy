@@ -9,6 +9,7 @@ import createSearchRouter from './routes/search.js';
 import createDocumentsRouter from './routes/documents.js';
 import createStudyRouter from './routes/study.js';
 import createCoursesRouter from './routes/courses.js';
+import createJobsRouter from './routes/jobs.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -116,6 +117,14 @@ export function createApp(options = {}) {
         studyService: options.studyService,
         embeddingsProviderFactory,
         llmProviderFactory: options.llmProviderFactory,
+        tenantHelpers
+      })
+    );
+
+    app.use(
+      '/jobs',
+      createJobsRouter({
+        pool: activePool,
         tenantHelpers
       })
     );

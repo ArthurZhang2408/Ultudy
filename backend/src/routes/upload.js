@@ -6,6 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import createPdfIngestionService from '../ingestion/service.js';
 import { extractStructuredSections } from '../ingestion/llm_extractor.js';
+import { materialUploadQueue } from '../jobs/queue.js';
+import { createJob } from '../jobs/helpers.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +46,59 @@ export default function createUploadRouter(options = {}) {
     }
   });
 
-  // NEW ENDPOINT: LLM-based structured extraction
+  // NEW ASYNC ENDPOINT: Non-blocking material upload with job queue
+  router.post('/pdf-structured-async', upload.single('file'), async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Missing PDF file' });
+    }
+
+    try {
+      const ownerId = req.userId || 'dev-user-001';
+      const storageDir = options.storageDir || DEFAULT_STORAGE_DIR;
+
+      console.log(`[upload/pdf-structured-async] Creating async job for ${req.file.originalname}`);
+
+      // Create Bull job
+      const bullJob = await materialUploadQueue.add({
+        jobId: null, // Will be set after DB insert
+        ownerId,
+        fileBuffer: Array.from(req.file.buffer), // Convert Buffer to array for Bull
+        fileName: req.file.originalname,
+        storageDir
+      });
+
+      // Create job record in database
+      const dbJob = await createJob(options.pool, {
+        ownerId,
+        type: 'material-upload',
+        inputData: {
+          fileName: req.file.originalname,
+          fileSize: req.file.size
+        },
+        bullJobId: String(bullJob.id)
+      });
+
+      // Update Bull job with database job ID
+      await bullJob.update({
+        ...bullJob.data,
+        jobId: dbJob.id
+      });
+
+      console.log(`[upload/pdf-structured-async] Job created: ${dbJob.id}`);
+
+      // Return job ID immediately
+      res.json({
+        job_id: dbJob.id,
+        status: 'pending',
+        message: 'Material upload started. Use GET /jobs/:jobId to check progress.'
+      });
+    } catch (error) {
+      console.error('[upload/pdf-structured-async] ❌ Error:', error);
+      res.status(500).json({ error: error.message || 'Failed to create upload job' });
+    }
+  });
+
+  // SYNC ENDPOINT: LLM-based structured extraction (kept for backward compatibility)
   // This endpoint is used when PDF_UPLOAD_STRATEGY=vision in .env
   router.post('/pdf-structured', upload.single('file'), async (req, res) => {
     if (!req.file) {
