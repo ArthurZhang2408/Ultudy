@@ -9,7 +9,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'account' | 'appearance' | 'notifications';
+type SettingsTab = 'general' | 'account' | 'notifications';
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { user } = useUser();
@@ -71,12 +71,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const tabs = [
     { id: 'general' as SettingsTab, label: 'General', icon: '⚙️' },
     { id: 'account' as SettingsTab, label: 'Account', icon: '👤' },
-    { id: 'appearance' as SettingsTab, label: 'Appearance', icon: '🎨' },
     { id: 'notifications' as SettingsTab, label: 'Notifications', icon: '🔔' },
   ];
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-100">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md"
@@ -84,7 +83,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+      <div className="relative w-full max-w-4xl min-h-[500px] max-h-[85vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-100">
         {/* Sidebar */}
         <div className="w-full md:w-64 bg-neutral-50 dark:bg-neutral-800/50 border-b md:border-b-0 md:border-r border-neutral-200 dark:border-neutral-700 p-4 flex flex-col shrink-0">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4 px-2">
@@ -160,6 +159,29 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </div>
                   </div>
                 </div>
+
+                <div>
+                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+                    Appearance
+                  </h4>
+                  <div>
+                    <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
+                      Theme
+                    </label>
+                    <select
+                      value={theme}
+                      onChange={(e) => handleThemeChange(e.target.value as 'system' | 'light' | 'dark')}
+                      className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                    >
+                      <option value="system">System</option>
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                    </select>
+                    <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+                      Choose how Ultudy looks to you. Select a single theme, or sync with your system.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -177,57 +199,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">
                     Additional account settings coming soon...
                   </p>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'appearance' && (
-              <div className="space-y-6 max-w-2xl">
-                <div>
-                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
-                    Theme
-                  </h4>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                    Choose how Ultudy looks to you. Select a single theme, or sync with your system.
-                  </p>
-
-                  <div className="space-y-2">
-                    {[
-                      { value: 'system', label: 'System', description: 'Use system setting' },
-                      { value: 'light', label: 'Light', description: 'Light mode' },
-                      { value: 'dark', label: 'Dark', description: 'Dark mode' },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        onClick={() => handleThemeChange(option.value as 'system' | 'light' | 'dark')}
-                        className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
-                          theme === option.value
-                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                            theme === option.value
-                              ? 'border-primary-500'
-                              : 'border-neutral-400 dark:border-neutral-600'
-                          }`}>
-                            {theme === option.value && (
-                              <div className="w-2 h-2 rounded-full bg-primary-500" />
-                            )}
-                          </div>
-                          <div className="text-left">
-                            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                              {option.label}
-                            </div>
-                            <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                              {option.description}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
