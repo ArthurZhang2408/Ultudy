@@ -89,6 +89,7 @@ export default function createAdminRouter(options = {}) {
    */
   router.get('/check-jobs-table', async (req, res) => {
     try {
+      // Check columns
       const { rows } = await pool.query(`
         SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
@@ -103,9 +104,32 @@ export default function createAdminRouter(options = {}) {
         });
       }
 
+      // Try a test insert to see if it works
+      let insertTest = null;
+      try {
+        const testJobId = '00000000-0000-0000-0000-000000000000';
+        await pool.query(`
+          INSERT INTO jobs (id, owner_id, type, status, progress, data)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (id) DO NOTHING
+        `, [testJobId, 'test-user', 'test', 'queued', 0, JSON.stringify({ test: true })]);
+
+        insertTest = { success: true, message: 'Test insert succeeded' };
+
+        // Clean up test row
+        await pool.query('DELETE FROM jobs WHERE id = $1', [testJobId]);
+      } catch (insertError) {
+        insertTest = {
+          success: false,
+          error: insertError.message,
+          code: insertError.code
+        };
+      }
+
       res.json({
         exists: true,
-        columns: rows
+        columns: rows,
+        insertTest
       });
     } catch (error) {
       console.error('[Admin] Error checking jobs table:', error);
