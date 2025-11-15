@@ -3,8 +3,6 @@ import './globals.css';
 import Link from 'next/link';
 import {
   ClerkProvider,
-  SignInButton,
-  SignUpButton,
   SignedIn,
   SignedOut,
   UserButton,
@@ -57,16 +55,16 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                 {authEnabled ? (
                   <>
                     <SignedOut>
-                      <SignInButton mode="modal">
+                      <Link href="/sign-in">
                         <button className="rounded-lg border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-neutral-400 dark:hover:border-neutral-600 transition-all">
                           Sign in
                         </button>
-                      </SignInButton>
-                      <SignUpButton mode="modal">
+                      </Link>
+                      <Link href="/sign-up">
                         <button className="rounded-lg bg-primary-600 dark:bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 dark:hover:bg-primary-600 shadow-sm hover:shadow-md dark:shadow-dark-soft dark:hover:shadow-dark-medium transition-all">
                           Get Started
                         </button>
-                      </SignUpButton>
+                      </Link>
                     </SignedOut>
                     <SignedIn>
                       <UserButton />
