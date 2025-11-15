@@ -6,7 +6,7 @@ import {
   SignedIn,
   SignedOut,
 } from '@clerk/nextjs';
-import { ThemeToggle, UserMenu } from '@/components/ui';
+import { UserMenu } from '@/components/ui';
 import Script from 'next/script';
 
 export const metadata: Metadata = {
@@ -56,7 +56,6 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                <ThemeToggle />
                 {authEnabled ? (
                   <>
                     <SignedOut>

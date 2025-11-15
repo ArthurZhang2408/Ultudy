@@ -20,3 +20,5 @@ export type { InputProps, TextareaProps, SelectProps } from './Input';
 export { default as ThemeToggle } from './ThemeToggle';
 
 export { default as UserMenu } from './UserMenu';
+export { default as SettingsModal } from './SettingsModal';
+export { default as UpgradeModal } from './UpgradeModal';
