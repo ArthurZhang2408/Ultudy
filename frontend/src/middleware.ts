@@ -8,6 +8,8 @@ const isProtectedRoute = createRouteMatcher([
   '/search(.*)',       // Search functionality
   '/study(.*)',        // Study sessions
   '/learn(.*)',        // Learning/practice mode
+  '/settings(.*)',     // User settings
+  '/upgrade(.*)',      // Upgrade page
 ])
 
 // Public routes that should always be accessible

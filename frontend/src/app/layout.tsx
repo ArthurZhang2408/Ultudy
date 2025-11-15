@@ -5,9 +5,8 @@ import {
   ClerkProvider,
   SignedIn,
   SignedOut,
-  UserButton,
 } from '@clerk/nextjs';
-import { ThemeToggle } from '@/components/ui';
+import { ThemeToggle, UserMenu } from '@/components/ui';
 import Script from 'next/script';
 
 export const metadata: Metadata = {
@@ -73,7 +72,7 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
                       </Link>
                     </SignedOut>
                     <SignedIn>
-                      <UserButton />
+                      <UserMenu />
                     </SignedIn>
                   </>
                 ) : (

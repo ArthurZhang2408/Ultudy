@@ -18,3 +18,5 @@ export { default as Input, Textarea, Select } from './Input';
 export type { InputProps, TextareaProps, SelectProps } from './Input';
 
 export { default as ThemeToggle } from './ThemeToggle';
+
+export { default as UserMenu } from './UserMenu';
