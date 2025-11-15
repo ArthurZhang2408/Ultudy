@@ -90,6 +90,15 @@ export function createApp(options = {}) {
   }
 
   if (activePool) {
+    // Admin routes (no auth required for setup)
+    app.use(
+      '/admin',
+      createAdminRouter({
+        pool: activePool,
+        tenantHelpers
+      })
+    );
+
     app.use(requireUser);
 
     app.use(
@@ -151,14 +160,6 @@ export function createApp(options = {}) {
       '/jobs',
       createJobsRouter({
         jobTracker
-      })
-    );
-
-    app.use(
-      '/admin',
-      createAdminRouter({
-        pool: activePool,
-        tenantHelpers
       })
     );
 
