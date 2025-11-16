@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 type Concept = {
   id?: string;
@@ -50,6 +51,8 @@ export default function ConceptNavigationSidebar({
   onConceptClick,
   onGenerateSection
 }: ConceptNavigationSidebarProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(currentSectionId ? [currentSectionId] : [])
@@ -65,10 +68,17 @@ export default function ConceptNavigationSidebar({
     setExpandedSections(newExpanded);
   };
 
+  const handleShowMainMenu = () => {
+    // Add sidebar=main query param to show main sidebar
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('sidebar', 'main');
+    router.push(`/learn?${params.toString()}`);
+  };
+
   return (
     <div
-      className={`fixed left-64 top-0 h-full bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-all duration-300 z-40 ${
-        isCollapsed ? 'w-0 border-r-0' : 'w-80'
+      className={`fixed left-0 top-0 h-full bg-white dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-all duration-300 z-40 ${
+        isCollapsed ? 'w-0 border-r-0' : 'w-64'
       }`}
     >
       {!isCollapsed && (
@@ -78,15 +88,27 @@ export default function ConceptNavigationSidebar({
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
               Navigation
             </h2>
-            <button
-              onClick={() => setIsCollapsed(true)}
-              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
-              aria-label="Collapse navigation"
-            >
-              <svg className="w-5 h-5 text-neutral-600 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleShowMainMenu}
+                className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                aria-label="Show main menu"
+                title="Show main menu"
+              >
+                <svg className="w-5 h-5 text-neutral-600 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setIsCollapsed(true)}
+                className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                aria-label="Collapse navigation"
+              >
+                <svg className="w-5 h-5 text-neutral-600 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Document Info */}

@@ -1669,7 +1669,7 @@ function LearnPageContent() {
         />
       )}
 
-      <div className={`max-w-4xl mx-auto space-y-6 ${showNavigationSidebar ? 'ml-80' : ''}`}>
+      <div className={`max-w-4xl mx-auto space-y-6 ${showNavigationSidebar ? 'ml-64' : ''}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
