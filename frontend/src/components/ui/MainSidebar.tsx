@@ -8,15 +8,7 @@ import { useRouter } from 'next/navigation';
 import SettingsModal from './SettingsModal';
 import UpgradeModal from './UpgradeModal';
 import CreateCourseModal from './CreateCourseModal';
-
-type Course = {
-  id: string;
-  name: string;
-  code: string | null;
-  term: string | null;
-  exam_date: string | null;
-  created_at: string;
-};
+import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 
 interface MainSidebarProps {
   onUploadClick: () => void;
@@ -28,8 +20,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   const { signOut } = useClerk();
   const router = useRouter();
   const pathname = usePathname();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { courses, loading } = useFetchCourses();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -40,10 +31,6 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
 
   // Check if we're on learn page with sidebar=main (user switched from concept nav)
   const isLearnPage = pathname === '/learn';
-
-  useEffect(() => {
-    fetchCourses();
-  }, []);
 
   // Notify parent when collapsed state changes
   useEffect(() => {
@@ -77,20 +64,6 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
       return () => document.removeEventListener('keydown', handleEscape);
     }
   }, [isUserMenuOpen]);
-
-  async function fetchCourses() {
-    try {
-      const res = await fetch('/api/courses');
-      if (res.ok) {
-        const data = await res.json();
-        setCourses(data.courses || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch courses:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const userInitials = user?.firstName && user?.lastName
     ? `${user.firstName[0]}${user.lastName[0]}`

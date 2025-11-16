@@ -6,107 +6,19 @@ import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 import { getCachedLesson, setCachedLesson, clearCachedLesson } from '@/lib/lessonCache';
-
-type MCQOption = {
-  letter: string;
-  text: string;
-  correct: boolean;
-  explanation: string;
-};
-
-type MCQ = {
-  question: string;
-  options: MCQOption[];
-  expected_answer: string;
-  hint?: string;
-};
-
-type Formula = {
-  formula: string;
-  variables: string;
-};
-
-type Concept = {
-  id?: string;
-  name: string;
-  explanation: string;
-  analogies?: string[];
-  examples?: string[];
-  formulas?: Formula[];
-  important_notes?: string[];
-  is_main_concept?: boolean;
-  parent_concept?: string;
-  check_ins?: MCQ[];
-};
-
-type ConceptMeta = {
-  id: string;
-  name: string;
-  concept_number: number | null;
-  lesson_position: number;
-  mastery_level: string;
-  accuracy: number;
-};
-
-type Section = {
-  id: string;
-  section_number: number;
-  name: string;
-  description: string | null;
-  page_start: number | null;
-  page_end: number | null;
-  concepts_generated: boolean;
-  created_at: string;
-  generating?: boolean; // Track if this section is being generated
-  generation_progress?: number; // Track generation progress
-  job_id?: string; // Track the generation job ID
-  concepts?: ConceptMeta[]; // All concepts for this section (fetched upfront)
-};
-
-type DocumentInfo = {
-  id: string;
-  title: string;
-  material_type: string | null;
-  chapter: string | null;
-  pages: number;
-  uploaded_at: string;
-  course_id: string | null;
-};
-
-type Lesson = {
-  id?: string;
-  document_id?: string;
-  course_id?: string | null;
-  chapter?: string | null;
-  section_id?: string | null;
-  topic?: string;
-  summary?: string;
-  explanation?: string;
-  concepts?: Concept[];
-  created_at?: string;
-};
-
-type AnswerRecord = {
-  selected: string;
-  correct: boolean;
-};
-
-type StoredProgress = {
-  conceptIndex: number;
-  mcqIndex: number;
-  conceptProgress: Array<[number, 'completed' | 'skipped' | 'wrong']>;
-  answerHistory: Record<string, AnswerRecord>;
-};
-
-type MasteryUpdate = {
-  concept_id: string;
-  concept: string;
-  old_state: string;
-  new_state: string;
-  total_attempts: number;
-  correct_attempts: number;
-  accuracy_percent: number;
-};
+import type {
+  MCQ,
+  MCQOption,
+  Formula,
+  Concept,
+  Lesson,
+  ConceptMeta,
+  Section,
+  DocumentInfo,
+  AnswerRecord,
+  StoredProgress,
+  MasteryUpdate
+} from '@/types';
 
 // Helper function to parse JSONB fields and normalize lesson structure
 function normalizeLesson(rawLesson: any): Lesson {

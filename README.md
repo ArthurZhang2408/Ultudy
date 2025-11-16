@@ -1,33 +1,28 @@
-# ⚠️ PARTIALLY OUTDATED - Dynamic AI Study Guide App
+# Ultudy - AI-Powered Study Platform
 
-**STATUS: PARTIALLY OUTDATED - This README describes the original RAG-based architecture with pgvector and embeddings.**
+An AI-powered study companion that transforms uploaded course PDFs into structured, interactive learning experiences.
 
-**Current implementation uses:**
-- LLM vision-based PDF extraction (not chunking/embeddings)
-- Full-context lesson generation (not RAG retrieval)
-- Section-based learning with mastery tracking
-- Course/document organization model
+## Features
 
-**For current architecture documentation, see:**
-- [`PRODUCT_VISION.md`](./PRODUCT_VISION.md) - Complete product vision and technical specification
-- [`LESSON_GENERATION_ARCHITECTURE.md`](./LESSON_GENERATION_ARCHITECTURE.md) - Current lesson generation system
-- [`MVP_IMPLEMENTATION_PLAN.md`](./MVP_IMPLEMENTATION_PLAN.md) - Implementation progress
+- **Smart PDF Processing** — Vision-based extraction with section detection
+- **Course Organization** — Multi-course support with document management
+- **Adaptive Lessons** — Full-context AI-generated lessons with mastery tracking
+- **Interactive Check-ins** — Concept-level MCQs with explanations
+- **Progress Tracking** — Per-concept mastery levels and accuracy metrics
 
----
+## Tech Stack
 
-An AI-powered study companion that transforms uploaded course PDFs into:
-- **Lessons** — clear summaries, analogies, and quick check‑ins
-- **Practice** — MCQs with hints and rationales
-- **Review** — flashcards with spaced repetition (SM‑2)
+- **Frontend:** Next.js 14, React 18, TailwindCSS, Clerk Authentication
+- **Backend:** Node.js, Express, Bull (job queues), Redis
+- **Database:** PostgreSQL with Row-Level Security (multi-tenant)
+- **AI:** Google Gemini Vision & LLM (with OpenAI fallback support)
+- **Infrastructure:** Async job processing, session-based caching
 
-- 🔐 Authentication setup: [`CLERK_SETUP.md`](./CLERK_SETUP.md)
-- 🧭 High-level milestones: [`milestone.md`](./milestone.md)
+## Documentation
 
-## MVP Tech (OUTDATED - describes RAG architecture)
-- **Frontend:** React / Next.js
-- **Backend:** Node.js / Express
-- **Database:** PostgreSQL + pgvector ← NO LONGER USED
-- **AI:** Google Gemini (embeddings + lessons/MCQs) with optional OpenAI fallbacks ← EMBEDDINGS NO LONGER USED
+- 🔐 [Authentication Setup](./CLERK_SETUP.md)
+- 📚 [Product Vision](./PRODUCT_VISION.md)
+- 🏗️ [Lesson Generation Architecture](./LESSON_GENERATION_ARCHITECTURE.md)
 
 ## Getting Started
 > This section will be filled in Milestone 1 when we scaffold the apps.
@@ -49,10 +44,19 @@ npm run dev
 ```
 
 ```bash
-# Upload a PDF (stored under backend/storage/<user_id>/<uuid>.pdf)
-curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" -F file=@/path/to/file.pdf http://localhost:3001/upload/pdf
-# Search across embedded chunks
-curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" "http://localhost:3001/search?q=Fourier%20transform"
+# Upload a PDF (vision-based structured extraction)
+curl -H "X-User-Id: dev-user-001" \
+  -F file=@/path/to/file.pdf \
+  -F course_id=<course-id> \
+  -F chapter="Chapter 1" \
+  -F material_type=textbook \
+  http://localhost:3001/upload/pdf-structured
+
+# Generate lesson for a document section
+curl -H "X-User-Id: dev-user-001" \
+  -H "Content-Type: application/json" \
+  -d '{"document_id":"<doc-id>","section_id":"<section-id>"}' \
+  http://localhost:3001/lessons/generate
 ```
 
 ### Authentication & multi-tenant request scoping
@@ -63,13 +67,17 @@ Example requests:
 
 ```bash
 # dev header mode
-U1=00000000-0000-0000-0000-000000000001
-curl -H "X-User-Id: $U1" -F file=@/path/to/file1.pdf http://localhost:3001/upload/pdf
-curl -H "X-User-Id: $U1" "http://localhost:3001/search?q=introduction&k=5"
+curl -H "X-User-Id: dev-user-001" \
+  -F file=@/path/to/file.pdf \
+  -F course_id=<course-id> \
+  http://localhost:3001/upload/pdf-structured
 
 # JWT mode
 TOKEN="$(cat /path/to/token.jwt)"
-curl -H "Authorization: Bearer $TOKEN" "http://localhost:3001/search?q=introduction&k=5"
+curl -H "Authorization: Bearer $TOKEN" \
+  -F file=@/path/to/file.pdf \
+  -F course_id=<course-id> \
+  http://localhost:3001/upload/pdf-structured
 ```
 
 Configure JWT mode by setting the env vars in `backend/.env`:
