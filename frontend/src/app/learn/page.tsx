@@ -1214,6 +1214,47 @@ function LearnPageContent() {
       });
     }
 
+    // Update mastery in sidebar immediately after answering
+    if (currentConcept && selectedSection) {
+      const mcqs = currentConcept.check_ins || [];
+      let correctCount = 0;
+      let totalCount = 0;
+
+      // Count all answers including the current one
+      mcqs.forEach((_, mcqIdx) => {
+        const k = makeQuestionKey(currentConceptIndex, mcqIdx);
+        const ans = answerHistory[k];
+        if (ans) {
+          totalCount++;
+          if (ans.correct) correctCount++;
+        }
+      });
+
+      // Include current answer
+      totalCount++;
+      if (wasCorrect) correctCount++;
+
+      const accuracy = Math.round((correctCount / totalCount) * 100);
+      const newMasteryLevel =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'incorrect' :
+        'in_progress';
+
+      setSections(prev => prev.map(s => {
+        if (s.id === selectedSection.id && s.concepts) {
+          return {
+            ...s,
+            concepts: s.concepts.map(c =>
+              c.name.toLowerCase() === currentConcept.name.toLowerCase()
+                ? { ...c, mastery_level: newMasteryLevel, accuracy }
+                : c
+            )
+          };
+        }
+        return s;
+      }));
+    }
+
     if (currentConcept) {
       void recordCheckIn({
         wasCorrect,
@@ -1255,6 +1296,44 @@ function LearnPageContent() {
 
       return updated;
     });
+
+    // Update mastery in sections state for real-time sidebar update
+    if (currentConcept && selectedSection) {
+      // Calculate accuracy based on all questions for this concept
+      const mcqs = currentConcept.check_ins || [];
+      let correctCount = 0;
+      let totalCount = 0;
+
+      // Count all answers for this concept
+      mcqs.forEach((_, mcqIdx) => {
+        const key = makeQuestionKey(currentConceptIndex, mcqIdx);
+        const ans = answerHistory[key];
+        if (ans) {
+          totalCount++;
+          if (ans.correct) correctCount++;
+        }
+      });
+
+      const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+      const newMasteryLevel =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'incorrect' :
+        'in_progress';
+
+      setSections(prev => prev.map(s => {
+        if (s.id === selectedSection.id && s.concepts) {
+          return {
+            ...s,
+            concepts: s.concepts.map(c =>
+              c.name.toLowerCase() === currentConcept.name.toLowerCase()
+                ? { ...c, mastery_level: newMasteryLevel, accuracy }
+                : c
+            )
+          };
+        }
+        return s;
+      }));
+    }
 
     if (currentConceptIndex < lesson.concepts.length - 1) {
       setCurrentConceptIndex((prev) => prev + 1);
@@ -1751,15 +1830,33 @@ function LearnPageContent() {
             loadOrGenerateLesson(section);
           }}
           onConceptClick={(conceptName) => {
-            // Navigate to specific concept
-            const concepts = lesson?.concepts || [];
-            const targetIndex = concepts.findIndex(c =>
-              c.name.toLowerCase() === conceptName.toLowerCase()
+            // Find which section contains this concept
+            const targetSection = sections.find(s =>
+              s.concepts?.some(c => c.name.toLowerCase() === conceptName.toLowerCase())
             );
-            if (targetIndex >= 0) {
-              setCurrentConceptIndex(targetIndex);
-              setCurrentMCQIndex(0);
-              scrollToTop();
+
+            if (targetSection) {
+              // If it's a different section, load it first
+              if (targetSection.id !== selectedSection?.id) {
+                loadOrGenerateLesson(targetSection);
+              }
+
+              // Navigate to specific concept in the lesson
+              const concepts = lesson?.concepts || [];
+              const targetIndex = concepts.findIndex(c =>
+                c.name.toLowerCase() === conceptName.toLowerCase()
+              );
+
+              if (targetIndex >= 0) {
+                setCurrentConceptIndex(targetIndex);
+                setCurrentMCQIndex(0);
+                setShowingSummary(false);
+                setShowingSections(false);
+                scrollToTop();
+              } else if (targetSection.id !== selectedSection?.id) {
+                // Will be handled after lesson loads via URL params
+                router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${targetSection.id}&concept_name=${encodeURIComponent(conceptName)}`);
+              }
             }
           }}
           onGenerateSection={(section) => {

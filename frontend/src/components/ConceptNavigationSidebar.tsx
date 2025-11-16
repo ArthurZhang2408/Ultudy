@@ -225,6 +225,19 @@ export default function ConceptNavigationSidebar({
                             const isCurrentConcept =
                               currentConceptName?.toLowerCase() === concept.name.toLowerCase();
 
+                            // Determine mastery color
+                            const getMasteryColor = () => {
+                              const level = concept.mastery_level;
+                              if (level === 'completed' || concept.accuracy === 100) {
+                                return 'bg-green-500 dark:bg-green-600';
+                              } else if (level === 'incorrect' || concept.accuracy === 0) {
+                                return 'bg-red-500 dark:bg-red-600';
+                              } else if (level === 'in_progress' || (concept.accuracy > 0 && concept.accuracy < 100)) {
+                                return 'bg-yellow-500 dark:bg-yellow-600';
+                              }
+                              return 'bg-neutral-300 dark:bg-neutral-600';
+                            };
+
                             return (
                               <button
                                 key={concept.id || idx}
@@ -236,6 +249,8 @@ export default function ConceptNavigationSidebar({
                                 }`}
                               >
                                 <div className="flex items-center gap-2">
+                                  {/* Mastery indicator dot */}
+                                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getMasteryColor()}`} />
                                   <span className="text-xs text-neutral-400 dark:text-neutral-500 flex-shrink-0">
                                     {idx + 1}
                                   </span>
