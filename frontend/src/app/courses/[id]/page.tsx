@@ -333,8 +333,28 @@ export default function CoursePage() {
   }
 
   async function fetchConceptsForCourse() {
-    // Refetch concepts using current documents
-    await fetchConceptsForDocuments(documents);
+    console.log('[courses] fetchConceptsForCourse - Refetching documents first');
+
+    // IMPORTANT: Don't use 'documents' from closure - it may be stale!
+    // Refetch documents to get the latest state
+    try {
+      const docsRes = await fetch(`/api/documents?course_id=${courseId}`);
+      if (docsRes.ok) {
+        const docsData = await docsRes.json();
+        const docs = docsData.documents || [];
+        console.log('[courses] Refetched', docs.length, 'documents');
+
+        // Update state with fresh documents
+        setDocuments(docs);
+
+        // Now fetch concepts for these fresh documents
+        await fetchConceptsForDocuments(docs);
+      } else {
+        console.error('[courses] Failed to refetch documents:', docsRes.status);
+      }
+    } catch (error) {
+      console.error('[courses] Error refetching documents:', error);
+    }
   }
 
   function handleStartStudy(documentId: string, chapter: string | null) {

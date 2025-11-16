@@ -30,6 +30,7 @@ export function createMemoryPool() {
   const courses = new Map();
   const concepts = new Map();
   const studySessions = new Map();
+  const jobs = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -111,6 +112,30 @@ export function createMemoryPool() {
           code,
           term,
           exam_date: examDate,
+          created_at: new Date(),
+          updated_at: new Date()
+        });
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('INSERT INTO jobs')) {
+        const id = params[0];
+        const ownerId = params[1];
+        const type = params[2];
+        const status = params[3];
+        const progress = params[4];
+        const data = params[5];
+
+        enforceRowLevelSecurity(state, ownerId, 'jobs');
+
+        jobs.set(id, {
+          id,
+          owner_id: ownerId,
+          type,
+          status,
+          progress,
+          data: typeof data === 'string' ? JSON.parse(data) : data,
           created_at: new Date(),
           updated_at: new Date()
         });
