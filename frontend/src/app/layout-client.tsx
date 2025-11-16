@@ -26,9 +26,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
           />
         )}
 
-        {/* Main Content - offset by sidebar width only when main sidebar is shown */}
-        <main className={`flex-1 px-4 sm:px-6 lg:px-8 py-8 transition-all duration-300 ${
-          hideMainSidebar ? '' : (isSidebarCollapsed ? 'ml-16' : 'ml-64')
+        {/* Main Content - learn page handles its own margin, other pages use sidebar margin */}
+        <main className={`flex-1 px-4 sm:px-6 lg:px-8 py-8 ${
+          isLearnPage ? '' : (hideMainSidebar ? '' : (isSidebarCollapsed ? 'ml-16 transition-all duration-300' : 'ml-64 transition-all duration-300'))
         }`}>
           {children}
         </main>

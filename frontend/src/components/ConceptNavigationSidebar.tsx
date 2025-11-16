@@ -154,12 +154,10 @@ export default function ConceptNavigationSidebar({
                       <button
                         onClick={() => {
                           if (section.concepts_generated) {
-                            // If clicking a different section, load it and expand
-                            if (!isActive) {
-                              onSectionClick(section);
-                            }
+                            // Only toggle expansion, no redirection
                             toggleSection(section.id);
                           } else {
+                            // For non-generated sections, trigger generation
                             onGenerateSection(section);
                           }
                         }}

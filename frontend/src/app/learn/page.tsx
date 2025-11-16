@@ -1674,9 +1674,9 @@ function LearnPageContent() {
         />
       )}
 
-      {/* Content area - consistent width with sidebar, wider when collapsed */}
-      <div className={showNavigationSidebar && !isConceptNavCollapsed ? 'ml-64' : ''}>
-        <div className={`mx-auto space-y-6 ${showNavigationSidebar && !isConceptNavCollapsed ? 'max-w-5xl' : 'max-w-6xl'}`}>
+      {/* Content area - always ml-64 when sidebar present to prevent animation on sidebar switch */}
+      <div className={`transition-none ${(showNavigationSidebar && !isConceptNavCollapsed) || showingMainSidebar ? 'ml-64' : ''}`}>
+        <div className={`mx-auto space-y-6 ${(showNavigationSidebar && !isConceptNavCollapsed) || showingMainSidebar ? 'max-w-5xl' : 'max-w-6xl'}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
