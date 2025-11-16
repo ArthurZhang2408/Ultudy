@@ -539,15 +539,18 @@ export default function CoursePage() {
               job => job.type === 'lesson' && (job.chapter || 'Uncategorized') === chapter
             );
 
-            const loadingSkills: SkillSquare[] = lessonJobs.map((job) => ({
-              id: `loading-${job.job_id}`,
-              name: job.section_name || 'Generating...',
-              masteryLevel: 'loading' as MasteryLevel,
-              sectionNumber: job.section_number,
-              sectionName: job.section_name,
-              description: `Generating concepts... ${job.progress}%`,
-              onClick: () => {}
-            }));
+            // Create multiple placeholder squares per generating section (estimated 8 concepts per section)
+            const loadingSkills: SkillSquare[] = lessonJobs.flatMap((job) =>
+              Array.from({ length: 8 }, (_, index) => ({
+                id: `loading-${job.job_id}-${index}`,
+                name: job.section_name || 'Generating...',
+                masteryLevel: 'loading' as MasteryLevel,
+                sectionNumber: job.section_number,
+                sectionName: job.section_name,
+                description: `${job.section_name || 'Section'} - Generating... ${job.progress}%`,
+                onClick: () => {}
+              }))
+            );
 
             // Convert concepts to skills for the mastery grid
             const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
