@@ -11,6 +11,15 @@ type Concept = {
   parent_concept?: string;
 };
 
+type ConceptMeta = {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  lesson_position: number;
+  mastery_level: string;
+  accuracy: number;
+};
+
 type Section = {
   id: string;
   section_number: number;
@@ -22,6 +31,7 @@ type Section = {
   created_at: string;
   generating?: boolean;
   generation_progress?: number;
+  concepts?: ConceptMeta[]; // All concepts for this section (fetched upfront)
 };
 
 type DocumentInfo = {
