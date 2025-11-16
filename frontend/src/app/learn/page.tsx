@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
+import { getCachedLesson, setCachedLesson, clearCachedLesson } from '@/lib/lessonCache';
 
 type MCQOption = {
   letter: string;
@@ -544,7 +545,7 @@ function LearnPageContent() {
   }
 
   // Fetch an existing lesson by ID
-  async function fetchLesson(lessonId: string) {
+  async function fetchLesson(lessonId: string, sectionIdForCache?: string) {
     setGeneratingLesson(true);
     try {
       const res = await fetch(`/api/lessons/${lessonId}`);
@@ -553,6 +554,11 @@ function LearnPageContent() {
         console.log('[learn] Fetched lesson:', rawData);
         const normalizedLesson = normalizeLesson(rawData);
         setLesson(normalizedLesson);
+
+        // Cache the lesson if we have section info
+        if (documentId && sectionIdForCache) {
+          setCachedLesson(documentId, sectionIdForCache, rawData);
+        }
 
         // Navigate appropriately
         if (targetConceptName && !isOverviewMode) {
@@ -598,6 +604,43 @@ function LearnPageContent() {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
     setSelectedSection(section);
     setError(null);
+
+    // Check cache first
+    if (documentId) {
+      const cachedLesson = getCachedLesson(documentId, section.id);
+      if (cachedLesson) {
+        console.log('[learn] Using cached lesson for section:', section.id);
+        const normalizedLesson = normalizeLesson(cachedLesson);
+        setLesson(normalizedLesson);
+
+        // Navigate appropriately
+        if (targetConceptName && !isOverviewMode) {
+          const concepts = normalizedLesson.concepts || [];
+          const targetIndex = concepts.findIndex(c =>
+            c.name.toLowerCase() === targetConceptName.toLowerCase()
+          );
+
+          if (targetIndex >= 0) {
+            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+            setCurrentConceptIndex(targetIndex);
+            setCurrentMCQIndex(0);
+            setShowingSections(false);
+            setShowingSummary(false);
+          } else {
+            clearConceptNavigation();
+            setShowingSections(false);
+            setShowingSummary(true);
+          }
+        } else {
+          // Overview mode or no target concept - show summary
+          clearConceptNavigation();
+          setShowingSections(false);
+          setShowingSummary(true);
+        }
+
+        return; // Early return with cached data
+      }
+    }
 
     try {
       // Call generate endpoint - it will return job_id if needs generation, or lesson_id if already exists
@@ -670,12 +713,17 @@ function LearnPageContent() {
         } else if (data.lesson_id) {
           // Lesson already exists - fetch it
           console.log(`[learn] Lesson already exists: lesson_id=${data.lesson_id}`);
-          await fetchLesson(data.lesson_id);
+          await fetchLesson(data.lesson_id, section.id);
         } else {
           // Old format: lesson data returned directly (shouldn't happen with new API)
           const normalizedLesson = normalizeLesson(data);
           console.log('[learn] Normalized lesson:', normalizedLesson);
           setLesson(normalizedLesson);
+
+          // Cache the lesson
+          if (documentId) {
+            setCachedLesson(documentId, section.id, data);
+          }
 
           // Update section to mark concepts as generated
           setSections(prev => prev.map(s =>
@@ -1630,6 +1678,11 @@ function LearnPageContent() {
                     const error = await deleteRes.json().catch(() => ({ error: 'Unknown error' }));
                     setRegenerateError(error.error || 'Failed to delete cached lesson. Please try again.');
                     return;
+                  }
+
+                  // Clear the cached lesson from localStorage
+                  if (documentId && lesson.section_id) {
+                    clearCachedLesson(documentId, lesson.section_id);
                   }
 
                   // Reload the page to regenerate
