@@ -406,6 +406,100 @@ export default function CoursePage() {
     router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}`);
   }
 
+  async function generateLessonForSection(section: SectionWithMastery, documentId: string, chapter: string | null) {
+    console.log(`[courses] Generating lesson for section ${section.name}`);
+
+    try {
+      const res = await fetch('/api/lessons/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          section_id: section.id,
+          chapter: chapter || undefined,
+          include_check_ins: true
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[courses] Received response:', data);
+
+        // Check if it's a job (async generation) or existing lesson
+        if (data.job_id) {
+          // Lesson is being generated - add to processing jobs
+          console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
+
+          // Store job in sessionStorage for persistence
+          if (typeof window !== 'undefined') {
+            const jobData = {
+              job_id: data.job_id,
+              document_id: documentId,
+              section_id: section.id,
+              section_name: section.name,
+              section_number: section.section_number,
+              chapter: chapter || null,
+              course_id: courseId
+            };
+            sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
+          }
+
+          // Add to processing jobs state
+          setProcessingJobs(prev => [...prev, {
+            job_id: data.job_id,
+            document_id: documentId,
+            section_id: section.id,
+            section_name: section.name,
+            section_number: section.section_number,
+            type: 'lesson',
+            progress: 0,
+            status: 'queued',
+            chapter: chapter || undefined
+          }]);
+
+          // Add to polling set to prevent duplicates
+          pollingJobsRef.current.add(data.job_id);
+
+          // Start polling for job completion
+          createJobPoller(data.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[courses] Generation progress:', job.progress);
+              updateJobProgress(data.job_id, job.progress, job.status);
+            },
+            onComplete: async (job: Job) => {
+              console.log('[courses] Generation completed:', job);
+
+              // Refresh concepts to show the new ones
+              await fetchConceptsForCourse();
+
+              // Remove from processing jobs
+              pollingJobsRef.current.delete(data.job_id);
+              removeProcessingJob(data.job_id);
+            },
+            onError: (error: string) => {
+              console.error('[courses] Generation error:', error);
+              pollingJobsRef.current.delete(data.job_id);
+              removeProcessingJob(data.job_id);
+              alert(`Failed to generate lesson: ${error}`);
+            }
+          });
+        } else if (data.lesson_id) {
+          // Lesson already exists - navigate to it
+          console.log(`[courses] Lesson already exists: lesson_id=${data.lesson_id}`);
+          router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
+        const errorMessage = errorData.error || 'Failed to generate lesson';
+        alert(`Failed to generate lesson: ${errorMessage}`);
+      }
+    } catch (error) {
+      console.error('[courses] Error generating lesson:', error);
+      alert('Failed to generate lesson. Please check your connection and try again.');
+    }
+  }
+
   function openDeleteModal(documentId: string, title: string) {
     setDocumentToDelete({ id: documentId, title });
     setDeleteModalOpen(true);
@@ -667,8 +761,13 @@ export default function CoursePage() {
                   : `Click to generate section ${section.section_number}`,
                 onClick: () => {
                   if (doc) {
-                    // Always navigate - learn page will handle generation if needed
-                    router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+                    if (section.concepts_generated) {
+                      // Navigate to overview page
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+                    } else {
+                      // Generate lesson and stay on this page
+                      generateLessonForSection(section, doc.id, doc.chapter);
+                    }
                   }
                 },
                 isOverview: true
