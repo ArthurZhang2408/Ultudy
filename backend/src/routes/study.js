@@ -387,6 +387,15 @@ export default function createStudyRouter(options = {}) {
           }
 
           const { rows } = await client.query(query, params);
+          if (rows.length > 0) {
+            console.log(`[lessons/generate] Raw DB row concepts (first):`, JSON.stringify(rows[0].concepts?.slice(0, 1)));
+            if (rows[0].concepts && rows[0].concepts.length > 0) {
+              console.log(`[lessons/generate] Raw DB first concept has check_ins:`, Array.isArray(rows[0].concepts[0].check_ins));
+              if (Array.isArray(rows[0].concepts[0].check_ins)) {
+                console.log(`[lessons/generate] Raw DB check_ins count:`, rows[0].concepts[0].check_ins.length);
+              }
+            }
+          }
           return rows.length > 0 ? buildLessonResponse(rows[0], []) : null;
         });
 

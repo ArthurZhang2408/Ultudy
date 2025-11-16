@@ -167,6 +167,11 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
         generatedLesson.checkins || []
       );
 
+      console.log(`[LessonProcessor] Concepts before storage:`, JSON.stringify(conceptsForStorage.slice(0, 1)));
+      if (conceptsForStorage.length > 0 && conceptsForStorage[0].check_ins) {
+        console.log(`[LessonProcessor] First concept has ${conceptsForStorage[0].check_ins.length} check_ins`);
+      }
+
       // Step 4: Persist lesson to database (with optional section_id)
       const { rows: insertedLesson } = await client.query(
         `INSERT INTO lessons (owner_id, document_id, course_id, chapter, section_id, summary, explanation, examples, analogies, concepts)
