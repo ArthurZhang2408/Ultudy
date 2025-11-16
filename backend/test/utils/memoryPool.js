@@ -31,6 +31,7 @@ export function createMemoryPool() {
   const concepts = new Map();
   const studySessions = new Map();
   const jobs = new Map();
+  const sections = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -837,6 +838,24 @@ export function createMemoryPool() {
           job.result = typeof params[3] === 'string' ? JSON.parse(params[3]) : params[3];
           job.completed_at = new Date();
           job.updated_at = new Date();
+        }
+
+        return { rows: [] };
+      }
+
+      // UPDATE sections - mark sections as having concepts generated
+      if (normalized.startsWith('UPDATE sections SET')) {
+        const sectionId = params[0];
+        const ownerId = params[1];
+        const section = sections.get(sectionId);
+
+        if (!section || section.owner_id !== ownerId || (state?.currentUserId && state.currentUserId !== ownerId)) {
+          return { rows: [] };
+        }
+
+        if (normalized.includes('concepts_generated')) {
+          section.concepts_generated = true;
+          section.updated_at = new Date();
         }
 
         return { rows: [] };
