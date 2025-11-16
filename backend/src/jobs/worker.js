@@ -16,6 +16,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
 
+// Concurrency settings - how many jobs to process in parallel per queue
+const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_QUEUE_CONCURRENCY || '3', 10);
+const LESSON_CONCURRENCY = parseInt(process.env.LESSON_QUEUE_CONCURRENCY || '2', 10);
+
 export function setupWorkers(options = {}) {
   const {
     tenantHelpers,
@@ -35,8 +39,8 @@ export function setupWorkers(options = {}) {
     llmProviderFactory
   });
 
-  // Upload job processor
-  uploadQueue.process(async (job) => {
+  // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
+  uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
     console.log(`[Worker] Processing upload job ${job.id}`);
     return await processUploadJob(job, {
       tenantHelpers,
@@ -45,8 +49,8 @@ export function setupWorkers(options = {}) {
     });
   });
 
-  // Lesson generation job processor
-  lessonQueue.process(async (job) => {
+  // Lesson generation job processor - process up to LESSON_CONCURRENCY jobs in parallel
+  lessonQueue.process(LESSON_CONCURRENCY, async (job) => {
     console.log(`[Worker] Processing lesson job ${job.id}`);
     return await processLessonJob(job, {
       tenantHelpers,
@@ -56,8 +60,8 @@ export function setupWorkers(options = {}) {
   });
 
   console.log('[Worker] Job processors started');
-  console.log('[Worker] - Upload queue ready');
-  console.log('[Worker] - Lesson queue ready');
+  console.log(`[Worker] - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
+  console.log(`[Worker] - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
 
   return {
     uploadQueue,

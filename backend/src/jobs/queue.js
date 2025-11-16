@@ -43,8 +43,14 @@ if (DISABLE_QUEUES) {
 
         return mockJob;
       },
-      process: (processorFn) => {
+      process: (concurrencyOrProcessor, maybeProcessor) => {
+        // Support both forms: .process(fn) and .process(concurrency, fn)
+        const processorFn = typeof concurrencyOrProcessor === 'function'
+          ? concurrencyOrProcessor
+          : maybeProcessor;
+
         // Allow calling process() multiple times in tests (just overwrites the processor)
+        // Note: Mock queues ignore concurrency and always process synchronously
         processor = processorFn;
       },
       on: () => {},
