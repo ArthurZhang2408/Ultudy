@@ -804,6 +804,44 @@ export function createMemoryPool() {
         return { rows: [{ ok: 1 }] };
       }
 
+      // UPDATE jobs - multiple variants for different job lifecycle stages
+      if (normalized.startsWith('UPDATE jobs SET')) {
+        const jobId = params[0];
+        const ownerId = params[1];
+        const job = jobs.get(jobId);
+
+        if (!job || job.owner_id !== ownerId || (state?.currentUserId && state.currentUserId !== ownerId)) {
+          return { rows: [] };
+        }
+
+        // Parse which variant of UPDATE this is
+        if (normalized.includes('started_at')) {
+          // UPDATE jobs SET status = $3, progress = $4, started_at = current_timestamp
+          job.status = params[2];
+          job.progress = params[3];
+          job.started_at = new Date();
+          job.updated_at = new Date();
+        } else if (normalized.includes('progress')) {
+          // UPDATE jobs SET progress = $3, updated_at = current_timestamp
+          job.progress = params[2];
+          job.updated_at = new Date();
+        } else if (normalized.includes('error')) {
+          // UPDATE jobs SET status = $3, error = $4, completed_at = current_timestamp
+          job.status = params[2];
+          job.error = params[3];
+          job.completed_at = new Date();
+          job.updated_at = new Date();
+        } else if (normalized.includes('result')) {
+          // UPDATE jobs SET status = $3, result = $4, completed_at = current_timestamp
+          job.status = params[2];
+          job.result = typeof params[3] === 'string' ? JSON.parse(params[3]) : params[3];
+          job.completed_at = new Date();
+          job.updated_at = new Date();
+        }
+
+        return { rows: [] };
+      }
+
       throw new Error(`Unsupported query: ${normalized}`);
     };
   }
