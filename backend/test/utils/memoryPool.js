@@ -30,6 +30,8 @@ export function createMemoryPool() {
   const courses = new Map();
   const concepts = new Map();
   const studySessions = new Map();
+  const jobs = new Map();
+  const sections = new Map();
 
   function normalize(sql) {
     return sql.replace(/\s+/g, ' ').trim();
@@ -111,6 +113,30 @@ export function createMemoryPool() {
           code,
           term,
           exam_date: examDate,
+          created_at: new Date(),
+          updated_at: new Date()
+        });
+
+        return { rows: [] };
+      }
+
+      if (normalized.startsWith('INSERT INTO jobs')) {
+        const id = params[0];
+        const ownerId = params[1];
+        const type = params[2];
+        const status = params[3];
+        const progress = params[4];
+        const data = params[5];
+
+        enforceRowLevelSecurity(state, ownerId, 'jobs');
+
+        jobs.set(id, {
+          id,
+          owner_id: ownerId,
+          type,
+          status,
+          progress,
+          data: typeof data === 'string' ? JSON.parse(data) : data,
           created_at: new Date(),
           updated_at: new Date()
         });
@@ -658,6 +684,114 @@ export function createMemoryPool() {
         return { rows: [] };
       }
 
+      // Check if lesson exists with section_id IS NULL
+      if (normalized === 'SELECT id FROM lessons WHERE document_id = $1 AND owner_id = $2 AND section_id IS NULL LIMIT 1') {
+        const documentId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.document_id === documentId && lesson.owner_id === ownerId && lesson.section_id === null) {
+            return { rows: [{ id: lesson.id }] };
+          }
+        }
+        return { rows: [] };
+      }
+
+      // Fetch full lesson data with section_id IS NULL
+      if (normalized === 'SELECT * FROM lessons WHERE document_id = $1 AND owner_id = $2 AND section_id IS NULL LIMIT 1') {
+        const documentId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.document_id === documentId && lesson.owner_id === ownerId && lesson.section_id === null) {
+            return {
+              rows: [{
+                id: lesson.id,
+                owner_id: lesson.owner_id,
+                document_id: lesson.document_id,
+                course_id: lesson.course_id,
+                chapter: lesson.chapter,
+                section_id: lesson.section_id,
+                summary: lesson.summary,
+                explanation: lesson.explanation,
+                examples: lesson.examples,
+                analogies: lesson.analogies,
+                concepts: lesson.concepts,
+                created_at: lesson.created_at
+              }]
+            };
+          }
+        }
+        return { rows: [] };
+      }
+
+      // Fetch full lesson by section_id
+      if (normalized === 'SELECT * FROM lessons WHERE section_id = $1 AND owner_id = $2 LIMIT 1') {
+        const sectionId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.section_id === sectionId && lesson.owner_id === ownerId) {
+            return {
+              rows: [{
+                id: lesson.id,
+                owner_id: lesson.owner_id,
+                document_id: lesson.document_id,
+                course_id: lesson.course_id,
+                chapter: lesson.chapter,
+                section_id: lesson.section_id,
+                summary: lesson.summary,
+                explanation: lesson.explanation,
+                examples: lesson.examples,
+                analogies: lesson.analogies,
+                concepts: lesson.concepts,
+                created_at: lesson.created_at
+              }]
+            };
+          }
+        }
+        return { rows: [] };
+      }
+
+      // Fetch full lesson by id (for cached lesson data)
+      if (normalized === 'SELECT * FROM lessons WHERE id = $1 AND owner_id = $2') {
+        const lessonId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        const lesson = lessons.get(lessonId);
+        if (lesson && lesson.owner_id === ownerId) {
+          return {
+            rows: [{
+              id: lesson.id,
+              owner_id: lesson.owner_id,
+              document_id: lesson.document_id,
+              course_id: lesson.course_id,
+              chapter: lesson.chapter,
+              section_id: lesson.section_id,
+              summary: lesson.summary,
+              explanation: lesson.explanation,
+              examples: lesson.examples,
+              analogies: lesson.analogies,
+              concepts: lesson.concepts,
+              created_at: lesson.created_at
+            }]
+          };
+        }
+        return { rows: [] };
+      }
+
       if (normalized.startsWith('SELECT id, summary, explanation, examples, analogies, concepts, created_at FROM lessons WHERE document_id = $1 AND owner_id = $2')) {
         const documentId = params[0];
         const ownerId = params[1];
@@ -761,6 +895,62 @@ export function createMemoryPool() {
 
       if (normalized === 'SELECT 1 AS OK') {
         return { rows: [{ ok: 1 }] };
+      }
+
+      // UPDATE jobs - multiple variants for different job lifecycle stages
+      if (normalized.startsWith('UPDATE jobs SET')) {
+        const jobId = params[0];
+        const ownerId = params[1];
+        const job = jobs.get(jobId);
+
+        if (!job || job.owner_id !== ownerId || (state?.currentUserId && state.currentUserId !== ownerId)) {
+          return { rows: [] };
+        }
+
+        // Parse which variant of UPDATE this is
+        if (normalized.includes('started_at')) {
+          // UPDATE jobs SET status = $3, progress = $4, started_at = current_timestamp
+          job.status = params[2];
+          job.progress = params[3];
+          job.started_at = new Date();
+          job.updated_at = new Date();
+        } else if (normalized.includes('progress')) {
+          // UPDATE jobs SET progress = $3, updated_at = current_timestamp
+          job.progress = params[2];
+          job.updated_at = new Date();
+        } else if (normalized.includes('error')) {
+          // UPDATE jobs SET status = $3, error = $4, completed_at = current_timestamp
+          job.status = params[2];
+          job.error = params[3];
+          job.completed_at = new Date();
+          job.updated_at = new Date();
+        } else if (normalized.includes('result')) {
+          // UPDATE jobs SET status = $3, result = $4, completed_at = current_timestamp
+          job.status = params[2];
+          job.result = typeof params[3] === 'string' ? JSON.parse(params[3]) : params[3];
+          job.completed_at = new Date();
+          job.updated_at = new Date();
+        }
+
+        return { rows: [] };
+      }
+
+      // UPDATE sections - mark sections as having concepts generated
+      if (normalized.startsWith('UPDATE sections SET')) {
+        const sectionId = params[0];
+        const ownerId = params[1];
+        const section = sections.get(sectionId);
+
+        if (!section || section.owner_id !== ownerId || (state?.currentUserId && state.currentUserId !== ownerId)) {
+          return { rows: [] };
+        }
+
+        if (normalized.includes('concepts_generated')) {
+          section.concepts_generated = true;
+          section.updated_at = new Date();
+        }
+
+        return { rows: [] };
       }
 
       throw new Error(`Unsupported query: ${normalized}`);

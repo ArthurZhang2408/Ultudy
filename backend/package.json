@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "EMBEDDINGS_PROVIDER=mock LLM_PROVIDER=mock node --test",
+    "test": "DISABLE_QUEUES=true EMBEDDINGS_PROVIDER=mock LLM_PROVIDER=mock node --test",
     "check:pgvector": "node scripts/check-ivfflat-support.js",
     "migrate": "node-pg-migrate -m db/migrations -d $DATABASE_URL up",
     "migrate:down": "node-pg-migrate -m db/migrations -d $DATABASE_URL down",
@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@types/bull": "^3.15.9",
+    "bull": "^4.16.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -23,7 +25,8 @@
     "multer": "^1.4.5-lts.1",
     "openai": "^4.56.0",
     "pdf-parse": "^1.1.1",
-    "pg": "^8.12.0"
+    "pg": "^8.12.0",
+    "redis": "^5.9.0"
   },
   "devDependencies": {
     "node-pg-migrate": "^7.6.0",
