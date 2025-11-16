@@ -187,6 +187,9 @@ function LearnPageContent() {
   const storageKeyRef = useRef<string | null>(null);
   const activeConceptRef = useRef<HTMLDivElement | null>(null);
 
+  // Concept navigation sidebar state
+  const [isConceptNavCollapsed, setIsConceptNavCollapsed] = useState(false);
+
   // Prevent duplicate API calls in StrictMode
   const hasGeneratedRef = useState({ current: false })[0];
 
@@ -1668,11 +1671,13 @@ function LearnPageContent() {
           onGenerateSection={(section) => {
             generateLessonForSection(section);
           }}
+          onCollapseChange={setIsConceptNavCollapsed}
         />
       )}
 
-      {/* Content area - add margin only when ConceptNav is shown, not when MainSidebar is shown (LayoutClient handles MainSidebar margin) */}
-      <div className={`max-w-4xl mx-auto space-y-6 ${showNavigationSidebar ? 'ml-64' : ''}`}>
+      {/* Content area - centered in free space when sidebar extended, wider when collapsed or no sidebar */}
+      <div className={showNavigationSidebar && !isConceptNavCollapsed ? 'ml-64' : ''}>
+        <div className={`mx-auto space-y-6 ${showNavigationSidebar && !isConceptNavCollapsed ? 'max-w-4xl' : 'max-w-5xl'}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
@@ -1912,6 +1917,7 @@ function LearnPageContent() {
             );
           })}
         </div>
+      </div>
       </div>
       </div>
     </>

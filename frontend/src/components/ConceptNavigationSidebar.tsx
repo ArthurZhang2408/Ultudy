@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type Concept = {
@@ -39,6 +39,7 @@ interface ConceptNavigationSidebarProps {
   onSectionClick: (section: Section) => void;
   onConceptClick: (conceptName: string) => void;
   onGenerateSection: (section: Section) => void;
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
 export default function ConceptNavigationSidebar({
@@ -49,7 +50,8 @@ export default function ConceptNavigationSidebar({
   concepts,
   onSectionClick,
   onConceptClick,
-  onGenerateSection
+  onGenerateSection,
+  onCollapseChange
 }: ConceptNavigationSidebarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -57,6 +59,11 @@ export default function ConceptNavigationSidebar({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(currentSectionId ? [currentSectionId] : [])
   );
+
+  // Notify parent when collapsed state changes
+  useEffect(() => {
+    onCollapseChange?.(isCollapsed);
+  }, [isCollapsed, onCollapseChange]);
 
   const toggleSection = (sectionId: string) => {
     const newExpanded = new Set(expandedSections);
@@ -148,7 +155,6 @@ export default function ConceptNavigationSidebar({
                         onClick={() => {
                           if (section.concepts_generated) {
                             toggleSection(section.id);
-                            onSectionClick(section);
                           } else {
                             onGenerateSection(section);
                           }
