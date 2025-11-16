@@ -3,7 +3,7 @@
 import { FormEvent, useState, useRef, DragEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { Button, Card, Input, Badge } from '@/components/ui';
+import { Button, Card, Input, Badge, Select } from '@/components/ui';
 import CustomSelect from './CustomSelect';
 
 type Course = {

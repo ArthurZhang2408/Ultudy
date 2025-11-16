@@ -20,9 +20,10 @@ type Course = {
 
 interface MainSidebarProps {
   onUploadClick: () => void;
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
-export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
+export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSidebarProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const router = useRouter();
@@ -40,6 +41,11 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
   useEffect(() => {
     fetchCourses();
   }, []);
+
+  // Notify parent when collapsed state changes
+  useEffect(() => {
+    onCollapseChange?.(isCollapsed);
+  }, [isCollapsed, onCollapseChange]);
 
   // Close user menu when clicking outside
   useEffect(() => {

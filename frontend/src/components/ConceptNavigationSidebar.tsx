@@ -18,6 +18,7 @@ type Section = {
   page_start: number | null;
   page_end: number | null;
   concepts_generated: boolean;
+  created_at: string;
   generating?: boolean;
   generation_progress?: number;
 };

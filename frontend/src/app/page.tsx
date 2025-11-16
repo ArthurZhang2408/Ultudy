@@ -182,7 +182,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Link
-              href="/courses"
+              href="/sign-up"
               className="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 dark:bg-primary-500 text-white text-lg font-semibold rounded-xl hover:bg-primary-700 dark:hover:bg-primary-600 shadow-lg hover:shadow-xl dark:shadow-dark-large dark:hover:shadow-dark-glow transition-all duration-200 hover:-translate-y-0.5"
             >
               Get Started Free
@@ -333,7 +333,7 @@ export default function HomePage() {
             Join students who are mastering their courses faster with AI-powered adaptive learning.
           </p>
           <Link
-            href="/courses"
+            href="/sign-up"
             className="inline-flex items-center gap-2 px-8 py-4 bg-white dark:bg-neutral-100 text-primary-700 dark:text-primary-800 text-lg font-semibold rounded-xl hover:bg-primary-50 dark:hover:bg-white shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5"
           >
             Start Learning Today
