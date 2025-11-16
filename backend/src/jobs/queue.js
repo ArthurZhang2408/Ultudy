@@ -10,81 +10,109 @@ import Queue from 'bull';
 // Redis connection configuration
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
-// Create separate queues for different job types
-export const uploadQueue = new Queue('upload-processing', REDIS_URL, {
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000
-    },
-    removeOnComplete: false, // Keep completed jobs for status checking
-    removeOnFail: false // Keep failed jobs for debugging
-  }
-});
+// Check if we should disable queues (for CI/testing without Redis)
+const DISABLE_QUEUES = process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true';
 
-export const lessonQueue = new Queue('lesson-generation', REDIS_URL, {
-  defaultJobOptions: {
-    attempts: 2, // Fewer retries for LLM calls (expensive)
-    backoff: {
-      type: 'exponential',
-      delay: 5000
-    },
-    removeOnComplete: false,
-    removeOnFail: false
-  }
-});
+let uploadQueue;
+let lessonQueue;
 
-// Job event handlers for logging
-uploadQueue.on('error', (error) => {
-  console.error('[uploadQueue] Queue error:', error);
-});
+if (DISABLE_QUEUES) {
+  console.log('[Queue] Queues disabled (CI/test mode)');
 
-uploadQueue.on('failed', (job, error) => {
-  console.error(`[uploadQueue] Job ${job.id} failed:`, error);
-});
+  // Create mock queues for CI/testing
+  const createMockQueue = (name) => ({
+    name,
+    add: async () => ({ id: 'mock-job-id' }),
+    process: () => {},
+    on: () => {},
+    close: async () => {},
+    clean: async () => {}
+  });
 
-uploadQueue.on('completed', (job) => {
-  console.log(`[uploadQueue] Job ${job.id} completed`);
-});
+  uploadQueue = createMockQueue('upload-processing');
+  lessonQueue = createMockQueue('lesson-generation');
+} else {
+  // Create separate queues for different job types
+  uploadQueue = new Queue('upload-processing', REDIS_URL, {
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000
+      },
+      removeOnComplete: false, // Keep completed jobs for status checking
+      removeOnFail: false // Keep failed jobs for debugging
+    }
+  });
 
-lessonQueue.on('error', (error) => {
-  console.error('[lessonQueue] Queue error:', error);
-});
+  lessonQueue = new Queue('lesson-generation', REDIS_URL, {
+    defaultJobOptions: {
+      attempts: 2, // Fewer retries for LLM calls (expensive)
+      backoff: {
+        type: 'exponential',
+        delay: 5000
+      },
+      removeOnComplete: false,
+      removeOnFail: false
+    }
+  });
+}
 
-lessonQueue.on('failed', (job, error) => {
-  console.error(`[lessonQueue] Job ${job.id} failed:`, error);
-});
+export { uploadQueue, lessonQueue };
 
-lessonQueue.on('completed', (job) => {
-  console.log(`[lessonQueue] Job ${job.id} completed`);
-});
+// Only set up event handlers and cleanup for real queues (not in CI/test mode)
+if (!DISABLE_QUEUES) {
+  // Job event handlers for logging
+  uploadQueue.on('error', (error) => {
+    console.error('[uploadQueue] Queue error:', error);
+  });
 
-// Cleanup old completed/failed jobs periodically (every hour)
-const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
-const JOB_RETENTION_TIME = 24 * 60 * 60 * 1000; // 24 hours
+  uploadQueue.on('failed', (job, error) => {
+    console.error(`[uploadQueue] Job ${job.id} failed:`, error);
+  });
 
-setInterval(async () => {
-  try {
-    await uploadQueue.clean(JOB_RETENTION_TIME, 'completed');
-    await uploadQueue.clean(JOB_RETENTION_TIME, 'failed');
-    await lessonQueue.clean(JOB_RETENTION_TIME, 'completed');
-    await lessonQueue.clean(JOB_RETENTION_TIME, 'failed');
-    console.log('[Queue Cleanup] Old jobs cleaned');
-  } catch (error) {
-    console.error('[Queue Cleanup] Error:', error);
-  }
-}, CLEANUP_INTERVAL);
+  uploadQueue.on('completed', (job) => {
+    console.log(`[uploadQueue] Job ${job.id} completed`);
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  console.log('[Queue] SIGTERM received, closing queues...');
-  await Promise.all([
-    uploadQueue.close(),
-    lessonQueue.close()
-  ]);
-  console.log('[Queue] Queues closed');
-});
+  lessonQueue.on('error', (error) => {
+    console.error('[lessonQueue] Queue error:', error);
+  });
+
+  lessonQueue.on('failed', (job, error) => {
+    console.error(`[lessonQueue] Job ${job.id} failed:`, error);
+  });
+
+  lessonQueue.on('completed', (job) => {
+    console.log(`[lessonQueue] Job ${job.id} completed`);
+  });
+
+  // Cleanup old completed/failed jobs periodically (every hour)
+  const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+  const JOB_RETENTION_TIME = 24 * 60 * 60 * 1000; // 24 hours
+
+  setInterval(async () => {
+    try {
+      await uploadQueue.clean(JOB_RETENTION_TIME, 'completed');
+      await uploadQueue.clean(JOB_RETENTION_TIME, 'failed');
+      await lessonQueue.clean(JOB_RETENTION_TIME, 'completed');
+      await lessonQueue.clean(JOB_RETENTION_TIME, 'failed');
+      console.log('[Queue Cleanup] Old jobs cleaned');
+    } catch (error) {
+      console.error('[Queue Cleanup] Error:', error);
+    }
+  }, CLEANUP_INTERVAL);
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    console.log('[Queue] SIGTERM received, closing queues...');
+    await Promise.all([
+      uploadQueue.close(),
+      lessonQueue.close()
+    ]);
+    console.log('[Queue] Queues closed');
+  });
+}
 
 export default {
   uploadQueue,

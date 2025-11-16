@@ -157,11 +157,13 @@ export default function CoursePage() {
             chapter: job.chapter
           }));
         allJobs.push(...courseUploadJobs);
+        console.log('[courses] Loaded', courseUploadJobs.length, 'upload jobs from sessionStorage');
       }
 
       // Load lesson generation jobs from 'lesson-job-*' sessionStorage entries
       const storageKeys = Object.keys(sessionStorage);
       const lessonJobKeys = storageKeys.filter(key => key.startsWith('lesson-job-'));
+      console.log('[courses] Found', lessonJobKeys.length, 'lesson job keys in sessionStorage');
 
       lessonJobKeys.forEach(key => {
         try {
@@ -178,12 +180,14 @@ export default function CoursePage() {
               status: 'queued',
               chapter: jobData.chapter
             });
+            console.log('[courses] Added lesson job for section:', jobData.section_name);
           }
         } catch (e) {
           console.error('[courses] Failed to parse lesson job:', e);
         }
       });
 
+      console.log('[courses] Total jobs loaded:', allJobs.length, '(', allJobs.filter(j => j.type === 'upload').length, 'uploads,', allJobs.filter(j => j.type === 'lesson').length, 'lessons)');
       setProcessingJobs(allJobs);
 
       // Start polling for each job
@@ -266,55 +270,69 @@ export default function CoursePage() {
         const docs = docsData.documents || [];
         setDocuments(docs);
 
-        // Fetch concept mastery data for each document
-        const conceptPromises = docs.map(async (doc: Document) => {
-          try {
-            const masteryUrl = doc.chapter
-              ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
-              : `/api/concepts/mastery?document_id=${doc.id}`;
-
-            const res = await fetch(masteryUrl);
-
-            if (res.ok) {
-              const data = await res.json();
-              const chapterKey = doc.chapter || 'Uncategorized';
-              return { chapterKey, concepts: data.concepts || [] };
-            }
-          } catch (error) {
-            console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
-          }
-          return null;
-        });
-
-        const conceptResults = await Promise.all(conceptPromises);
-        const conceptsMap: Record<string, ConceptWithMastery[]> = {};
-
-        // Deduplicate concepts by ID
-        const seenConceptIds = new Set<string>();
-
-        for (const result of conceptResults) {
-          if (result) {
-            if (!conceptsMap[result.chapterKey]) {
-              conceptsMap[result.chapterKey] = [];
-            }
-
-            // Only add concepts we haven't seen before
-            for (const concept of result.concepts) {
-              if (!seenConceptIds.has(concept.id)) {
-                seenConceptIds.add(concept.id);
-                conceptsMap[result.chapterKey].push(concept);
-              }
-            }
-          }
-        }
-
-        setConceptsByChapter(conceptsMap);
+        // Fetch concepts for all documents
+        await fetchConceptsForDocuments(docs);
       }
     } catch (error) {
       console.error('Failed to fetch course data:', error);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function fetchConceptsForDocuments(docs: Document[]) {
+    try {
+      // Fetch concept mastery data for each document
+      const conceptPromises = docs.map(async (doc: Document) => {
+        try {
+          const masteryUrl = doc.chapter
+            ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+            : `/api/concepts/mastery?document_id=${doc.id}`;
+
+          const res = await fetch(masteryUrl);
+
+          if (res.ok) {
+            const data = await res.json();
+            const chapterKey = doc.chapter || 'Uncategorized';
+            return { chapterKey, concepts: data.concepts || [] };
+          }
+        } catch (error) {
+          console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
+        }
+        return null;
+      });
+
+      const conceptResults = await Promise.all(conceptPromises);
+      const conceptsMap: Record<string, ConceptWithMastery[]> = {};
+
+      // Deduplicate concepts by ID
+      const seenConceptIds = new Set<string>();
+
+      for (const result of conceptResults) {
+        if (result) {
+          if (!conceptsMap[result.chapterKey]) {
+            conceptsMap[result.chapterKey] = [];
+          }
+
+          // Only add concepts we haven't seen before
+          for (const concept of result.concepts) {
+            if (!seenConceptIds.has(concept.id)) {
+              seenConceptIds.add(concept.id);
+              conceptsMap[result.chapterKey].push(concept);
+            }
+          }
+        }
+      }
+
+      setConceptsByChapter(conceptsMap);
+    } catch (error) {
+      console.error('Failed to fetch concepts:', error);
+    }
+  }
+
+  async function fetchConceptsForCourse() {
+    // Refetch concepts using current documents
+    await fetchConceptsForDocuments(documents);
   }
 
   function handleStartStudy(documentId: string, chapter: string | null) {
