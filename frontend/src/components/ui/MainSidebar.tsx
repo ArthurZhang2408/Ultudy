@@ -7,6 +7,7 @@ import { useUser, useClerk } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import SettingsModal from './SettingsModal';
 import UpgradeModal from './UpgradeModal';
+import CreateCourseModal from './CreateCourseModal';
 
 type Course = {
   id: string;
@@ -32,6 +33,8 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const [isCreateCourseOpen, setIsCreateCourseOpen] = useState(false);
+  const [isHoveringCollapsed, setIsHoveringCollapsed] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,43 +112,83 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
       className={`fixed left-0 top-0 h-full bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-all duration-300 z-50 ${
         isCollapsed ? 'w-16' : 'w-64'
       }`}
+      onMouseEnter={() => setIsHoveringCollapsed(true)}
+      onMouseLeave={() => setIsHoveringCollapsed(false)}
     >
       {/* Logo and Toggle */}
-      <div className="flex items-center justify-between p-4 border-b border-neutral-200 dark:border-neutral-800">
-        {!isCollapsed && (
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm group-hover:shadow-md transition-shadow">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 dark:from-primary-400 dark:to-primary-600 bg-clip-text text-transparent">
-              Ultudy
-            </span>
-          </Link>
-        )}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-md transition-colors"
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <svg
-            className={`w-5 h-5 text-neutral-600 dark:text-neutral-400 transition-transform ${
-              isCollapsed ? 'rotate-180' : ''
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+      <div className="flex items-center justify-center p-4 border-b border-neutral-200 dark:border-neutral-800">
+        {isCollapsed ? (
+          <button
+            onClick={() => setIsCollapsed(false)}
+            className="flex items-center justify-center w-full transition-all"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-        </button>
+            {isHoveringCollapsed ? (
+              <svg
+                className="w-6 h-6 text-neutral-600 dark:text-neutral-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            ) : (
+              <Link href="/" className="flex items-center justify-center group">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm group-hover:shadow-md transition-shadow">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </div>
+              </Link>
+            )}
+          </button>
+        ) : (
+          <>
+            <Link href="/" className="flex items-center gap-2 group flex-1">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm group-hover:shadow-md transition-shadow">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <span className="text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 dark:from-primary-400 dark:to-primary-600 bg-clip-text text-transparent">
+                Ultudy
+              </span>
+            </Link>
+            <button
+              onClick={() => setIsCollapsed(true)}
+              className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-md transition-colors"
+              aria-label="Collapse sidebar"
+            >
+              <svg
+                className="w-5 h-5 text-neutral-600 dark:text-neutral-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto px-3 py-4">
+        {/* New Course Button */}
+        <button
+          onClick={() => setIsCreateCourseOpen(true)}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors mb-4 ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
+          title="Create new course"
+        >
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          {!isCollapsed && <span>New Course</span>}
+        </button>
+
         {/* Courses Section */}
-        <div className="mb-2">
+        {!isCollapsed && <div className="mb-2">
           {!isCollapsed && (
             <div className="px-3 mb-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -206,7 +249,7 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
               })}
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* User Section at Bottom */}
@@ -214,9 +257,11 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors ${
+              isCollapsed ? 'justify-center' : ''
+            }`}
           >
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white font-semibold text-xs flex-shrink-0 ${isCollapsed ? 'mx-auto' : ''}`}>
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white font-semibold text-xs flex-shrink-0">
               {user?.imageUrl ? (
                 <img
                   src={user.imageUrl}
@@ -288,6 +333,13 @@ export default function MainSidebar({ onUploadClick }: MainSidebarProps) {
     {/* Modals */}
     <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     <UpgradeModal isOpen={isUpgradeOpen} onClose={() => setIsUpgradeOpen(false)} />
+    <CreateCourseModal
+      isOpen={isCreateCourseOpen}
+      onClose={() => setIsCreateCourseOpen(false)}
+      onSuccess={() => {
+        fetchCourses();
+      }}
+    />
     </>
   );
 }

@@ -9,6 +9,7 @@ interface CustomSelectProps {
   options: { value: string; label: string }[];
   fullWidth?: boolean;
   required?: boolean;
+  dropdownDirection?: 'up' | 'down';
 }
 
 export default function CustomSelect({
@@ -17,7 +18,8 @@ export default function CustomSelect({
   onChange,
   options,
   fullWidth = false,
-  required = false
+  required = false,
+  dropdownDirection = 'down'
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -64,7 +66,9 @@ export default function CustomSelect({
           </svg>
         </button>
         {isOpen && (
-          <div className="absolute left-0 right-0 mt-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-lg overflow-hidden z-10">
+          <div className={`absolute left-0 right-0 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-lg shadow-lg overflow-hidden z-10 max-h-60 overflow-y-auto ${
+            dropdownDirection === 'up' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}>
             {options.map((option) => (
               <button
                 key={option.value}

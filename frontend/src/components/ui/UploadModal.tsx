@@ -183,7 +183,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-md"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
         onClick={onClose}
       />
 
@@ -338,6 +338,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     value={materialType}
                     onChange={(value) => setMaterialType(value)}
                     fullWidth
+                    dropdownDirection="up"
                     options={[
                       { value: 'textbook', label: 'Textbook' },
                       { value: 'lecture', label: 'Lecture Notes' },

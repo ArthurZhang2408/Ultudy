@@ -423,14 +423,6 @@ export default function CoursePage() {
           <p className="text-neutral-600 dark:text-neutral-300">
             The course you're looking for doesn't exist or has been deleted.
           </p>
-          <Link href="/courses">
-            <Button variant="primary">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Courses
-            </Button>
-          </Link>
         </div>
       </Card>
     );
@@ -463,13 +455,7 @@ export default function CoursePage() {
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between">
-        <div className="space-y-3">
-          <Link href="/courses" className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to courses
-          </Link>
+        <div>
           <div>
             <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">{course.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
