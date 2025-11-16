@@ -481,7 +481,25 @@ export default function CoursePage() {
               console.error('[courses] Generation error:', error);
               pollingJobsRef.current.delete(data.job_id);
               removeProcessingJob(data.job_id);
-              alert(`Failed to generate lesson: ${error}`);
+
+              // Check if it's a retryable error
+              const isOverloaded = error.includes('overloaded') || error.includes('503');
+
+              if (isOverloaded) {
+                const retry = confirm(
+                  `⚠️ AI Service Temporarily Overloaded\n\n` +
+                  `The AI service is currently experiencing high demand. ` +
+                  `This usually resolves within a few seconds.\n\n` +
+                  `Would you like to try again?`
+                );
+
+                if (retry) {
+                  // Retry the generation
+                  setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+                }
+              } else {
+                alert(`Failed to generate lesson: ${error}\n\nPlease try again later.`);
+              }
             }
           });
         } else if (data.lesson_id) {
