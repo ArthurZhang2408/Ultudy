@@ -739,7 +739,9 @@ function LearnPageContent() {
 
   // Generate lesson for a specific section
   async function generateLessonForSection(section: Section) {
-    setSelectedSection(section);
+    // Don't set selectedSection here - we're only triggering generation/discovery,
+    // not actually loading the lesson. Setting it would create state mismatch
+    // between selectedSection and lesson, breaking mastery updates and URL navigation.
     setError(null);
     try {
       const res = await fetch('/api/lessons/generate', {
