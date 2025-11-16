@@ -245,6 +245,21 @@ function LearnPageContent() {
     }
   }, [documentId]);
 
+  // Skip straight to concept learning if concept_name is in URL
+  useEffect(() => {
+    if (targetConceptName && sections.length > 0 && !lesson) {
+      // Find which section contains this concept
+      const targetSection = sections.find(s =>
+        s.concepts?.some(c => c.name.toLowerCase() === targetConceptName.toLowerCase())
+      );
+
+      if (targetSection && !selectedSection) {
+        console.log(`[learn] Auto-loading section for concept "${targetConceptName}"`);
+        loadOrGenerateLesson(targetSection);
+      }
+    }
+  }, [targetConceptName, sections, lesson, selectedSection]);
+
   // Auto-load lesson when section_id is in URL (from grid click)
   useEffect(() => {
     if (!urlSectionId || !documentId || sections.length === 0) {
