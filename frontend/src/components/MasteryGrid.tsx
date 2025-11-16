@@ -190,7 +190,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                       <div key={skill.id} className="relative group">
                         <button
                           className={`
-                            w-12 h-12 rounded-lg transition-all duration-200
+                            relative w-12 h-12 rounded-lg transition-all duration-200
                             ${getMasteryColor(skill.masteryLevel)}
                             ${skill.onClick ? 'cursor-pointer hover:scale-110 hover:shadow-md active:scale-95' : 'cursor-default'}
                             flex items-center justify-center
@@ -205,9 +205,19 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                           title={`${skill.name} - ${getMasteryLabel(skill.masteryLevel)}`}
                         >
                           {skill.isOverview ? (
-                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                            </svg>
+                            <>
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                              </svg>
+                              {/* Generate indicator for not_started overview squares */}
+                              {skill.masteryLevel === 'not_started' && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary-500 dark:bg-primary-600 rounded-full flex items-center justify-center">
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  </svg>
+                                </div>
+                              )}
+                            </>
                           ) : (
                             displayNumber
                           )}

@@ -263,9 +263,13 @@ function LearnPageContent() {
 
   // Auto-load lesson when in overview mode
   useEffect(() => {
-    if (isOverviewMode && urlSectionId && sections.length > 0 && !lesson) {
+    if (isOverviewMode && urlSectionId && sections.length > 0) {
       const targetSection = sections.find(s => s.id === urlSectionId);
-      if (targetSection && !selectedSection) {
+
+      // Load if: no lesson loaded OR different section
+      const needsLoad = !lesson || selectedSection?.id !== urlSectionId;
+
+      if (targetSection && needsLoad) {
         console.log(`[learn] Auto-loading section for overview mode`);
         loadOrGenerateLesson(targetSection);
       }
