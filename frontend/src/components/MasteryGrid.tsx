@@ -14,6 +14,7 @@ export type SkillSquare = {
   lessonPosition?: number;
   description?: string;
   onClick?: () => void;
+  isOverview?: boolean;
 };
 
 type MasteryGridProps = {
@@ -196,13 +197,20 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                             text-white font-bold text-sm
                             shadow-sm
                             ${hoveredSkill === skill.id ? `ring-2 ${getMasteryRing(skill.masteryLevel)} ring-offset-1` : ''}
+                            ${skill.isOverview ? 'ring-2 ring-offset-1 ring-primary-400 dark:ring-primary-500' : ''}
                           `}
                           onClick={skill.onClick}
                           onMouseEnter={() => setHoveredSkill(skill.id)}
                           onMouseLeave={() => setHoveredSkill(null)}
                           title={`${skill.name} - ${getMasteryLabel(skill.masteryLevel)}`}
                         >
-                          {displayNumber}
+                          {skill.isOverview ? (
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                            </svg>
+                          ) : (
+                            displayNumber
+                          )}
                         </button>
 
                         {/* Hover tooltip */}

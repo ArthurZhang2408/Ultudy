@@ -1375,12 +1375,10 @@ function LearnPageContent() {
 
       await completeStudySession();
 
-      // Return to sections if available, otherwise go to courses
-      if (sections.length > 0) {
-        setShowingSummary(false);
-        setShowingSections(true);
-        setLesson(null);
-        setSelectedSection(null);
+      // Return to course page (sections list view eliminated)
+      const courseId = documentInfo?.course_id;
+      if (courseId) {
+        router.push(`/courses/${courseId}`);
       } else {
         router.push('/courses');
       }
@@ -1426,12 +1424,10 @@ function LearnPageContent() {
       }
       void completeStudySession();
 
-      // Return to sections if available, otherwise go to courses
-      if (sections.length > 0) {
-        setShowingSummary(false);
-        setShowingSections(true);
-        setLesson(null);
-        setSelectedSection(null);
+      // Return to course page (sections list view eliminated)
+      const courseId = documentInfo?.course_id;
+      if (courseId) {
+        router.push(`/courses/${courseId}`);
       } else {
         router.push('/courses');
       }
@@ -1517,129 +1513,16 @@ function LearnPageContent() {
     );
   }
 
-  // Show document summary screen (first screen after loading)
-  // Show section selection screen
-  if (showingSections && sections.length > 0) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <button
-            onClick={() => {
-              const courseId = documentInfo?.course_id;
-              if (courseId) {
-                router.push(`/courses/${courseId}`);
-              } else {
-                router.push('/courses');
-              }
-            }}
-            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
-          >
-            ← Back to course
-          </button>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-neutral-100">
-              Select a Section to Study
-            </h1>
-            <p className="mt-2 text-slate-600 dark:text-neutral-300">
-              This document has been divided into {sections.length} major sections.
-              Click on a section to generate concepts and start learning.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {sections.map((section) => {
-              const isGenerating = section.generating || false;
-              const progress = section.generation_progress || 0;
-
-              return (
-              <button
-                key={section.id}
-                onClick={() => generateLessonForSection(section)}
-                disabled={isGenerating}
-                className={`
-                  relative rounded-lg border-2 p-6 text-left transition-all
-                  ${section.concepts_generated
-                    ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
-                    : isGenerating
-                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}
-                  ${isGenerating ? 'cursor-not-allowed' : 'cursor-pointer'}
-                `}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <span className="inline-block rounded-full bg-slate-200 dark:bg-neutral-700 px-3 py-1 text-sm font-semibold text-slate-700 dark:text-neutral-300">
-                    Section {section.section_number}
-                  </span>
-                  {section.concepts_generated && !isGenerating && (
-                    <span className="text-green-600 dark:text-green-400 text-sm font-medium">✓ Ready</span>
-                  )}
-                  {isGenerating && (
-                    <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 dark:border-blue-400"></div>
-                      {progress}%
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mb-2">
-                  {section.name}
-                </h3>
-                {section.description && (
-                  <p className="text-sm text-slate-600 dark:text-neutral-300 mb-3">
-                    {section.description}
-                  </p>
-                )}
-                {section.page_start && section.page_end && (
-                  <p className="text-xs text-slate-500 dark:text-neutral-400">
-                    Pages {section.page_start}-{section.page_end}
-                  </p>
-                )}
-
-                {/* Progress bar for generating sections */}
-                {isGenerating && (
-                  <div className="mt-4">
-                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                      Generating concepts...
-                    </p>
-                  </div>
-                )}
-
-                {!isGenerating && (
-                  <div className="mt-4">
-                    <span className={`
-                      text-sm font-medium
-                      ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
-                    `}>
-                      {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
-                    </span>
-                  </div>
-                )}
-              </button>
-              );
-            })}
-          </div>
-
-          {generatingSections && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
-              <p className="text-blue-900 dark:text-blue-300 font-medium">
-                Analyzing document structure...
-              </p>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                Extracting major sections from the document
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  // Redirect to course page if no section_id is in URL (sections list eliminated)
+  // Users should navigate from course page directly to section overview or concepts
+  if (!urlSectionId && !showingSections) {
+    const courseId = documentInfo?.course_id;
+    if (courseId) {
+      router.push(`/courses/${courseId}`);
+    } else {
+      router.push('/courses');
+    }
+    return <LearnPageFallback />;
   }
 
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
@@ -1769,24 +1652,23 @@ function LearnPageContent() {
     );
   }
 
-  // Show summary screen
+  // Show summary screen (section overview)
   if (showingSummary) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <button
             onClick={() => {
-              if (sections.length > 0) {
-                clearConceptNavigation();
-                setShowingSummary(false);
-                setShowingSections(true);
+              const courseId = documentInfo?.course_id;
+              if (courseId) {
+                router.push(`/courses/${courseId}`);
               } else {
                 router.push('/courses');
               }
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
-            ← {sections.length > 0 ? 'Back to sections' : 'Back to courses'}
+            ← Back to course
           </button>
           {chapter && (
             <span className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1846,7 +1728,11 @@ function LearnPageContent() {
   // Determine if we should show the navigation sidebar
   // Hide it if user has switched to main sidebar via ?sidebar=main
   const showingMainSidebar = searchParams.get('sidebar') === 'main';
-  const showNavigationSidebar = !showingSummary && !showingSections && lesson && sections.length > 0 && !showingMainSidebar;
+
+  // Show overview if section_id present but no concept_name (or explicitly showing summary)
+  const isShowingOverview = lesson && selectedSection && (!targetConceptName || showingSummary);
+
+  const showNavigationSidebar = !showingSections && lesson && sections.length > 0 && !showingMainSidebar;
 
   // Show concept learning screen
   return (

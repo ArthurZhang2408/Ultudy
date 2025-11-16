@@ -52,6 +52,17 @@ type ConceptWithMastery = {
   correct_attempts: number;
 };
 
+type SectionWithMastery = {
+  id: string;
+  section_number: number;
+  name: string;
+  description: string | null;
+  mastery_level: MasteryLevel;
+  concepts_generated: boolean;
+  page_start: number | null;
+  page_end: number | null;
+};
+
 export default function CoursePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -62,6 +73,7 @@ export default function CoursePage() {
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
+  const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
@@ -285,51 +297,83 @@ export default function CoursePage() {
 
   async function fetchConceptsForDocuments(docs: Document[]) {
     try {
-      // Fetch concept mastery data for each document
-      const conceptPromises = docs.map(async (doc: Document) => {
+      // Fetch both concept mastery data and sections for each document
+      const dataPromises = docs.map(async (doc: Document) => {
         try {
           const masteryUrl = doc.chapter
             ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
             : `/api/concepts/mastery?document_id=${doc.id}`;
 
-          const res = await fetch(masteryUrl);
+          const sectionsUrl = doc.chapter
+            ? `/api/sections/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+            : `/api/sections/mastery?document_id=${doc.id}`;
 
-          if (res.ok) {
-            const data = await res.json();
-            const chapterKey = doc.chapter || 'Uncategorized';
-            return { chapterKey, concepts: data.concepts || [] };
+          const [conceptsRes, sectionsRes] = await Promise.all([
+            fetch(masteryUrl),
+            fetch(sectionsUrl)
+          ]);
+
+          const chapterKey = doc.chapter || 'Uncategorized';
+          let concepts: any[] = [];
+          let sections: any[] = [];
+
+          if (conceptsRes.ok) {
+            const data = await conceptsRes.json();
+            concepts = data.concepts || [];
           }
+
+          if (sectionsRes.ok) {
+            const data = await sectionsRes.json();
+            sections = data.sections || [];
+          }
+
+          return { chapterKey, concepts, sections, documentId: doc.id };
         } catch (error) {
-          console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
+          console.error(`Failed to fetch data for document ${doc.id}:`, error);
         }
         return null;
       });
 
-      const conceptResults = await Promise.all(conceptPromises);
+      const results = await Promise.all(dataPromises);
       const conceptsMap: Record<string, ConceptWithMastery[]> = {};
+      const sectionsMap: Record<string, SectionWithMastery[]> = {};
 
-      // Deduplicate concepts by ID
+      // Deduplicate concepts and sections by ID
       const seenConceptIds = new Set<string>();
+      const seenSectionIds = new Set<string>();
 
-      for (const result of conceptResults) {
+      for (const result of results) {
         if (result) {
+          // Initialize chapter arrays if needed
           if (!conceptsMap[result.chapterKey]) {
             conceptsMap[result.chapterKey] = [];
           }
+          if (!sectionsMap[result.chapterKey]) {
+            sectionsMap[result.chapterKey] = [];
+          }
 
-          // Only add concepts we haven't seen before
+          // Add unique concepts
           for (const concept of result.concepts) {
             if (!seenConceptIds.has(concept.id)) {
               seenConceptIds.add(concept.id);
               conceptsMap[result.chapterKey].push(concept);
             }
           }
+
+          // Add unique sections
+          for (const section of result.sections) {
+            if (!seenSectionIds.has(section.id)) {
+              seenSectionIds.add(section.id);
+              sectionsMap[result.chapterKey].push(section);
+            }
+          }
         }
       }
 
       setConceptsByChapter(conceptsMap);
+      setSectionsByChapter(sectionsMap);
     } catch (error) {
-      console.error('Failed to fetch concepts:', error);
+      console.error('Failed to fetch concepts and sections:', error);
     }
   }
 
@@ -534,6 +578,7 @@ export default function CoursePage() {
         <div className="space-y-8">
           {chapters.map((chapter) => {
             const chapterConcepts = conceptsByChapter[chapter] || [];
+            const chapterSections = sectionsByChapter[chapter] || [];
 
             const orderedConcepts = [...chapterConcepts].sort((a, b) => {
               const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
@@ -556,6 +601,9 @@ export default function CoursePage() {
 
               return a.name.localeCompare(b.name);
             });
+
+            // Sort sections by section_number
+            const orderedSections = [...chapterSections].sort((a, b) => a.section_number - b.section_number);
 
             // Add lesson generation jobs as loading placeholders
             const lessonJobs = processingJobs.filter(
@@ -601,8 +649,47 @@ export default function CoursePage() {
               };
             });
 
+            // Group concepts by section and create section overview squares
+            const skillsWithOverviews: SkillSquare[] = [];
+            const doc = documentsByChapter[chapter]?.[0];
+
+            // Add section overview squares before concepts
+            orderedSections.forEach((section) => {
+              // Add section overview square
+              skillsWithOverviews.push({
+                id: `overview-${section.id}`,
+                name: `${section.name} - Overview`,
+                masteryLevel: section.concepts_generated ? section.mastery_level : 'not_started',
+                sectionNumber: section.section_number,
+                sectionName: section.name,
+                description: section.description || `Section ${section.section_number} Overview`,
+                onClick: () => {
+                  if (doc) {
+                    if (section.concepts_generated) {
+                      // Navigate to section overview
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}`);
+                    } else {
+                      // Navigate to learn page which will trigger section generation
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}`);
+                    }
+                  }
+                },
+                isOverview: true
+              });
+
+              // Add concepts for this section
+              const sectionConcepts = conceptSkills.filter(
+                skill => skill.sectionNumber === section.section_number
+              );
+              skillsWithOverviews.push(...sectionConcepts);
+            });
+
+            // Add any concepts without a section (fallback)
+            const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
+            skillsWithOverviews.push(...conceptsWithoutSection);
+
             // Combine loading and concept skills
-            const skills: SkillSquare[] = [...loadingSkills, ...conceptSkills];
+            const skills: SkillSquare[] = [...loadingSkills, ...skillsWithOverviews];
 
             return (
               <div key={chapter} className="space-y-6">
@@ -610,21 +697,6 @@ export default function CoursePage() {
                   <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
-                  <Button
-                    onClick={() => {
-                      const doc = documentsByChapter[chapter]?.[0];
-                      if (doc) {
-                        handleStartStudy(doc.id, doc.chapter);
-                      }
-                    }}
-                    variant="primary"
-                    disabled={processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter)}
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    {processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter) ? 'Uploading...' : 'Start Studying'}
-                  </Button>
                 </div>
 
                 {/* Concept Mastery Grid */}
