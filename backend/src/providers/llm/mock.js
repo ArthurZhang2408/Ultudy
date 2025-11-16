@@ -273,11 +273,6 @@ function createMockLLMProvider() {
           ]
         : [];
 
-      console.log(`[MockLLM] include_check_ins: ${include_check_ins}, created ${checkins.length} checkins`);
-      if (checkins.length > 0) {
-        console.log(`[MockLLM] First checkin references concept: "${checkins[0].concept}"`);
-      }
-
       const conceptsWithCheckIns = concepts.map((concept) => {
         const related = checkins
           .filter((checkin) => checkin.concept === concept.name)
@@ -286,12 +281,6 @@ function createMockLLMProvider() {
             hint: checkin.hint,
             expected_answer: checkin.expected_answer
           }));
-
-        console.log(`[MockLLM] Concept "${concept.name}" matched ${related.length} check_ins from ${checkins.length} total checkins`);
-        if (checkins.length > 0 && related.length === 0) {
-          console.log(`[MockLLM] First checkin.concept: "${checkins[0].concept}"`);
-          console.log(`[MockLLM] Current concept.name: "${concept.name}"`);
-        }
 
         return {
           ...concept,

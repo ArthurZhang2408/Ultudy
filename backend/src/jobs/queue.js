@@ -44,6 +44,7 @@ if (DISABLE_QUEUES) {
         return mockJob;
       },
       process: (processorFn) => {
+        // Allow calling process() multiple times in tests (just overwrites the processor)
         processor = processorFn;
       },
       on: () => {},

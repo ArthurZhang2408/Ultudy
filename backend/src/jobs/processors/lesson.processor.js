@@ -7,16 +7,26 @@
 import { extractSectionText } from '../../study/section.service.js';
 
 // Helper to attach check-ins to concepts
+// Note: Concepts may already have check_ins embedded from LLM provider
+// This function preserves those embedded check_ins
 function attachCheckinsToConcepts(concepts, checkins) {
+  // If no additional checkins array, just return concepts with their embedded check_ins
   if (!Array.isArray(checkins) || checkins.length === 0) {
-    return concepts;
+    // Ensure each concept has a check_ins array (even if empty)
+    return concepts.map(concept => ({
+      ...concept,
+      check_ins: Array.isArray(concept.check_ins) ? concept.check_ins : []
+    }));
   }
 
+  // Merge embedded check_ins with index-based checkins from the checkins array
   return concepts.map((concept, idx) => {
-    const conceptCheckins = checkins.filter(ci => ci.concept_index === idx);
+    const embeddedCheckIns = Array.isArray(concept.check_ins) ? concept.check_ins : [];
+    const indexedCheckIns = checkins.filter(ci => ci.concept_index === idx);
+
     return {
       ...concept,
-      check_ins: conceptCheckins
+      check_ins: [...embeddedCheckIns, ...indexedCheckIns]
     };
   });
 }
@@ -166,11 +176,6 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
         generatedLesson.concepts || [],
         generatedLesson.checkins || []
       );
-
-      console.log(`[LessonProcessor] Concepts before storage:`, JSON.stringify(conceptsForStorage.slice(0, 1)));
-      if (conceptsForStorage.length > 0 && conceptsForStorage[0].check_ins) {
-        console.log(`[LessonProcessor] First concept has ${conceptsForStorage[0].check_ins.length} check_ins`);
-      }
 
       // Step 4: Persist lesson to database (with optional section_id)
       const { rows: insertedLesson } = await client.query(
