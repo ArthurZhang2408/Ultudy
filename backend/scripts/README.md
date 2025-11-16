@@ -1,20 +1,10 @@
-# PDF Extraction Scripts
+# Backend Utility Scripts
 
-This directory contains scripts for extracting content from PDFs with different approaches.
+This directory contains active utility scripts for the backend service.
 
-## Quick Start
+**Note:** Demo, test, and deprecated scripts have been moved to `/docs/archived-scripts/`
 
-### Test Your PDF
-
-```bash
-# Quick test (text-only vs deterministic)
-./test_rich_extraction.sh /path/to/your/document.pdf
-
-# Detailed comparison (text vs deterministic vs vision)
-python3 compare_extraction.py /path/to/your/document.pdf
-```
-
-## Scripts
+## PDF Extraction Scripts (Active)
 
 ### `extract_text.py` - Text-Only (Current)
 **Usage**: `python3 extract_text.py document.pdf`
@@ -53,72 +43,29 @@ pip3 install pix2text
 
 ---
 
-### `extract_text_vision.py` - Vision-Based (Deprecated)
-**Usage**: `python3 extract_text_vision.py document.pdf`
+## Database Utility Scripts
 
-**What it does**: Uses Gemini Vision AI to extract all content
-**Speed**: Slow (1-2s/page)
-**Cost**: $0.004/page ($0.24 per 60-page doc)
-**Output**: JSON with pages containing text + tables + images + formulas + code_blocks
+### `check-ivfflat-support.js` - Check pgvector Index Support
+**Usage**: `node scripts/check-ivfflat-support.js`
 
-**Why deprecated**: Using AI for structure parsing is wasteful. AI should be reserved for semantic understanding (lesson generation), not deterministic structure extraction.
+**What it does**: Checks if your PostgreSQL database supports IVFFlat indexes for pgvector
 
-**Dependencies**:
-```bash
-pip3 install google-generativeai
-export GEMINI_API_KEY="your-key"
-```
+### `clear-cached-lessons.js` - Clear Redis Lesson Cache
+**Usage**: `node scripts/clear-cached-lessons.js`
+
+**What it does**: Clears all cached lesson data from Redis
 
 ---
 
-### `compare_extraction.py` - Comparison Tool
-**Usage**: `python3 compare_extraction.py document.pdf`
+## Archived Scripts
 
-**What it does**: Runs all three extraction methods and provides:
-- Page counts
-- Rich content counts (tables, images, formulas, code)
-- Performance comparison (speed, cost)
-- Sample extracted content
-- Recommendations
+The following scripts have been moved to `/docs/archived-scripts/`:
+- Demo scripts (`demo_improvements.sh`, `demo_phase3.py`, etc.)
+- Test scripts (`test_rich_extraction.sh`, `compare_extraction.py`, etc.)
+- Deprecated extraction (`extract_text_vision.py`)
+- Database setup scripts (superseded by migrations)
 
-**Output**: Detailed report showing which approach is best for your document
-
----
-
-### `test_rich_extraction.sh` - Quick Test Script
-**Usage**: `./test_rich_extraction.sh document.pdf`
-
-**What it does**:
-1. Checks dependencies
-2. Runs text-only extraction
-3. Runs deterministic extraction
-4. Shows basic comparison
-
-**Best for**: Quick validation without running full comparison
-
----
-
-## Recommended Workflow
-
-1. **Test with your documents**
-   ```bash
-   ./test_rich_extraction.sh ~/Documents/textbook.pdf
-   ```
-
-2. **Review the output**
-   - Are tables extracted correctly?
-   - Are images found?
-   - Are formulas recognized?
-
-3. **Run detailed comparison if needed**
-   ```bash
-   python3 compare_extraction.py ~/Documents/textbook.pdf
-   ```
-
-4. **Check the JSON output**
-   ```bash
-   cat /tmp/deterministic_result.json | jq '.summary'
-   ```
+See `/docs/archived-scripts/README.md` for more information.
 
 ## Output Format
 
@@ -184,15 +131,17 @@ export GEMINI_API_KEY="your-key"
 
 ## Performance Comparison
 
-| Feature | Text-Only | Deterministic | Vision |
-|---------|-----------|---------------|--------|
-| **Speed** | <0.1s/page | 0.1-0.6s/page | 1-2s/page |
-| **Cost** | $0 | $0 | $0.004/page |
-| **Tables** | Lost | ✅ Preserved | ✅ Preserved |
-| **Images** | Ignored | ✅ Extracted | ✅ Extracted + described |
-| **Formulas** | Lost | ✅ LaTeX | ✅ LaTeX |
-| **Code** | As text | ✅ Detected | ✅ Detected |
-| **Offline** | ✅ Yes | ✅ Yes | ❌ No |
+| Feature | Text-Only | Deterministic |
+|---------|-----------|---------------|
+| **Speed** | <0.1s/page | 0.1-0.6s/page |
+| **Cost** | $0 | $0 |
+| **Tables** | Lost | ✅ Preserved |
+| **Images** | Ignored | ✅ Extracted |
+| **Formulas** | Lost | ✅ LaTeX |
+| **Code** | As text | ✅ Detected |
+| **Offline** | ✅ Yes | ✅ Yes |
+
+**Note:** Vision-based extraction has been deprecated. See `/docs/archived-scripts/` for historical reference.
 
 ## Troubleshooting
 

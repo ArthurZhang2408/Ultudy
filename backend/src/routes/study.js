@@ -473,8 +473,13 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
-  // Multi-layer lesson structure: Generate sections for a document
+  // DEPRECATED ENDPOINT: Legacy section extraction for old documents
+  // This endpoint is only for documents created with old Python-based extraction (having full_text).
+  // Modern documents uploaded via /upload/pdf-structured already have sections created during upload.
+  // This endpoint will be removed once all legacy documents are migrated.
   router.post('/sections/generate', async (req, res) => {
+    console.warn('[DEPRECATED] POST /sections/generate is deprecated. Modern uploads create sections automatically.');
+
     const { document_id, chapter, force_llm = false } = req.body || {};
     const ownerId = req.userId;
 
@@ -560,6 +565,9 @@ export default function createStudyRouter(options = {}) {
         return insertedSections;
       });
 
+      // Add deprecation headers
+      res.set('Deprecation', 'true');
+      res.set('Sunset', 'Wed, 31 Dec 2025 23:59:59 GMT');
       res.json({ sections });
     } catch (error) {
       console.error('[sections/generate] Error:', error);

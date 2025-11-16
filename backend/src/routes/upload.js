@@ -5,7 +5,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import createPdfIngestionService from '../ingestion/service.js';
-import { extractStructuredSections } from '../ingestion/llm_extractor.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -23,8 +22,13 @@ export default function createUploadRouter(options = {}) {
     tenantHelpers: options.tenantHelpers
   });
 
-  // OLD ENDPOINT: Keep for backwards compatibility
+  // DEPRECATED ENDPOINT: Legacy PDF upload with simple text extraction
+  // This endpoint is kept for backwards compatibility but should not be used for new integrations.
+  // Use POST /upload/pdf-structured instead for vision-based LLM extraction with sections and concepts.
+  // This endpoint will be removed in a future version.
   router.post('/pdf', upload.single('file'), async (req, res) => {
+    console.warn('[DEPRECATED] POST /upload/pdf is deprecated. Use /upload/pdf-structured instead.');
+
     if (!req.file) {
       res.status(400).json({ error: 'Missing PDF file' });
       return;
@@ -37,6 +41,10 @@ export default function createUploadRouter(options = {}) {
         req.file.originalname,
         ownerId
       );
+
+      // Add deprecation header
+      res.set('Deprecation', 'true');
+      res.set('Sunset', 'Wed, 31 Dec 2025 23:59:59 GMT');
       res.json({ document_id: result.documentId, pages: result.pageCount, chunks: result.chunkCount });
     } catch (error) {
       console.error('Failed to ingest PDF', error);
