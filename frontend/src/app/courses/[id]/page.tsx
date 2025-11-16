@@ -492,11 +492,48 @@ export default function CoursePage() {
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.error || 'Failed to generate lesson';
-        alert(`Failed to generate lesson: ${errorMessage}`);
+
+        // Check if it's a retryable error
+        const isOverloaded = errorMessage.includes('overloaded') || errorMessage.includes('503');
+
+        if (isOverloaded) {
+          const retry = confirm(
+            `⚠️ AI Service Temporarily Overloaded\n\n` +
+            `The AI service is currently experiencing high demand. ` +
+            `This usually resolves within a few seconds.\n\n` +
+            `Would you like to try again?`
+          );
+
+          if (retry) {
+            // Retry the generation
+            setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+            return;
+          }
+        } else {
+          alert(`Failed to generate lesson: ${errorMessage}\n\nPlease try again later.`);
+        }
       }
     } catch (error) {
       console.error('[courses] Error generating lesson:', error);
-      alert('Failed to generate lesson. Please check your connection and try again.');
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if it's a network error
+      const isNetworkError = errorMsg.includes('network') || errorMsg.includes('fetch');
+
+      if (isNetworkError) {
+        const retry = confirm(
+          `⚠️ Connection Error\n\n` +
+          `Unable to reach the server. Please check your internet connection.\n\n` +
+          `Would you like to try again?`
+        );
+
+        if (retry) {
+          setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+          return;
+        }
+      } else {
+        alert('Failed to generate lesson. Please try again later.');
+      }
     }
   }
 
@@ -699,24 +736,6 @@ export default function CoursePage() {
             // Sort sections by section_number
             const orderedSections = [...chapterSections].sort((a, b) => a.section_number - b.section_number);
 
-            // Add lesson generation jobs as loading placeholders
-            const lessonJobs = processingJobs.filter(
-              job => job.type === 'lesson' && (job.chapter || 'Uncategorized') === chapter
-            );
-
-            // Create multiple placeholder squares per generating section (estimated 8 concepts per section)
-            const loadingSkills: SkillSquare[] = lessonJobs.flatMap((job) =>
-              Array.from({ length: 8 }, (_, index) => ({
-                id: `loading-${job.job_id}-${index}`,
-                name: job.section_name || 'Generating...',
-                masteryLevel: 'loading' as MasteryLevel,
-                sectionNumber: job.section_number,
-                sectionName: job.section_name,
-                description: `${job.section_name || 'Section'} - Generating... ${job.progress}%`,
-                onClick: () => {}
-              }))
-            );
-
             // Convert concepts to skills for the mastery grid
             const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
               return {
@@ -747,19 +766,28 @@ export default function CoursePage() {
             const skillsWithOverviews: SkillSquare[] = [];
             const doc = documentsByChapter[chapter]?.[0];
 
-            // Add section overview squares before concepts
+            // Add section overview squares before concepts, with loading placeholders if generating
             orderedSections.forEach((section) => {
-              // Add section overview square
+              // Check if this section is currently generating
+              const isGenerating = processingJobs.some(job =>
+                job.type === 'lesson' &&
+                job.section_id === section.id &&
+                (job.chapter || 'Uncategorized') === chapter
+              );
+
+              // Add section overview square FIRST
               skillsWithOverviews.push({
                 id: `overview-${section.id}`,
                 name: `${section.name} - Overview`,
-                masteryLevel: section.concepts_generated ? section.mastery_level : 'not_started',
+                masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
                 sectionNumber: section.section_number,
                 sectionName: section.name,
                 description: section.concepts_generated
                   ? (section.description || `Section ${section.section_number} Overview`)
+                  : isGenerating
+                  ? 'Generating concepts...'
                   : `Click to generate section ${section.section_number}`,
-                onClick: () => {
+                onClick: isGenerating ? undefined : () => {
                   if (doc) {
                     if (section.concepts_generated) {
                       // Navigate to overview page
@@ -773,6 +801,24 @@ export default function CoursePage() {
                 isOverview: true
               });
 
+              // Add loading placeholders if generating
+              if (isGenerating) {
+                const job = processingJobs.find(j => j.section_id === section.id);
+                const progress = job?.progress || 0;
+
+                Array.from({ length: 8 }, (_, index) => {
+                  skillsWithOverviews.push({
+                    id: `loading-${section.id}-${index}`,
+                    name: section.name || 'Generating...',
+                    masteryLevel: 'loading' as MasteryLevel,
+                    sectionNumber: section.section_number,
+                    sectionName: section.name,
+                    description: `${section.name || 'Section'} - Generating... ${progress}%`,
+                    onClick: () => {}
+                  });
+                });
+              }
+
               // Add concepts for this section
               const sectionConcepts = conceptSkills.filter(
                 skill => skill.sectionNumber === section.section_number
@@ -784,8 +830,8 @@ export default function CoursePage() {
             const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
             skillsWithOverviews.push(...conceptsWithoutSection);
 
-            // Combine loading and concept skills
-            const skills: SkillSquare[] = [...loadingSkills, ...skillsWithOverviews];
+            // Use skillsWithOverviews directly (loading placeholders are now integrated)
+            const skills: SkillSquare[] = skillsWithOverviews;
 
             return (
               <div key={chapter} className="space-y-6">

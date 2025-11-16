@@ -296,7 +296,7 @@ function parseJsonOutput(rawText) {
   }
 }
 
-async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRetries = 3) {
+async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRetries = 5) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY is required when using the gemini LLM provider');
@@ -321,11 +321,23 @@ async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRet
     generationConfig.responseSchema = responseSchema;
   }
 
-  // Retry logic for invalid JSON responses
+  // Helper to check if error is retryable
+  function isRetryableError(error) {
+    const errorMsg = error.message || '';
+    // Retry on 503 Service Unavailable, rate limits, or network errors
+    return errorMsg.includes('503') ||
+           errorMsg.includes('overloaded') ||
+           errorMsg.includes('rate limit') ||
+           errorMsg.includes('ECONNRESET') ||
+           errorMsg.includes('ETIMEDOUT') ||
+           errorMsg.includes('invalid JSON');
+  }
+
+  // Retry logic with exponential backoff
   let lastError;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`[gemini] Attempt ${attempt + 1}/${maxRetries} to generate valid JSON...`);
+      console.log(`[gemini] Attempt ${attempt + 1}/${maxRetries} to generate content...`);
 
       const response = await model.generateContent({
         contents: [
@@ -337,26 +349,32 @@ async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRet
       const text = extractResponseText(response);
       const parsed = parseJsonOutput(text);
 
-      console.log(`[gemini] ✅ Valid JSON received on attempt ${attempt + 1}`);
+      console.log(`[gemini] ✅ Valid response received on attempt ${attempt + 1}`);
       return parsed;
     } catch (error) {
       lastError = error;
+      const errorMsg = error.message || '';
 
-      if (error.message && error.message.includes('invalid JSON')) {
-        console.warn(`[gemini] ⚠️  Attempt ${attempt + 1} failed with invalid JSON, retrying...`);
-        // Add a small delay before retry (exponential backoff)
+      if (isRetryableError(error)) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff, max 30s
+        console.warn(`[gemini] ⚠️  Attempt ${attempt + 1} failed: ${errorMsg}`);
+
         if (attempt < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+          console.log(`[gemini] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error(`[gemini] ❌ All ${maxRetries} attempts exhausted`);
         }
       } else {
-        // If it's not a JSON parsing error, throw immediately
+        // Non-retryable error, throw immediately
+        console.error(`[gemini] ❌ Non-retryable error:`, errorMsg);
         throw error;
       }
     }
   }
 
   // All retries exhausted
-  console.error(`[gemini] ❌ Failed to get valid JSON after ${maxRetries} attempts`);
+  console.error(`[gemini] ❌ Failed after ${maxRetries} attempts`);
   throw lastError;
 }
 
