@@ -567,7 +567,7 @@ function LearnPageContent() {
             setCurrentMCQIndex(0);
             setShowingSections(false);
             setShowingSummary(false);
-            clearConceptNavigation();
+            // Don't clear concept navigation - keep concept_name in URL for refresh persistence
           } else {
             clearConceptNavigation();
             setShowingSections(false);
@@ -703,7 +703,7 @@ function LearnPageContent() {
             setCurrentMCQIndex(0);
             setShowingSections(false);
             setShowingSummary(false);
-            clearConceptNavigation();
+            // Don't clear concept navigation - keep concept_name in URL for refresh persistence
           } else {
             // Concept not found, show summary
             console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
@@ -838,55 +838,24 @@ function LearnPageContent() {
           // Don't block the UI - user can click other sections
           return;
         } else if (rawData.lesson_id) {
-          // Lesson already exists - fetch it
-          console.log(`[learn] Lesson already exists: lesson_id=${rawData.lesson_id}`);
-          await fetchLesson(rawData.lesson_id);
+          // Lesson already exists - just update section state, don't navigate
+          console.log(`[learn] Lesson already exists: lesson_id=${rawData.lesson_id}, updating section state without navigation`);
+          setSections(prev => prev.map(s =>
+            s.id === section.id ? { ...s, concepts_generated: true } : s
+          ));
+          return;
         } else {
           // Old format: lesson returned directly
+          console.log('[learn] Lesson returned directly (old format), updating section state without navigation');
           const normalizedLesson = normalizeLesson(rawData);
-          console.log('[learn] Normalized lesson:', normalizedLesson);
-          setLesson(normalizedLesson);
 
           // Update section to mark concepts as generated
           setSections(prev => prev.map(s =>
             s.id === section.id ? { ...s, concepts_generated: true } : s
           ));
 
-        // Check if we should navigate directly to a specific concept by name
-        console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
-        console.log('[learn] Navigation check - isOverviewMode:', isOverviewMode);
-        console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
-        if (targetConceptName && !isOverviewMode) {
-          const concepts = normalizedLesson.concepts || [];
-          // Search for concept by name (case-insensitive)
-          const targetIndex = concepts.findIndex(c =>
-            c.name.toLowerCase() === targetConceptName.toLowerCase()
-          );
-
-          console.log('[learn] Available concept names:', concepts.map(c => c.name));
-          console.log('[learn] Searching for:', targetConceptName);
-          console.log('[learn] Found concept at index:', targetIndex);
-
-          if (targetIndex >= 0) {
-            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
-            setCurrentConceptIndex(targetIndex);
-            setCurrentMCQIndex(0);
-            setShowingSections(false);
-            setShowingSummary(false);
-            clearConceptNavigation();
-          } else {
-            // Concept not found, show summary
-            console.warn(`[learn] Concept "${targetConceptName}" not found in lesson, showing summary`);
-            clearConceptNavigation();
-            setShowingSections(false);
-            setShowingSummary(true);
-          }
-        } else {
-          // Overview mode or no target concept - show summary screen
-          clearConceptNavigation();
-          setShowingSections(false);
-          setShowingSummary(true);
-        }
+          // Don't navigate - user clicked from sidebar and should stay on current page
+          return;
         }
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
