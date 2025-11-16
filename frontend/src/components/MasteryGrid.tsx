@@ -14,6 +14,7 @@ export type SkillSquare = {
   lessonPosition?: number;
   description?: string;
   onClick?: () => void;
+  isOverview?: boolean;
 };
 
 type MasteryGridProps = {
@@ -189,25 +190,43 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                       <div key={skill.id} className="relative group">
                         <button
                           className={`
-                            w-12 h-12 rounded-lg transition-all duration-200
+                            relative w-12 h-12 rounded-lg transition-all duration-200
                             ${getMasteryColor(skill.masteryLevel)}
-                            ${skill.onClick ? 'cursor-pointer hover:scale-110 hover:shadow-md active:scale-95' : 'cursor-default'}
+                            ${skill.onClick ? 'cursor-pointer hover:scale-110 hover:shadow-md active:scale-95' : 'cursor-not-allowed opacity-60'}
                             flex items-center justify-center
                             text-white font-bold text-sm
                             shadow-sm
                             ${hoveredSkill === skill.id ? `ring-2 ${getMasteryRing(skill.masteryLevel)} ring-offset-1` : ''}
+                            ${skill.isOverview && skill.onClick ? 'ring-2 ring-offset-1 ring-primary-400 dark:ring-primary-500' : ''}
                           `}
                           onClick={skill.onClick}
+                          disabled={!skill.onClick}
                           onMouseEnter={() => setHoveredSkill(skill.id)}
                           onMouseLeave={() => setHoveredSkill(null)}
                           title={`${skill.name} - ${getMasteryLabel(skill.masteryLevel)}`}
                         >
-                          {displayNumber}
+                          {skill.isOverview ? (
+                            <>
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                              </svg>
+                              {/* Generate indicator for not_started overview squares with onClick */}
+                              {skill.masteryLevel === 'not_started' && skill.onClick && (
+                                <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary-500 dark:bg-primary-600 rounded-full flex items-center justify-center">
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                  </svg>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            displayNumber
+                          )}
                         </button>
 
-                        {/* Hover tooltip */}
+                        {/* Hover tooltip - increased z-index to appear above sidebars */}
                         {hoveredSkill === skill.id && (
-                          <div className="absolute z-10 bottom-full left-1/2 transform -translate-x-1/2 mb-3 w-64 pointer-events-none animate-fade-in">
+                          <div className="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-3 w-64 pointer-events-none animate-fade-in">
                             <div className="bg-neutral-900 text-white rounded-lg p-3 shadow-large">
                               <div className="font-semibold mb-1.5 text-sm">{skill.name}</div>
                               {skill.description && (

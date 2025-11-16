@@ -1,6 +1,155 @@
+'use client';
+
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
+import { useState, useEffect } from 'react';
+import { Button, Card, Badge } from '@/components/ui';
+
+type Course = {
+  id: string;
+  name: string;
+  code: string | null;
+  term: string | null;
+  exam_date: string | null;
+  created_at: string;
+};
+
+function CoursesHomePage() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  async function fetchCourses() {
+    try {
+      const res = await fetch('/api/courses');
+      if (res.ok) {
+        const data = await res.json();
+        setCourses(data.courses || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch courses:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-9 w-48 skeleton rounded-lg" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 skeleton rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">My Courses</h1>
+        <p className="mt-2 text-neutral-600 dark:text-neutral-300">
+          Select a course to view materials and start learning
+        </p>
+      </div>
+
+      {courses.length === 0 ? (
+        <Card className="text-center py-16 animate-fade-in">
+          <div className="max-w-md mx-auto space-y-4">
+            <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-10 h-10 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">No courses yet</h3>
+            <p className="text-neutral-600 dark:text-neutral-300">
+              Create your first course using the sidebar to start organizing your study materials.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {courses.map((course) => (
+            <Link
+              key={course.id}
+              href={`/courses/${course.id}`}
+              className="block group"
+            >
+              <Card interactive className="h-full group-hover:border-primary-400 dark:group-hover:border-primary-500 transition-all">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  </div>
+                  <svg className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:translate-x-1 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">
+                    {course.name}
+                  </h3>
+
+                  <div className="flex flex-wrap gap-2">
+                    {course.code && (
+                      <Badge variant="primary">
+                        {course.code}
+                      </Badge>
+                    )}
+                    {course.term && (
+                      <Badge variant="neutral">
+                        {course.term}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {course.exam_date && (
+                    <div className="flex items-center gap-2 mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                      <svg className="w-4 h-4 text-warning-600 dark:text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm text-neutral-600 dark:text-neutral-300">
+                        Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function HomePage() {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  // Show loading state
+  if (!isLoaded) {
+    return null;
+  }
+
+  // If signed in, show courses page content directly
+  if (isSignedIn) {
+    return <CoursesHomePage />;
+  }
+
+  // Landing page for non-authenticated users
   return (
     <div className="space-y-20 pb-16">
       {/* Hero Section */}
@@ -33,7 +182,7 @@ export default function HomePage() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
             <Link
-              href="/courses"
+              href="/sign-up"
               className="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 dark:bg-primary-500 text-white text-lg font-semibold rounded-xl hover:bg-primary-700 dark:hover:bg-primary-600 shadow-lg hover:shadow-xl dark:shadow-dark-large dark:hover:shadow-dark-glow transition-all duration-200 hover:-translate-y-0.5"
             >
               Get Started Free
@@ -184,7 +333,7 @@ export default function HomePage() {
             Join students who are mastering their courses faster with AI-powered adaptive learning.
           </p>
           <Link
-            href="/courses"
+            href="/sign-up"
             className="inline-flex items-center gap-2 px-8 py-4 bg-white dark:bg-neutral-100 text-primary-700 dark:text-primary-800 text-lg font-semibold rounded-xl hover:bg-primary-50 dark:hover:bg-white shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5"
           >
             Start Learning Today

@@ -11,8 +11,9 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 const RATE_LIMIT_ENABLED = process.env.ENABLE_RATE_LIMITING !== 'false';
 
 // Rate limits per user (configurable via env vars)
-const LESSON_JOBS_PER_MINUTE = parseInt(process.env.LESSON_JOBS_PER_MINUTE || '10', 10);
-const UPLOAD_JOBS_PER_MINUTE = parseInt(process.env.UPLOAD_JOBS_PER_MINUTE || '5', 10);
+// Increased default limits for development - adjust in production via env vars
+const LESSON_JOBS_PER_MINUTE = parseInt(process.env.LESSON_JOBS_PER_MINUTE || '100', 10);
+const UPLOAD_JOBS_PER_MINUTE = parseInt(process.env.UPLOAD_JOBS_PER_MINUTE || '50', 10);
 const WINDOW_SIZE_SECONDS = 60;
 
 let rateLimitClient = null;

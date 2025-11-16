@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 
 type Course = {
@@ -52,6 +52,17 @@ type ConceptWithMastery = {
   correct_attempts: number;
 };
 
+type SectionWithMastery = {
+  id: string;
+  section_number: number;
+  name: string;
+  description: string | null;
+  mastery_level: MasteryLevel;
+  concepts_generated: boolean;
+  page_start: number | null;
+  page_end: number | null;
+};
+
 export default function CoursePage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -62,9 +73,11 @@ export default function CoursePage() {
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
+  const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -284,51 +297,83 @@ export default function CoursePage() {
 
   async function fetchConceptsForDocuments(docs: Document[]) {
     try {
-      // Fetch concept mastery data for each document
-      const conceptPromises = docs.map(async (doc: Document) => {
+      // Fetch both concept mastery data and sections for each document
+      const dataPromises = docs.map(async (doc: Document) => {
         try {
           const masteryUrl = doc.chapter
             ? `/api/concepts/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
             : `/api/concepts/mastery?document_id=${doc.id}`;
 
-          const res = await fetch(masteryUrl);
+          const sectionsUrl = doc.chapter
+            ? `/api/sections/mastery?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter)}`
+            : `/api/sections/mastery?document_id=${doc.id}`;
 
-          if (res.ok) {
-            const data = await res.json();
-            const chapterKey = doc.chapter || 'Uncategorized';
-            return { chapterKey, concepts: data.concepts || [] };
+          const [conceptsRes, sectionsRes] = await Promise.all([
+            fetch(masteryUrl),
+            fetch(sectionsUrl)
+          ]);
+
+          const chapterKey = doc.chapter || 'Uncategorized';
+          let concepts: any[] = [];
+          let sections: any[] = [];
+
+          if (conceptsRes.ok) {
+            const data = await conceptsRes.json();
+            concepts = data.concepts || [];
           }
+
+          if (sectionsRes.ok) {
+            const data = await sectionsRes.json();
+            sections = data.sections || [];
+          }
+
+          return { chapterKey, concepts, sections, documentId: doc.id };
         } catch (error) {
-          console.error(`Failed to fetch concept mastery for document ${doc.id}:`, error);
+          console.error(`Failed to fetch data for document ${doc.id}:`, error);
         }
         return null;
       });
 
-      const conceptResults = await Promise.all(conceptPromises);
+      const results = await Promise.all(dataPromises);
       const conceptsMap: Record<string, ConceptWithMastery[]> = {};
+      const sectionsMap: Record<string, SectionWithMastery[]> = {};
 
-      // Deduplicate concepts by ID
+      // Deduplicate concepts and sections by ID
       const seenConceptIds = new Set<string>();
+      const seenSectionIds = new Set<string>();
 
-      for (const result of conceptResults) {
+      for (const result of results) {
         if (result) {
+          // Initialize chapter arrays if needed
           if (!conceptsMap[result.chapterKey]) {
             conceptsMap[result.chapterKey] = [];
           }
+          if (!sectionsMap[result.chapterKey]) {
+            sectionsMap[result.chapterKey] = [];
+          }
 
-          // Only add concepts we haven't seen before
+          // Add unique concepts
           for (const concept of result.concepts) {
             if (!seenConceptIds.has(concept.id)) {
               seenConceptIds.add(concept.id);
               conceptsMap[result.chapterKey].push(concept);
             }
           }
+
+          // Add unique sections
+          for (const section of result.sections) {
+            if (!seenSectionIds.has(section.id)) {
+              seenSectionIds.add(section.id);
+              sectionsMap[result.chapterKey].push(section);
+            }
+          }
         }
       }
 
       setConceptsByChapter(conceptsMap);
+      setSectionsByChapter(sectionsMap);
     } catch (error) {
-      console.error('Failed to fetch concepts:', error);
+      console.error('Failed to fetch concepts and sections:', error);
     }
   }
 
@@ -359,6 +404,155 @@ export default function CoursePage() {
 
   function handleStartStudy(documentId: string, chapter: string | null) {
     router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}`);
+  }
+
+  async function generateLessonForSection(section: SectionWithMastery, documentId: string, chapter: string | null) {
+    console.log(`[courses] Generating lesson for section ${section.name}`);
+
+    try {
+      const res = await fetch('/api/lessons/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          section_id: section.id,
+          chapter: chapter || undefined,
+          include_check_ins: true
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[courses] Received response:', data);
+
+        // Check if it's a job (async generation) or existing lesson
+        if (data.job_id) {
+          // Lesson is being generated - add to processing jobs
+          console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
+
+          // Store job in sessionStorage for persistence
+          if (typeof window !== 'undefined') {
+            const jobData = {
+              job_id: data.job_id,
+              document_id: documentId,
+              section_id: section.id,
+              section_name: section.name,
+              section_number: section.section_number,
+              chapter: chapter || null,
+              course_id: courseId
+            };
+            sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
+          }
+
+          // Add to processing jobs state
+          setProcessingJobs(prev => [...prev, {
+            job_id: data.job_id,
+            document_id: documentId,
+            section_id: section.id,
+            section_name: section.name,
+            section_number: section.section_number,
+            type: 'lesson',
+            progress: 0,
+            status: 'queued',
+            chapter: chapter || undefined
+          }]);
+
+          // Add to polling set to prevent duplicates
+          pollingJobsRef.current.add(data.job_id);
+
+          // Start polling for job completion
+          createJobPoller(data.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[courses] Generation progress:', job.progress);
+              updateJobProgress(data.job_id, job.progress, job.status);
+            },
+            onComplete: async (job: Job) => {
+              console.log('[courses] Generation completed:', job);
+
+              // Refresh concepts to show the new ones
+              await fetchConceptsForCourse();
+
+              // Remove from processing jobs
+              pollingJobsRef.current.delete(data.job_id);
+              removeProcessingJob(data.job_id);
+            },
+            onError: (error: string) => {
+              console.error('[courses] Generation error:', error);
+              pollingJobsRef.current.delete(data.job_id);
+              removeProcessingJob(data.job_id);
+
+              // Check if it's a retryable error
+              const isOverloaded = error.includes('overloaded') || error.includes('503');
+
+              if (isOverloaded) {
+                const retry = confirm(
+                  `⚠️ AI Service Temporarily Overloaded\n\n` +
+                  `The AI service is currently experiencing high demand. ` +
+                  `This usually resolves within a few seconds.\n\n` +
+                  `Would you like to try again?`
+                );
+
+                if (retry) {
+                  // Retry the generation
+                  setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+                }
+              } else {
+                alert(`Failed to generate lesson: ${error}\n\nPlease try again later.`);
+              }
+            }
+          });
+        } else if (data.lesson_id) {
+          // Lesson already exists - navigate to it
+          console.log(`[courses] Lesson already exists: lesson_id=${data.lesson_id}`);
+          router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
+        const errorMessage = errorData.error || 'Failed to generate lesson';
+
+        // Check if it's a retryable error
+        const isOverloaded = errorMessage.includes('overloaded') || errorMessage.includes('503');
+
+        if (isOverloaded) {
+          const retry = confirm(
+            `⚠️ AI Service Temporarily Overloaded\n\n` +
+            `The AI service is currently experiencing high demand. ` +
+            `This usually resolves within a few seconds.\n\n` +
+            `Would you like to try again?`
+          );
+
+          if (retry) {
+            // Retry the generation
+            setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+            return;
+          }
+        } else {
+          alert(`Failed to generate lesson: ${errorMessage}\n\nPlease try again later.`);
+        }
+      }
+    } catch (error) {
+      console.error('[courses] Error generating lesson:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+
+      // Check if it's a network error
+      const isNetworkError = errorMsg.includes('network') || errorMsg.includes('fetch');
+
+      if (isNetworkError) {
+        const retry = confirm(
+          `⚠️ Connection Error\n\n` +
+          `Unable to reach the server. Please check your internet connection.\n\n` +
+          `Would you like to try again?`
+        );
+
+        if (retry) {
+          setTimeout(() => generateLessonForSection(section, documentId, chapter), 2000);
+          return;
+        }
+      } else {
+        alert('Failed to generate lesson. Please try again later.');
+      }
+    }
   }
 
   function openDeleteModal(documentId: string, title: string) {
@@ -422,14 +616,6 @@ export default function CoursePage() {
           <p className="text-neutral-600 dark:text-neutral-300">
             The course you're looking for doesn't exist or has been deleted.
           </p>
-          <Link href="/courses">
-            <Button variant="primary">
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Courses
-            </Button>
-          </Link>
         </div>
       </Card>
     );
@@ -462,13 +648,7 @@ export default function CoursePage() {
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between">
-        <div className="space-y-3">
-          <Link href="/courses" className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            Back to courses
-          </Link>
+        <div>
           <div>
             <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-100">{course.name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -494,14 +674,12 @@ export default function CoursePage() {
             </div>
           </div>
         </div>
-        <Link href={`/upload?course_id=${course.id}`}>
-          <Button variant="primary" size="lg">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Upload Materials
-          </Button>
-        </Link>
+        <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          Upload Materials
+        </Button>
       </div>
 
       {deleteError && (
@@ -537,20 +715,19 @@ export default function CoursePage() {
             <p className="text-neutral-600 dark:text-neutral-300">
               Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
             </p>
-            <Link href={`/upload?course_id=${course.id}`}>
-              <Button variant="primary" size="lg">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Upload Your First Document
-              </Button>
-            </Link>
+            <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Upload Your First Document
+            </Button>
           </div>
         </Card>
       ) : (
         <div className="space-y-8">
           {chapters.map((chapter) => {
             const chapterConcepts = conceptsByChapter[chapter] || [];
+            const chapterSections = sectionsByChapter[chapter] || [];
 
             const orderedConcepts = [...chapterConcepts].sort((a, b) => {
               const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
@@ -574,23 +751,8 @@ export default function CoursePage() {
               return a.name.localeCompare(b.name);
             });
 
-            // Add lesson generation jobs as loading placeholders
-            const lessonJobs = processingJobs.filter(
-              job => job.type === 'lesson' && (job.chapter || 'Uncategorized') === chapter
-            );
-
-            // Create multiple placeholder squares per generating section (estimated 8 concepts per section)
-            const loadingSkills: SkillSquare[] = lessonJobs.flatMap((job) =>
-              Array.from({ length: 8 }, (_, index) => ({
-                id: `loading-${job.job_id}-${index}`,
-                name: job.section_name || 'Generating...',
-                masteryLevel: 'loading' as MasteryLevel,
-                sectionNumber: job.section_number,
-                sectionName: job.section_name,
-                description: `${job.section_name || 'Section'} - Generating... ${job.progress}%`,
-                onClick: () => {}
-              }))
-            );
+            // Sort sections by section_number
+            const orderedSections = [...chapterSections].sort((a, b) => a.section_number - b.section_number);
 
             // Convert concepts to skills for the mastery grid
             const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
@@ -618,8 +780,76 @@ export default function CoursePage() {
               };
             });
 
-            // Combine loading and concept skills
-            const skills: SkillSquare[] = [...loadingSkills, ...conceptSkills];
+            // Group concepts by section and create section overview squares
+            const skillsWithOverviews: SkillSquare[] = [];
+            const doc = documentsByChapter[chapter]?.[0];
+
+            // Add section overview squares before concepts, with loading placeholders if generating
+            orderedSections.forEach((section) => {
+              // Check if this section is currently generating
+              const isGenerating = processingJobs.some(job =>
+                job.type === 'lesson' &&
+                job.section_id === section.id &&
+                (job.chapter || 'Uncategorized') === chapter
+              );
+
+              // Add section overview square FIRST
+              skillsWithOverviews.push({
+                id: `overview-${section.id}`,
+                name: `${section.name} - Overview`,
+                masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
+                sectionNumber: section.section_number,
+                sectionName: section.name,
+                description: section.concepts_generated
+                  ? (section.description || `Section ${section.section_number} Overview`)
+                  : isGenerating
+                  ? 'Generating concepts...'
+                  : `Click to generate section ${section.section_number}`,
+                onClick: isGenerating ? undefined : () => {
+                  if (doc) {
+                    if (section.concepts_generated) {
+                      // Navigate to overview page
+                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+                    } else {
+                      // Generate lesson and stay on this page
+                      generateLessonForSection(section, doc.id, doc.chapter);
+                    }
+                  }
+                },
+                isOverview: true
+              });
+
+              // Add loading placeholders if generating
+              if (isGenerating) {
+                const job = processingJobs.find(j => j.section_id === section.id);
+                const progress = job?.progress || 0;
+
+                Array.from({ length: 8 }, (_, index) => {
+                  skillsWithOverviews.push({
+                    id: `loading-${section.id}-${index}`,
+                    name: section.name || 'Generating...',
+                    masteryLevel: 'loading' as MasteryLevel,
+                    sectionNumber: section.section_number,
+                    sectionName: section.name,
+                    description: `${section.name || 'Section'} - Generating... ${progress}%`,
+                    onClick: () => {}
+                  });
+                });
+              }
+
+              // Add concepts for this section
+              const sectionConcepts = conceptSkills.filter(
+                skill => skill.sectionNumber === section.section_number
+              );
+              skillsWithOverviews.push(...sectionConcepts);
+            });
+
+            // Add any concepts without a section (fallback)
+            const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
+            skillsWithOverviews.push(...conceptsWithoutSection);
+
+            // Use skillsWithOverviews directly (loading placeholders are now integrated)
+            const skills: SkillSquare[] = skillsWithOverviews;
 
             return (
               <div key={chapter} className="space-y-6">
@@ -627,21 +857,6 @@ export default function CoursePage() {
                   <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
-                  <Button
-                    onClick={() => {
-                      const doc = documentsByChapter[chapter]?.[0];
-                      if (doc) {
-                        handleStartStudy(doc.id, doc.chapter);
-                      }
-                    }}
-                    variant="primary"
-                    disabled={processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter)}
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    {processingJobs.some(job => job.type === 'upload' && (job.chapter || 'Uncategorized') === chapter) ? 'Uploading...' : 'Start Studying'}
-                  </Button>
                 </div>
 
                 {/* Concept Mastery Grid */}
@@ -766,6 +981,13 @@ export default function CoursePage() {
         confirmText="Delete Document"
         cancelText="Cancel"
         variant="danger"
+      />
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        preselectedCourseId={courseId}
       />
     </div>
   );

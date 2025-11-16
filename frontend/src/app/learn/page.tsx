@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 
 type MCQOption = {
   letter: string;
@@ -37,6 +38,15 @@ type Concept = {
   check_ins?: MCQ[];
 };
 
+type ConceptMeta = {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  lesson_position: number;
+  mastery_level: string;
+  accuracy: number;
+};
+
 type Section = {
   id: string;
   section_number: number;
@@ -49,6 +59,7 @@ type Section = {
   generating?: boolean; // Track if this section is being generated
   generation_progress?: number; // Track generation progress
   job_id?: string; // Track the generation job ID
+  concepts?: ConceptMeta[]; // All concepts for this section (fetched upfront)
 };
 
 type DocumentInfo = {
@@ -144,6 +155,7 @@ function LearnPageContent() {
   const chapter = searchParams.get('chapter');
   const urlSectionId = searchParams.get('section_id');
   const targetConceptName = searchParams.get('concept_name') || null;
+  const isOverviewMode = targetConceptName === '__section_overview__';
 
   const clearConceptNavigation = () => {
     const conceptParam = searchParams.get('concept_name');
@@ -185,6 +197,9 @@ function LearnPageContent() {
   const [storedProgress, setStoredProgress] = useState<StoredProgress | null>(null);
   const storageKeyRef = useRef<string | null>(null);
   const activeConceptRef = useRef<HTMLDivElement | null>(null);
+
+  // Concept navigation sidebar state
+  const [isConceptNavCollapsed, setIsConceptNavCollapsed] = useState(false);
 
   // Prevent duplicate API calls in StrictMode
   const hasGeneratedRef = useState({ current: false })[0];
@@ -231,19 +246,53 @@ function LearnPageContent() {
     }
   }, [documentId]);
 
+  // Skip straight to concept learning if concept_name is in URL (but not overview mode)
+  useEffect(() => {
+    if (targetConceptName && !isOverviewMode && sections.length > 0 && !lesson) {
+      // Find which section contains this concept
+      const targetSection = sections.find(s =>
+        s.concepts?.some(c => c.name.toLowerCase() === targetConceptName.toLowerCase())
+      );
+
+      if (targetSection && !selectedSection) {
+        console.log(`[learn] Auto-loading section for concept "${targetConceptName}"`);
+        loadOrGenerateLesson(targetSection);
+      }
+    }
+  }, [targetConceptName, isOverviewMode, sections, lesson, selectedSection]);
+
+  // Auto-load lesson when in overview mode
+  useEffect(() => {
+    if (isOverviewMode && urlSectionId && sections.length > 0) {
+      const targetSection = sections.find(s => s.id === urlSectionId);
+
+      // Load if: no lesson loaded OR different section
+      const needsLoad = !lesson || selectedSection?.id !== urlSectionId;
+
+      if (targetSection && needsLoad) {
+        console.log(`[learn] Auto-loading section for overview mode`);
+        loadOrGenerateLesson(targetSection);
+      }
+    }
+  }, [isOverviewMode, urlSectionId, sections, lesson, selectedSection]);
+
   // Auto-load lesson when section_id is in URL (from grid click)
   useEffect(() => {
-    if (!urlSectionId || !documentId || sections.length === 0 || lesson) {
+    if (!urlSectionId || !documentId || sections.length === 0 || isOverviewMode) {
       return;
     }
 
     // Find the section matching the URL parameter
     const targetSection = sections.find(s => s.id === urlSectionId);
-    if (targetSection) {
+
+    // Load if: no lesson loaded OR different section
+    const needsLoad = !lesson || selectedSection?.id !== urlSectionId;
+
+    if (targetSection && needsLoad) {
       console.log(`[learn] Auto-loading section from URL: ${targetSection.name}`);
       loadOrGenerateLesson(targetSection);
     }
-  }, [urlSectionId, documentId, sections]);
+  }, [urlSectionId, documentId, sections, lesson, selectedSection, isOverviewMode]);
 
   // Restore generating sections from sessionStorage on mount
   useEffect(() => {
@@ -298,11 +347,53 @@ function LearnPageContent() {
       },
       onComplete: async (job: Job) => {
         console.log('[learn] Generation completed:', job);
-        setSections(prev => prev.map(s =>
-          s.id === section.id
-            ? { ...s, generating: false, concepts_generated: true }
-            : s
-        ));
+
+        // Fetch the new concepts for this section
+        try {
+          const conceptsRes = await fetch(chapter
+            ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+            : `/api/concepts/mastery?document_id=${documentId}`
+          );
+
+          if (conceptsRes.ok) {
+            const conceptsData = await conceptsRes.json();
+            const allConcepts = conceptsData.concepts || [];
+
+            // Find concepts for this specific section
+            const sectionConcepts = allConcepts
+              .filter((c: any) => c.section_id === section.id)
+              .map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                concept_number: c.concept_number,
+                lesson_position: c.lesson_position,
+                mastery_level: c.mastery_level,
+                accuracy: c.accuracy
+              }));
+
+            // Update the section with new concepts
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
+                : s
+            ));
+          } else {
+            // Fallback: just mark as generated without concepts
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: false, concepts_generated: true }
+                : s
+            ));
+          }
+        } catch (error) {
+          console.error('[learn] Failed to fetch concepts after generation:', error);
+          // Fallback: just mark as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: false, concepts_generated: true }
+              : s
+          ));
+        }
 
         // Remove from polling set and sessionStorage
         pollingJobsRef.current.delete(jobId);
@@ -349,13 +440,51 @@ function LearnPageContent() {
   async function loadOrGenerateSections() {
     setLoadingSections(true);
     try {
-      // Try to load existing sections
-      const res = await fetch(`/api/sections?document_id=${documentId}`);
+      // Fetch sections and concepts in parallel for efficiency
+      const [sectionsRes, conceptsRes] = await Promise.all([
+        fetch(`/api/sections?document_id=${documentId}`),
+        fetch(chapter
+          ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+          : `/api/concepts/mastery?document_id=${documentId}`)
+      ]);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.sections && data.sections.length > 0) {
-          setSections(data.sections);
+      if (sectionsRes.ok) {
+        const sectionsData = await sectionsRes.json();
+        const sections = sectionsData.sections || [];
+
+        if (sections.length > 0) {
+          // Fetch concepts and attach to sections
+          let conceptsBySectionId: Record<string, ConceptMeta[]> = {};
+
+          if (conceptsRes.ok) {
+            const conceptsData = await conceptsRes.json();
+            const allConcepts = conceptsData.concepts || [];
+
+            // Group concepts by section_id
+            for (const concept of allConcepts) {
+              if (concept.section_id) {
+                if (!conceptsBySectionId[concept.section_id]) {
+                  conceptsBySectionId[concept.section_id] = [];
+                }
+                conceptsBySectionId[concept.section_id].push({
+                  id: concept.id,
+                  name: concept.name,
+                  concept_number: concept.concept_number,
+                  lesson_position: concept.lesson_position,
+                  mastery_level: concept.mastery_level,
+                  accuracy: concept.accuracy
+                });
+              }
+            }
+          }
+
+          // Attach concepts to their respective sections
+          const sectionsWithConcepts = sections.map((section: Section) => ({
+            ...section,
+            concepts: conceptsBySectionId[section.id] || []
+          }));
+
+          setSections(sectionsWithConcepts);
           setLoadingSections(false);
           setLoading(false);
           // Don't change view state here - let document summary screen control it
@@ -388,7 +517,12 @@ function LearnPageContent() {
 
       if (res.ok) {
         const data = await res.json();
-        setSections(data.sections || []);
+        const generatedSections = data.sections || [];
+
+        // After generating sections, re-fetch to attach concepts
+        // (In case any sections already had lessons generated)
+        await loadOrGenerateSections();
+
         setShowingSections(true);
       } else {
         const errorData = await res.json();
@@ -421,7 +555,7 @@ function LearnPageContent() {
         setLesson(normalizedLesson);
 
         // Navigate appropriately
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           const targetIndex = concepts.findIndex(c =>
             c.name.toLowerCase() === targetConceptName.toLowerCase()
@@ -440,6 +574,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
+          // Overview mode or no target concept - show summary
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -549,8 +684,9 @@ function LearnPageContent() {
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - isOverviewMode:', isOverviewMode);
         console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           // Search for concept by name (case-insensitive)
           const targetIndex = concepts.findIndex(c =>
@@ -576,7 +712,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
-          // No target concept, show summary screen
+          // Overview mode or no target concept - show summary screen
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -718,8 +854,9 @@ function LearnPageContent() {
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - isOverviewMode:', isOverviewMode);
         console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           // Search for concept by name (case-insensitive)
           const targetIndex = concepts.findIndex(c =>
@@ -745,7 +882,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
-          // No target concept, show summary screen
+          // Overview mode or no target concept - show summary screen
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -850,7 +987,7 @@ function LearnPageContent() {
 
   // Handle direct navigation to a specific concept via URL (name-based)
   useEffect(() => {
-    if (!lesson || !targetConceptName || showingSummary) {
+    if (!lesson || !targetConceptName || isOverviewMode || showingSummary) {
       return;
     }
 
@@ -867,11 +1004,10 @@ function LearnPageContent() {
       setShowingSummary(false);
       setShowingSections(false);
 
-      // Clear the concept navigation parameter after honoring it once
-      // so subsequent manual navigation isn't overridden by this effect.
-      clearConceptNavigation();
+      // Don't clear navigation - URL updates when navigating between concepts
+      // This ensures refresh keeps you on the same concept
     }
-  }, [lesson, targetConceptName, showingSummary, currentConceptIndex]);
+  }, [lesson, targetConceptName, isOverviewMode, showingSummary, currentConceptIndex]);
 
   useEffect(() => {
     if (showingSummary) {
@@ -1047,7 +1183,6 @@ function LearnPageContent() {
     }
 
     void startStudySession();
-    clearConceptNavigation();
 
     if (storedProgress) {
       setConceptProgress(new Map(storedProgress.conceptProgress || []));
@@ -1059,6 +1194,14 @@ function LearnPageContent() {
       setAnswerHistory({});
       setCurrentConceptIndex(0);
       setCurrentMCQIndex(0);
+    }
+
+    // Update URL to first concept when starting from overview mode
+    if (isOverviewMode && lesson.concepts && lesson.concepts.length > 0 && selectedSection) {
+      const firstConcept = lesson.concepts[0];
+      router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+    } else {
+      clearConceptNavigation();
     }
 
     setShowingSummary(false);
@@ -1115,6 +1258,47 @@ function LearnPageContent() {
       });
     }
 
+    // Update mastery in sidebar immediately after answering
+    if (currentConcept && selectedSection) {
+      const mcqs = currentConcept.check_ins || [];
+      let correctCount = 0;
+      let totalCount = 0;
+
+      // Count all answers including the current one
+      mcqs.forEach((_, mcqIdx) => {
+        const k = makeQuestionKey(currentConceptIndex, mcqIdx);
+        const ans = answerHistory[k];
+        if (ans) {
+          totalCount++;
+          if (ans.correct) correctCount++;
+        }
+      });
+
+      // Include current answer
+      totalCount++;
+      if (wasCorrect) correctCount++;
+
+      const accuracy = Math.round((correctCount / totalCount) * 100);
+      const newMasteryLevel =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'incorrect' :
+        'in_progress';
+
+      setSections(prev => prev.map(s => {
+        if (s.id === selectedSection.id && s.concepts) {
+          return {
+            ...s,
+            concepts: s.concepts.map(c =>
+              c.name.toLowerCase() === currentConcept.name.toLowerCase()
+                ? { ...c, mastery_level: newMasteryLevel, accuracy }
+                : c
+            )
+          };
+        }
+        return s;
+      }));
+    }
+
     if (currentConcept) {
       void recordCheckIn({
         wasCorrect,
@@ -1157,9 +1341,55 @@ function LearnPageContent() {
       return updated;
     });
 
+    // Update mastery in sections state for real-time sidebar update
+    if (currentConcept && selectedSection) {
+      // Calculate accuracy based on all questions for this concept
+      const mcqs = currentConcept.check_ins || [];
+      let correctCount = 0;
+      let totalCount = 0;
+
+      // Count all answers for this concept
+      mcqs.forEach((_, mcqIdx) => {
+        const key = makeQuestionKey(currentConceptIndex, mcqIdx);
+        const ans = answerHistory[key];
+        if (ans) {
+          totalCount++;
+          if (ans.correct) correctCount++;
+        }
+      });
+
+      const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+      const newMasteryLevel =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'incorrect' :
+        'in_progress';
+
+      setSections(prev => prev.map(s => {
+        if (s.id === selectedSection.id && s.concepts) {
+          return {
+            ...s,
+            concepts: s.concepts.map(c =>
+              c.name.toLowerCase() === currentConcept.name.toLowerCase()
+                ? { ...c, mastery_level: newMasteryLevel, accuracy }
+                : c
+            )
+          };
+        }
+        return s;
+      }));
+    }
+
     if (currentConceptIndex < lesson.concepts.length - 1) {
-      setCurrentConceptIndex((prev) => prev + 1);
+      const nextConceptIndex = currentConceptIndex + 1;
+      const nextConcept = lesson.concepts[nextConceptIndex];
+
+      setCurrentConceptIndex(nextConceptIndex);
       setCurrentMCQIndex(0);
+
+      // Update URL to preserve state on refresh
+      if (nextConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
+      }
     } else {
       if (storageKeyRef.current && typeof window !== 'undefined') {
         try {
@@ -1171,12 +1401,10 @@ function LearnPageContent() {
 
       await completeStudySession();
 
-      // Return to sections if available, otherwise go to courses
-      if (sections.length > 0) {
-        setShowingSummary(false);
-        setShowingSections(true);
-        setLesson(null);
-        setSelectedSection(null);
+      // Return to course page (sections list view eliminated)
+      const courseId = documentInfo?.course_id;
+      if (courseId) {
+        router.push(`/courses/${courseId}`);
       } else {
         router.push('/courses');
       }
@@ -1206,20 +1434,26 @@ function LearnPageContent() {
     });
 
     if (currentConceptIndex < lesson.concepts.length - 1) {
-      setCurrentConceptIndex((prev) => prev + 1);
+      const nextConceptIndex = currentConceptIndex + 1;
+      const nextConcept = lesson.concepts[nextConceptIndex];
+
+      setCurrentConceptIndex(nextConceptIndex);
       setCurrentMCQIndex(0);
+
+      // Update URL to preserve state on refresh
+      if (nextConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
+      }
     } else {
       if (storageKeyRef.current && typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKeyRef.current);
       }
       void completeStudySession();
 
-      // Return to sections if available, otherwise go to courses
-      if (sections.length > 0) {
-        setShowingSummary(false);
-        setShowingSections(true);
-        setLesson(null);
-        setSelectedSection(null);
+      // Return to course page (sections list view eliminated)
+      const courseId = documentInfo?.course_id;
+      if (courseId) {
+        router.push(`/courses/${courseId}`);
       } else {
         router.push('/courses');
       }
@@ -1305,129 +1539,16 @@ function LearnPageContent() {
     );
   }
 
-  // Show document summary screen (first screen after loading)
-  // Show section selection screen
-  if (showingSections && sections.length > 0) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div>
-          <button
-            onClick={() => {
-              const courseId = documentInfo?.course_id;
-              if (courseId) {
-                router.push(`/courses/${courseId}`);
-              } else {
-                router.push('/courses');
-              }
-            }}
-            className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
-          >
-            ← Back to course
-          </button>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-neutral-100">
-              Select a Section to Study
-            </h1>
-            <p className="mt-2 text-slate-600 dark:text-neutral-300">
-              This document has been divided into {sections.length} major sections.
-              Click on a section to generate concepts and start learning.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {sections.map((section) => {
-              const isGenerating = section.generating || false;
-              const progress = section.generation_progress || 0;
-
-              return (
-              <button
-                key={section.id}
-                onClick={() => generateLessonForSection(section)}
-                disabled={isGenerating}
-                className={`
-                  relative rounded-lg border-2 p-6 text-left transition-all
-                  ${section.concepts_generated
-                    ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
-                    : isGenerating
-                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}
-                  ${isGenerating ? 'cursor-not-allowed' : 'cursor-pointer'}
-                `}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <span className="inline-block rounded-full bg-slate-200 dark:bg-neutral-700 px-3 py-1 text-sm font-semibold text-slate-700 dark:text-neutral-300">
-                    Section {section.section_number}
-                  </span>
-                  {section.concepts_generated && !isGenerating && (
-                    <span className="text-green-600 dark:text-green-400 text-sm font-medium">✓ Ready</span>
-                  )}
-                  {isGenerating && (
-                    <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 dark:border-blue-400"></div>
-                      {progress}%
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mb-2">
-                  {section.name}
-                </h3>
-                {section.description && (
-                  <p className="text-sm text-slate-600 dark:text-neutral-300 mb-3">
-                    {section.description}
-                  </p>
-                )}
-                {section.page_start && section.page_end && (
-                  <p className="text-xs text-slate-500 dark:text-neutral-400">
-                    Pages {section.page_start}-{section.page_end}
-                  </p>
-                )}
-
-                {/* Progress bar for generating sections */}
-                {isGenerating && (
-                  <div className="mt-4">
-                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                      Generating concepts...
-                    </p>
-                  </div>
-                )}
-
-                {!isGenerating && (
-                  <div className="mt-4">
-                    <span className={`
-                      text-sm font-medium
-                      ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
-                    `}>
-                      {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
-                    </span>
-                  </div>
-                )}
-              </button>
-              );
-            })}
-          </div>
-
-          {generatingSections && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
-              <p className="text-blue-900 dark:text-blue-300 font-medium">
-                Analyzing document structure...
-              </p>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                Extracting major sections from the document
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  // Redirect to course page if no section_id is in URL (sections list eliminated)
+  // Users should navigate from course page directly to section overview or concepts
+  if (!urlSectionId && !showingSections) {
+    const courseId = documentInfo?.course_id;
+    if (courseId) {
+      router.push(`/courses/${courseId}`);
+    } else {
+      router.push('/courses');
+    }
+    return <LearnPageFallback />;
   }
 
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
@@ -1557,24 +1678,23 @@ function LearnPageContent() {
     );
   }
 
-  // Show summary screen
+  // Show summary screen (section overview)
   if (showingSummary) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <button
             onClick={() => {
-              if (sections.length > 0) {
-                clearConceptNavigation();
-                setShowingSummary(false);
-                setShowingSections(true);
+              const courseId = documentInfo?.course_id;
+              if (courseId) {
+                router.push(`/courses/${courseId}`);
               } else {
                 router.push('/courses');
               }
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
-            ← {sections.length > 0 ? 'Back to sections' : 'Back to courses'}
+            ← Back to course
           </button>
           {chapter && (
             <span className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1631,9 +1751,73 @@ function LearnPageContent() {
     );
   }
 
+  // Determine if we should show the navigation sidebar
+  // Hide it if user has switched to main sidebar via ?sidebar=main
+  const showingMainSidebar = searchParams.get('sidebar') === 'main';
+
+  // Show overview if section_id present but no concept_name (or explicitly showing summary)
+  const isShowingOverview = lesson && selectedSection && (!targetConceptName || showingSummary);
+
+  const showNavigationSidebar = !showingSections && lesson && sections.length > 0 && !showingMainSidebar;
+
   // Show concept learning screen
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <>
+      {/* Concept Navigation Sidebar */}
+      {showNavigationSidebar && (
+        <ConceptNavigationSidebar
+          documentInfo={documentInfo}
+          sections={sections}
+          currentSectionId={selectedSection?.id || null}
+          currentConceptName={currentConcept?.name || null}
+          concepts={lesson?.concepts || []}
+          onSectionClick={(section) => {
+            // Load the section's lesson when clicked from navigation
+            loadOrGenerateLesson(section);
+          }}
+          onConceptClick={(conceptName) => {
+            // Find which section contains this concept
+            const targetSection = sections.find(s =>
+              s.concepts?.some(c => c.name.toLowerCase() === conceptName.toLowerCase())
+            );
+
+            if (targetSection) {
+              // Always navigate via URL to ensure persistence on refresh
+              const targetUrl = `/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${targetSection.id}&concept_name=${encodeURIComponent(conceptName)}`;
+
+              // If it's the same section and lesson is loaded, navigate directly
+              if (targetSection.id === selectedSection?.id && lesson) {
+                const concepts = lesson?.concepts || [];
+                const targetIndex = concepts.findIndex(c =>
+                  c.name.toLowerCase() === conceptName.toLowerCase()
+                );
+
+                if (targetIndex >= 0) {
+                  // Update URL to preserve state on refresh
+                  router.push(targetUrl);
+                  setCurrentConceptIndex(targetIndex);
+                  setCurrentMCQIndex(0);
+                  setShowingSummary(false);
+                  setShowingSections(false);
+                  scrollToTop();
+                  return;
+                }
+              }
+
+              // Different section or lesson not loaded - navigate via URL
+              router.push(targetUrl);
+            }
+          }}
+          onGenerateSection={(section) => {
+            generateLessonForSection(section);
+          }}
+          onCollapseChange={setIsConceptNavCollapsed}
+        />
+      )}
+
+      {/* Content area - always ml-64 when sidebar present to prevent animation on sidebar switch */}
+      <div className={`transition-none ${(showNavigationSidebar && !isConceptNavCollapsed) || showingMainSidebar ? 'ml-64' : ''}`}>
+        <div className={`mx-auto space-y-6 ${(showNavigationSidebar && !isConceptNavCollapsed) || showingMainSidebar ? 'max-w-5xl' : 'max-w-6xl'}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
@@ -1874,7 +2058,9 @@ function LearnPageContent() {
           })}
         </div>
       </div>
-    </div>
+      </div>
+      </div>
+    </>
   );
 }
 
