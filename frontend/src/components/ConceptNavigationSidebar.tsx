@@ -228,7 +228,10 @@ export default function ConceptNavigationSidebar({
                             // Determine mastery color
                             const getMasteryColor = () => {
                               const level = concept.mastery_level;
-                              if (level === 'completed' || concept.accuracy === 100) {
+                              // Check not_started first to avoid false positive with accuracy 0
+                              if (level === 'not_started') {
+                                return 'bg-neutral-300 dark:bg-neutral-600';
+                              } else if (level === 'completed' || concept.accuracy === 100) {
                                 return 'bg-green-500 dark:bg-green-600';
                               } else if (level === 'incorrect' || concept.accuracy === 0) {
                                 return 'bg-red-500 dark:bg-red-600';

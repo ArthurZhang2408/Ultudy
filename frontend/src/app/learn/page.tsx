@@ -966,9 +966,8 @@ function LearnPageContent() {
       setShowingSummary(false);
       setShowingSections(false);
 
-      // Clear the concept navigation parameter after honoring it once
-      // so subsequent manual navigation isn't overridden by this effect.
-      clearConceptNavigation();
+      // Don't clear navigation - URL updates when navigating between concepts
+      // This ensures refresh keeps you on the same concept
     }
   }, [lesson, targetConceptName, showingSummary, currentConceptIndex]);
 
@@ -1336,8 +1335,16 @@ function LearnPageContent() {
     }
 
     if (currentConceptIndex < lesson.concepts.length - 1) {
-      setCurrentConceptIndex((prev) => prev + 1);
+      const nextConceptIndex = currentConceptIndex + 1;
+      const nextConcept = lesson.concepts[nextConceptIndex];
+
+      setCurrentConceptIndex(nextConceptIndex);
       setCurrentMCQIndex(0);
+
+      // Update URL to preserve state on refresh
+      if (nextConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
+      }
     } else {
       if (storageKeyRef.current && typeof window !== 'undefined') {
         try {
@@ -1384,8 +1391,16 @@ function LearnPageContent() {
     });
 
     if (currentConceptIndex < lesson.concepts.length - 1) {
-      setCurrentConceptIndex((prev) => prev + 1);
+      const nextConceptIndex = currentConceptIndex + 1;
+      const nextConcept = lesson.concepts[nextConceptIndex];
+
+      setCurrentConceptIndex(nextConceptIndex);
       setCurrentMCQIndex(0);
+
+      // Update URL to preserve state on refresh
+      if (nextConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
+      }
     } else {
       if (storageKeyRef.current && typeof window !== 'undefined') {
         window.localStorage.removeItem(storageKeyRef.current);
@@ -1836,27 +1851,30 @@ function LearnPageContent() {
             );
 
             if (targetSection) {
-              // If it's a different section, load it first
-              if (targetSection.id !== selectedSection?.id) {
-                loadOrGenerateLesson(targetSection);
+              // Always navigate via URL to ensure persistence on refresh
+              const targetUrl = `/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${targetSection.id}&concept_name=${encodeURIComponent(conceptName)}`;
+
+              // If it's the same section and lesson is loaded, navigate directly
+              if (targetSection.id === selectedSection?.id && lesson) {
+                const concepts = lesson?.concepts || [];
+                const targetIndex = concepts.findIndex(c =>
+                  c.name.toLowerCase() === conceptName.toLowerCase()
+                );
+
+                if (targetIndex >= 0) {
+                  // Update URL to preserve state on refresh
+                  router.push(targetUrl);
+                  setCurrentConceptIndex(targetIndex);
+                  setCurrentMCQIndex(0);
+                  setShowingSummary(false);
+                  setShowingSections(false);
+                  scrollToTop();
+                  return;
+                }
               }
 
-              // Navigate to specific concept in the lesson
-              const concepts = lesson?.concepts || [];
-              const targetIndex = concepts.findIndex(c =>
-                c.name.toLowerCase() === conceptName.toLowerCase()
-              );
-
-              if (targetIndex >= 0) {
-                setCurrentConceptIndex(targetIndex);
-                setCurrentMCQIndex(0);
-                setShowingSummary(false);
-                setShowingSections(false);
-                scrollToTop();
-              } else if (targetSection.id !== selectedSection?.id) {
-                // Will be handled after lesson loads via URL params
-                router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${targetSection.id}&concept_name=${encodeURIComponent(conceptName)}`);
-              }
+              // Different section or lesson not loaded - navigate via URL
+              router.push(targetUrl);
             }
           }}
           onGenerateSection={(section) => {
