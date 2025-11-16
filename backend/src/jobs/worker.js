@@ -17,8 +17,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
 
 // Concurrency settings - how many jobs to process in parallel per queue
-const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_QUEUE_CONCURRENCY || '3', 10);
-const LESSON_CONCURRENCY = parseInt(process.env.LESSON_QUEUE_CONCURRENCY || '2', 10);
+// In production with multiple worker instances, each instance will process this many
+const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_QUEUE_CONCURRENCY || '5', 10);
+const LESSON_CONCURRENCY = parseInt(process.env.LESSON_QUEUE_CONCURRENCY || '3', 10);
+
+// Worker instance ID for logging (useful when running multiple workers)
+const WORKER_ID = process.env.WORKER_ID || `worker-${process.pid}`;
 
 export function setupWorkers(options = {}) {
   const {
@@ -39,9 +43,11 @@ export function setupWorkers(options = {}) {
     llmProviderFactory
   });
 
+  console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
+
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
-    console.log(`[Worker] Processing upload job ${job.id}`);
+    console.log(`[Worker:${WORKER_ID}] Processing upload job ${job.id}`);
     return await processUploadJob(job, {
       tenantHelpers,
       jobTracker,
@@ -51,7 +57,7 @@ export function setupWorkers(options = {}) {
 
   // Lesson generation job processor - process up to LESSON_CONCURRENCY jobs in parallel
   lessonQueue.process(LESSON_CONCURRENCY, async (job) => {
-    console.log(`[Worker] Processing lesson job ${job.id}`);
+    console.log(`[Worker:${WORKER_ID}] Processing lesson job ${job.id}`);
     return await processLessonJob(job, {
       tenantHelpers,
       jobTracker,
@@ -59,9 +65,9 @@ export function setupWorkers(options = {}) {
     });
   });
 
-  console.log('[Worker] Job processors started');
-  console.log(`[Worker] - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
-  console.log(`[Worker] - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
+  console.log(`[Worker:${WORKER_ID}] Job processors started`);
+  console.log(`[Worker:${WORKER_ID}] - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
+  console.log(`[Worker:${WORKER_ID}] - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
 
   return {
     uploadQueue,

@@ -14,6 +14,7 @@ import createAdminRouter from './routes/admin.js';
 import setupWorkers from './jobs/worker.js';
 import { uploadQueue, lessonQueue } from './jobs/queue.js';
 import { createJobTracker } from './jobs/tracking.js';
+import { checkRateLimit } from './jobs/ratelimit.js';
 
 export function createApp(options = {}) {
   const app = express();
@@ -152,7 +153,8 @@ export function createApp(options = {}) {
         llmProviderFactory: options.llmProviderFactory,
         tenantHelpers,
         jobTracker,
-        lessonQueue
+        lessonQueue,
+        checkRateLimit
       })
     );
 

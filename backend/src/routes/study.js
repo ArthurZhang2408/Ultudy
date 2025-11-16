@@ -302,7 +302,7 @@ export default function createStudyRouter(options = {}) {
   // Now supports section-scoped generation for multi-layer structure
   // Returns immediately with a job ID, processing happens in background
   router.post('/lessons/generate', async (req, res) => {
-    const { document_id, section_id, chapter, include_check_ins = true } = req.body || {};
+    const { document_id, section_id, chapter, include_check_ins = true, priority = 'normal' } = req.body || {};
     const ownerId = req.userId;
 
     console.log('');
@@ -321,6 +321,22 @@ export default function createStudyRouter(options = {}) {
     }
 
     try {
+      // Rate limiting check
+      if (options.checkRateLimit) {
+        const rateLimitResult = await options.checkRateLimit(ownerId, 'lesson');
+        if (!rateLimitResult.allowed) {
+          return res.status(429).json({
+            error: 'Too many lesson generation requests',
+            limit: rateLimitResult.limit,
+            retryAfter: rateLimitResult.retryAfter
+          });
+        }
+        // Only set headers if rate limiting is actually enabled
+        if (rateLimitResult.limit !== undefined) {
+          res.setHeader('X-RateLimit-Limit', rateLimitResult.limit);
+          res.setHeader('X-RateLimit-Remaining', rateLimitResult.remaining);
+        }
+      }
       // Step 1: Check if lesson already exists (quick check before queuing)
       const existingLesson = await tenantHelpers.withTenant(ownerId, async (client) => {
         let query, params;
@@ -362,6 +378,9 @@ export default function createStudyRouter(options = {}) {
       });
 
       // Queue the job (in CI/test mode, this will process synchronously via mock queue)
+      // Priority: 1 = high, 2 = normal (default), 3 = low
+      const priorityValue = priority === 'high' ? 1 : priority === 'low' ? 3 : 2;
+
       await options.lessonQueue.add({
         jobId,
         ownerId,
@@ -369,9 +388,11 @@ export default function createStudyRouter(options = {}) {
         section_id,
         chapter,
         include_check_ins
+      }, {
+        priority: priorityValue
       });
 
-      console.log(`[lessons/generate] ✅ Job ${jobId} queued`);
+      console.log(`[lessons/generate] ✅ Job ${jobId} queued (priority: ${priority})`);
 
       // In test/CI mode, job was processed synchronously - fetch and return the lesson
       const isTestMode = process.env.CI === 'true' || process.env.DISABLE_QUEUES === 'true';

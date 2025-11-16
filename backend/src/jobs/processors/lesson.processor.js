@@ -5,6 +5,7 @@
  */
 
 import { extractSectionText } from '../../study/section.service.js';
+import { getCachedLesson, cacheLesson } from '../cache.js';
 
 // Helper to attach check-ins to concepts
 // Note: Concepts may already have check_ins embedded from LLM provider
@@ -42,8 +43,22 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
     await jobTracker.startJob(ownerId, jobId);
     await jobTracker.updateProgress(ownerId, jobId, 10);
 
+    // Step 0: Check Redis cache first (cross-server cache)
+    const cachedLessonData = await getCachedLesson(document_id, section_id, include_check_ins);
+    if (cachedLessonData) {
+      console.log(`[LessonProcessor] Found lesson in Redis cache for ${section_id ? `section ${section_id}` : `document ${document_id}`}`);
+
+      await jobTracker.completeJob(ownerId, jobId, {
+        lesson_id: cachedLessonData.id,
+        cached: true,
+        cache_source: 'redis'
+      });
+
+      return cachedLessonData;
+    }
+
     const lesson = await tenantHelpers.withTenant(ownerId, async (client) => {
-      // Step 1: Check if lesson already exists
+      // Step 1: Check if lesson already exists in database
       let existingLessons;
       if (section_id) {
         const { rows } = await client.query(
@@ -237,7 +252,7 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
 
       console.log(`[LessonProcessor] ✅ Job ${jobId} complete`);
 
-      return {
+      const lessonData = {
         id: lessonId,
         document_id,
         section_id: section_id || null,
@@ -249,6 +264,11 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
         concepts: conceptsForStorage,
         created_at: insertedLesson[0].created_at
       };
+
+      // Cache the lesson to Redis for cross-server performance
+      await cacheLesson(document_id, section_id, include_check_ins, lessonData);
+
+      return lessonData;
     });
 
     // Mark job as completed
