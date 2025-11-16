@@ -155,6 +155,7 @@ function LearnPageContent() {
   const chapter = searchParams.get('chapter');
   const urlSectionId = searchParams.get('section_id');
   const targetConceptName = searchParams.get('concept_name') || null;
+  const isOverviewMode = targetConceptName === '__section_overview__';
 
   const clearConceptNavigation = () => {
     const conceptParam = searchParams.get('concept_name');
@@ -245,9 +246,9 @@ function LearnPageContent() {
     }
   }, [documentId]);
 
-  // Skip straight to concept learning if concept_name is in URL
+  // Skip straight to concept learning if concept_name is in URL (but not overview mode)
   useEffect(() => {
-    if (targetConceptName && sections.length > 0 && !lesson) {
+    if (targetConceptName && !isOverviewMode && sections.length > 0 && !lesson) {
       // Find which section contains this concept
       const targetSection = sections.find(s =>
         s.concepts?.some(c => c.name.toLowerCase() === targetConceptName.toLowerCase())
@@ -258,11 +259,22 @@ function LearnPageContent() {
         loadOrGenerateLesson(targetSection);
       }
     }
-  }, [targetConceptName, sections, lesson, selectedSection]);
+  }, [targetConceptName, isOverviewMode, sections, lesson, selectedSection]);
+
+  // Auto-load lesson when in overview mode
+  useEffect(() => {
+    if (isOverviewMode && urlSectionId && sections.length > 0 && !lesson) {
+      const targetSection = sections.find(s => s.id === urlSectionId);
+      if (targetSection && !selectedSection) {
+        console.log(`[learn] Auto-loading section for overview mode`);
+        loadOrGenerateLesson(targetSection);
+      }
+    }
+  }, [isOverviewMode, urlSectionId, sections, lesson, selectedSection]);
 
   // Auto-load lesson when section_id is in URL (from grid click)
   useEffect(() => {
-    if (!urlSectionId || !documentId || sections.length === 0) {
+    if (!urlSectionId || !documentId || sections.length === 0 || isOverviewMode) {
       return;
     }
 
@@ -276,7 +288,7 @@ function LearnPageContent() {
       console.log(`[learn] Auto-loading section from URL: ${targetSection.name}`);
       loadOrGenerateLesson(targetSection);
     }
-  }, [urlSectionId, documentId, sections, lesson, selectedSection]);
+  }, [urlSectionId, documentId, sections, lesson, selectedSection, isOverviewMode]);
 
   // Restore generating sections from sessionStorage on mount
   useEffect(() => {
@@ -539,7 +551,7 @@ function LearnPageContent() {
         setLesson(normalizedLesson);
 
         // Navigate appropriately
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           const targetIndex = concepts.findIndex(c =>
             c.name.toLowerCase() === targetConceptName.toLowerCase()
@@ -558,6 +570,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
+          // Overview mode or no target concept - show summary
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -667,8 +680,9 @@ function LearnPageContent() {
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - isOverviewMode:', isOverviewMode);
         console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           // Search for concept by name (case-insensitive)
           const targetIndex = concepts.findIndex(c =>
@@ -694,7 +708,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
-          // No target concept, show summary screen
+          // Overview mode or no target concept - show summary screen
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -836,8 +850,9 @@ function LearnPageContent() {
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
+        console.log('[learn] Navigation check - isOverviewMode:', isOverviewMode);
         console.log('[learn] Navigation check - concepts count:', normalizedLesson.concepts?.length);
-        if (targetConceptName) {
+        if (targetConceptName && !isOverviewMode) {
           const concepts = normalizedLesson.concepts || [];
           // Search for concept by name (case-insensitive)
           const targetIndex = concepts.findIndex(c =>
@@ -863,7 +878,7 @@ function LearnPageContent() {
             setShowingSummary(true);
           }
         } else {
-          // No target concept, show summary screen
+          // Overview mode or no target concept - show summary screen
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
@@ -968,7 +983,7 @@ function LearnPageContent() {
 
   // Handle direct navigation to a specific concept via URL (name-based)
   useEffect(() => {
-    if (!lesson || !targetConceptName || showingSummary) {
+    if (!lesson || !targetConceptName || isOverviewMode || showingSummary) {
       return;
     }
 
@@ -988,7 +1003,7 @@ function LearnPageContent() {
       // Don't clear navigation - URL updates when navigating between concepts
       // This ensures refresh keeps you on the same concept
     }
-  }, [lesson, targetConceptName, showingSummary, currentConceptIndex]);
+  }, [lesson, targetConceptName, isOverviewMode, showingSummary, currentConceptIndex]);
 
   useEffect(() => {
     if (showingSummary) {
@@ -1164,7 +1179,6 @@ function LearnPageContent() {
     }
 
     void startStudySession();
-    clearConceptNavigation();
 
     if (storedProgress) {
       setConceptProgress(new Map(storedProgress.conceptProgress || []));
@@ -1176,6 +1190,14 @@ function LearnPageContent() {
       setAnswerHistory({});
       setCurrentConceptIndex(0);
       setCurrentMCQIndex(0);
+    }
+
+    // Update URL to first concept when starting from overview mode
+    if (isOverviewMode && lesson.concepts && lesson.concepts.length > 0 && selectedSection) {
+      const firstConcept = lesson.concepts[0];
+      router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+    } else {
+      clearConceptNavigation();
     }
 
     setShowingSummary(false);

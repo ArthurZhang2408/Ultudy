@@ -664,15 +664,11 @@ export default function CoursePage() {
                 sectionName: section.name,
                 description: section.description || `Section ${section.section_number} Overview`,
                 onClick: () => {
-                  if (doc) {
-                    if (section.concepts_generated) {
-                      // Navigate to section overview
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}`);
-                    } else {
-                      // Navigate to learn page which will trigger section generation
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}`);
-                    }
+                  if (doc && section.concepts_generated) {
+                    // Navigate to overview as a special concept (parallel to other concepts, not above them)
+                    router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
                   }
+                  // If not generated, clicking does nothing (will break otherwise)
                 },
                 isOverview: true
               });
