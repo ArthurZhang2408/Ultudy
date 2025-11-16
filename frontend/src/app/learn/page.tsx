@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormattedText } from '../../components/FormattedText';
+import { createJobPoller, type Job } from '@/lib/jobs';
 
 type MCQOption = {
   letter: string;
@@ -45,6 +46,9 @@ type Section = {
   page_end: number | null;
   concepts_generated: boolean;
   created_at: string;
+  generating?: boolean; // Track if this section is being generated
+  generation_progress?: number; // Track generation progress
+  job_id?: string; // Track the generation job ID
 };
 
 type DocumentInfo = {
@@ -185,6 +189,9 @@ function LearnPageContent() {
   // Prevent duplicate API calls in StrictMode
   const hasGeneratedRef = useState({ current: false })[0];
 
+  // Track active pollers to prevent duplicates
+  const pollingJobsRef = useRef<Set<string>>(new Set());
+
   function makeQuestionKey(conceptIndex: number, mcqIndex: number) {
     return `${conceptIndex}-${mcqIndex}`;
   }
@@ -237,6 +244,88 @@ function LearnPageContent() {
       loadOrGenerateLesson(targetSection);
     }
   }, [urlSectionId, documentId, sections]);
+
+  // Restore generating sections from sessionStorage on mount
+  useEffect(() => {
+    if (!documentId || sections.length === 0 || typeof window === 'undefined') {
+      return;
+    }
+
+    // Look for any lesson generation jobs in sessionStorage
+    const storageKeys = Object.keys(sessionStorage);
+    const lessonJobKeys = storageKeys.filter(key => key.startsWith('lesson-job-'));
+
+    lessonJobKeys.forEach(key => {
+      try {
+        const jobData = JSON.parse(sessionStorage.getItem(key) || '{}');
+
+        // Only restore if it's for this document
+        if (jobData.document_id === documentId && jobData.job_id) {
+          const section = sections.find(s => s.id === jobData.section_id);
+
+          if (section && !pollingJobsRef.current.has(jobData.job_id)) {
+            console.log(`[learn] Restoring generation job for section ${section.name}`);
+
+            // Mark section as generating
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: true, generation_progress: 0, job_id: jobData.job_id }
+                : s
+            ));
+
+            // Resume polling
+            pollingJobsRef.current.add(jobData.job_id);
+            resumeLessonGenerationPolling(jobData.job_id, section);
+          }
+        }
+      } catch (error) {
+        console.error('[learn] Failed to restore job from sessionStorage:', error);
+      }
+    });
+  }, [documentId, sections]);
+
+  // Helper function to resume polling for a lesson generation job
+  function resumeLessonGenerationPolling(jobId: string, section: Section) {
+    createJobPoller(jobId, {
+      interval: 2000,
+      onProgress: (job: Job) => {
+        console.log('[learn] Generation progress:', job.progress);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generation_progress: job.progress }
+            : s
+        ));
+      },
+      onComplete: async (job: Job) => {
+        console.log('[learn] Generation completed:', job);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generating: false, concepts_generated: true }
+            : s
+        ));
+
+        // Remove from polling set and sessionStorage
+        pollingJobsRef.current.delete(jobId);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(`lesson-job-${jobId}`);
+        }
+      },
+      onError: (error: string) => {
+        console.error('[learn] Generation error:', error);
+        setSections(prev => prev.map(s =>
+          s.id === section.id
+            ? { ...s, generating: false }
+            : s
+        ));
+
+        // Remove from polling set and sessionStorage
+        pollingJobsRef.current.delete(jobId);
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(`lesson-job-${jobId}`);
+        }
+      }
+    });
+  }
 
   async function loadDocumentAndSections() {
     setLoading(true);
@@ -320,15 +409,63 @@ function LearnPageContent() {
     }
   }
 
+  // Fetch an existing lesson by ID
+  async function fetchLesson(lessonId: string) {
+    setGeneratingLesson(true);
+    try {
+      const res = await fetch(`/api/lessons/${lessonId}`);
+      if (res.ok) {
+        const rawData = await res.json();
+        console.log('[learn] Fetched lesson:', rawData);
+        const normalizedLesson = normalizeLesson(rawData);
+        setLesson(normalizedLesson);
+
+        // Navigate appropriately
+        if (targetConceptName) {
+          const concepts = normalizedLesson.concepts || [];
+          const targetIndex = concepts.findIndex(c =>
+            c.name.toLowerCase() === targetConceptName.toLowerCase()
+          );
+
+          if (targetIndex >= 0) {
+            console.log(`[learn] Auto-navigating to concept "${targetConceptName}" at index ${targetIndex}`);
+            setCurrentConceptIndex(targetIndex);
+            setCurrentMCQIndex(0);
+            setShowingSections(false);
+            setShowingSummary(false);
+            clearConceptNavigation();
+          } else {
+            clearConceptNavigation();
+            setShowingSections(false);
+            setShowingSummary(true);
+          }
+        } else {
+          clearConceptNavigation();
+          setShowingSections(false);
+          setShowingSummary(true);
+        }
+      } else {
+        throw new Error('Failed to fetch lesson');
+      }
+    } catch (error) {
+      console.error('[learn] Error fetching lesson:', error);
+      setError({
+        message: 'Failed to load lesson. Please try again.',
+        retry: () => fetchLesson(lessonId)
+      });
+    } finally {
+      setGeneratingLesson(false);
+    }
+  }
+
   // Load existing lesson or generate if not found (for grid navigation)
   async function loadOrGenerateLesson(section: Section) {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
-    setGeneratingLesson(true);
     setSelectedSection(section);
     setError(null);
 
     try {
-      // Call generate endpoint - it will return existing lesson if found
+      // Call generate endpoint - it will return job_id if needs generation, or lesson_id if already exists
       console.log(`[learn] Loading/generating lesson for section ${section.id}...`);
       const res = await fetch('/api/lessons/generate', {
         method: 'POST',
@@ -342,16 +479,73 @@ function LearnPageContent() {
       });
 
       if (res.ok) {
-        const rawData = await res.json();
-        console.log('[learn] Received lesson data:', rawData);
-        const normalizedLesson = normalizeLesson(rawData);
-        console.log('[learn] Normalized lesson:', normalizedLesson);
-        setLesson(normalizedLesson);
+        const data = await res.json();
+        console.log('[learn] Received response:', data);
 
-        // Update section to mark concepts as generated
-        setSections(prev => prev.map(s =>
-          s.id === section.id ? { ...s, concepts_generated: true } : s
-        ));
+        // Check if it's a job (async generation) or existing lesson
+        if (data.job_id) {
+          // Lesson is being generated - mark section as generating
+          console.log(`[learn] Lesson generation queued: job_id=${data.job_id}`);
+
+          // Update section state to show it's generating
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: true, generation_progress: 0, job_id: data.job_id }
+              : s
+          ));
+
+          // Start polling for job completion
+          createJobPoller(data.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[learn] Generation progress:', job.progress);
+              // Update progress
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generation_progress: job.progress }
+                  : s
+              ));
+            },
+            onComplete: async (job: Job) => {
+              console.log('[learn] Generation completed:', job);
+              // Mark section as ready - user can click to view it
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false, concepts_generated: true }
+                  : s
+              ));
+            },
+            onError: (error: string) => {
+              console.error('[learn] Generation error:', error);
+              // Mark section as failed
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false }
+                  : s
+              ));
+              setError({
+                message: `Failed to generate lesson: ${error}`,
+                retry: () => loadOrGenerateLesson(section)
+              });
+            }
+          });
+
+          // Don't block the UI - user can click other sections
+          return;
+        } else if (data.lesson_id) {
+          // Lesson already exists - fetch it
+          console.log(`[learn] Lesson already exists: lesson_id=${data.lesson_id}`);
+          await fetchLesson(data.lesson_id);
+        } else {
+          // Old format: lesson data returned directly (shouldn't happen with new API)
+          const normalizedLesson = normalizeLesson(data);
+          console.log('[learn] Normalized lesson:', normalizedLesson);
+          setLesson(normalizedLesson);
+
+          // Update section to mark concepts as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id ? { ...s, concepts_generated: true } : s
+          ));
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
@@ -387,30 +581,28 @@ function LearnPageContent() {
           setShowingSections(false);
           setShowingSummary(true);
         }
-      } else {
-        const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
-        const errorMessage = errorData.details
-          ? `${errorData.error}\n\n${errorData.details}`
-          : errorData.error || 'Failed to load lesson';
-        setError({
-          message: errorMessage,
-          retry: () => loadOrGenerateLesson(section)
-        });
       }
-    } catch (error) {
-      console.error('[learn] Error loading/generating lesson:', error);
+    } else {
+      const errorData = await res.json().catch(() => ({ error: 'Failed to load lesson' }));
+      const errorMessage = errorData.details
+        ? `${errorData.error}\n\n${errorData.details}`
+        : errorData.error || 'Failed to load lesson';
       setError({
-        message: 'Failed to load lesson. Please check your connection and try again.',
+        message: errorMessage,
         retry: () => loadOrGenerateLesson(section)
       });
-    } finally {
-      setGeneratingLesson(false);
     }
+  } catch (error) {
+    console.error('[learn] Error loading/generating lesson:', error);
+    setError({
+      message: 'Failed to load lesson. Please check your connection and try again.',
+      retry: () => loadOrGenerateLesson(section)
+    });
   }
+}
 
   // Generate lesson for a specific section
   async function generateLessonForSection(section: Section) {
-    setGeneratingLesson(true);
     setSelectedSection(section);
     setError(null);
     try {
@@ -428,14 +620,101 @@ function LearnPageContent() {
       if (res.ok) {
         const rawData = await res.json();
         console.log('[learn] Received lesson data:', rawData);
-        const normalizedLesson = normalizeLesson(rawData);
-        console.log('[learn] Normalized lesson:', normalizedLesson);
-        setLesson(normalizedLesson);
 
-        // Update section to mark concepts as generated
-        setSections(prev => prev.map(s =>
-          s.id === section.id ? { ...s, concepts_generated: true } : s
-        ));
+        // Check if it's a job (async generation) or existing lesson
+        if (rawData.job_id) {
+          // Lesson is being generated - mark section as generating
+          console.log(`[learn] Lesson generation queued: job_id=${rawData.job_id}`);
+
+          // Store job in sessionStorage for persistence across navigation
+          if (typeof window !== 'undefined') {
+            const jobData = {
+              job_id: rawData.job_id,
+              document_id: documentId,
+              section_id: section.id,
+              section_name: section.name,
+              section_number: section.section_number,
+              chapter: chapter || null,
+              course_id: documentInfo?.course_id || null
+            };
+            sessionStorage.setItem(`lesson-job-${rawData.job_id}`, JSON.stringify(jobData));
+          }
+
+          // Update section state to show it's generating
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: true, generation_progress: 0, job_id: rawData.job_id }
+              : s
+          ));
+
+          // Add to polling set to prevent duplicates
+          pollingJobsRef.current.add(rawData.job_id);
+
+          // Start polling for job completion
+          createJobPoller(rawData.job_id, {
+            interval: 2000,
+            onProgress: (job: Job) => {
+              console.log('[learn] Generation progress:', job.progress);
+              // Update progress
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generation_progress: job.progress }
+                  : s
+              ));
+            },
+            onComplete: async (job: Job) => {
+              console.log('[learn] Generation completed:', job);
+              // Mark section as ready - user can click to view it
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false, concepts_generated: true }
+                  : s
+              ));
+
+              // Remove from polling set and sessionStorage
+              pollingJobsRef.current.delete(rawData.job_id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem(`lesson-job-${rawData.job_id}`);
+              }
+            },
+            onError: (error: string) => {
+              console.error('[learn] Generation error:', error);
+              // Mark section as failed
+              setSections(prev => prev.map(s =>
+                s.id === section.id
+                  ? { ...s, generating: false }
+                  : s
+              ));
+
+              // Remove from polling set and sessionStorage
+              pollingJobsRef.current.delete(rawData.job_id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem(`lesson-job-${rawData.job_id}`);
+              }
+
+              setError({
+                message: `Failed to generate lesson: ${error}`,
+                retry: () => generateLessonForSection(section)
+              });
+            }
+          });
+
+          // Don't block the UI - user can click other sections
+          return;
+        } else if (rawData.lesson_id) {
+          // Lesson already exists - fetch it
+          console.log(`[learn] Lesson already exists: lesson_id=${rawData.lesson_id}`);
+          await fetchLesson(rawData.lesson_id);
+        } else {
+          // Old format: lesson returned directly
+          const normalizedLesson = normalizeLesson(rawData);
+          console.log('[learn] Normalized lesson:', normalizedLesson);
+          setLesson(normalizedLesson);
+
+          // Update section to mark concepts as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id ? { ...s, concepts_generated: true } : s
+          ));
 
         // Check if we should navigate directly to a specific concept by name
         console.log('[learn] Navigation check - targetConceptName:', targetConceptName);
@@ -470,6 +749,7 @@ function LearnPageContent() {
           clearConceptNavigation();
           setShowingSections(false);
           setShowingSummary(true);
+        }
         }
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
@@ -487,8 +767,6 @@ function LearnPageContent() {
         message: 'Failed to generate lesson. Please check your connection and try again.',
         retry: () => generateLessonForSection(section)
       });
-    } finally {
-      setGeneratingLesson(false);
     }
   }
 
@@ -1060,25 +1338,37 @@ function LearnPageContent() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            {sections.map((section) => (
+            {sections.map((section) => {
+              const isGenerating = section.generating || false;
+              const progress = section.generation_progress || 0;
+
+              return (
               <button
                 key={section.id}
                 onClick={() => generateLessonForSection(section)}
-                disabled={generatingLesson}
+                disabled={isGenerating}
                 className={`
                   relative rounded-lg border-2 p-6 text-left transition-all
                   ${section.concepts_generated
                     ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30'
+                    : isGenerating
+                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-300 dark:hover:border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}
-                  ${generatingLesson ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  ${isGenerating ? 'cursor-not-allowed' : 'cursor-pointer'}
                 `}
               >
                 <div className="flex items-start justify-between mb-2">
                   <span className="inline-block rounded-full bg-slate-200 dark:bg-neutral-700 px-3 py-1 text-sm font-semibold text-slate-700 dark:text-neutral-300">
                     Section {section.section_number}
                   </span>
-                  {section.concepts_generated && (
+                  {section.concepts_generated && !isGenerating && (
                     <span className="text-green-600 dark:text-green-400 text-sm font-medium">✓ Ready</span>
+                  )}
+                  {isGenerating && (
+                    <span className="text-blue-600 dark:text-blue-400 text-sm font-medium flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 dark:border-blue-400"></div>
+                      {progress}%
+                    </span>
                   )}
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-neutral-100 mb-2">
@@ -1094,28 +1384,36 @@ function LearnPageContent() {
                     Pages {section.page_start}-{section.page_end}
                   </p>
                 )}
-                <div className="mt-4">
-                  <span className={`
-                    text-sm font-medium
-                    ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
-                  `}>
-                    {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
 
-          {generatingLesson && selectedSection && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">
-              <p className="text-blue-900 dark:text-blue-300 font-medium">
-                Generating concepts for "{selectedSection.name}"...
-              </p>
-              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                This usually takes 10-20 seconds
-              </p>
-            </div>
-          )}
+                {/* Progress bar for generating sections */}
+                {isGenerating && (
+                  <div className="mt-4">
+                    <div className="w-full bg-blue-200 dark:bg-blue-800 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                      Generating concepts...
+                    </p>
+                  </div>
+                )}
+
+                {!isGenerating && (
+                  <div className="mt-4">
+                    <span className={`
+                      text-sm font-medium
+                      ${section.concepts_generated ? 'text-green-700 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}
+                    `}>
+                      {section.concepts_generated ? 'View Concepts →' : 'Generate Concepts →'}
+                    </span>
+                  </div>
+                )}
+              </button>
+              );
+            })}
+          </div>
 
           {generatingSections && (
             <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 text-center">

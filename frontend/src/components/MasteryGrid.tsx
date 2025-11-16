@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export type MasteryLevel = 'not_started' | 'in_progress' | 'completed' | 'incorrect';
+export type MasteryLevel = 'not_started' | 'in_progress' | 'completed' | 'incorrect' | 'loading';
 
 export type SkillSquare = {
   id: string;
@@ -31,6 +31,8 @@ function getMasteryColor(level: MasteryLevel): string {
       return 'bg-gradient-to-br from-warning-400 to-warning-500 hover:from-warning-500 hover:to-warning-600 shadow-warning-500/20';
     case 'incorrect':
       return 'bg-gradient-to-br from-danger-500 to-danger-600 hover:from-danger-600 hover:to-danger-700 shadow-danger-500/20';
+    case 'loading':
+      return 'bg-gradient-to-br from-primary-400 to-primary-500 shadow-primary-500/20 animate-pulse';
     case 'not_started':
     default:
       return 'bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 shadow-neutral-500/10';
@@ -45,6 +47,8 @@ function getMasteryRing(level: MasteryLevel): string {
       return 'ring-warning-500';
     case 'incorrect':
       return 'ring-danger-500';
+    case 'loading':
+      return 'ring-primary-500';
     case 'not_started':
     default:
       return 'ring-neutral-400';
@@ -59,6 +63,8 @@ function getMasteryLabel(level: MasteryLevel): string {
       return 'In Progress';
     case 'incorrect':
       return 'Needs Review';
+    case 'loading':
+      return 'Generating...';
     case 'not_started':
     default:
       return 'Not Started';
@@ -84,17 +90,42 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
       }, {} as Record<number, SkillSquare[]>)
     : { 0: skills };
 
+  const loadingCount = counts['loading'] || 0;
+  const completedConceptsCount = skills.length - loadingCount;
+  const generatingSectionsCount = loadingCount > 0 ? Math.ceil(loadingCount / 8) : 0;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h3>
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
-            {skills.length} {skills.length === 1 ? 'concept' : 'concepts'}
-          </span>
+          {loadingCount > 0 ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600 dark:border-primary-400"></div>
+                <span className="text-sm font-medium text-primary-600 dark:text-primary-400">
+                  {generatingSectionsCount} {generatingSectionsCount === 1 ? 'section' : 'sections'} generating...
+                </span>
+              </div>
+              {completedConceptsCount > 0 && (
+                <>
+                  <span className="text-neutral-400 dark:text-neutral-500">•</span>
+                  <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
+                    {completedConceptsCount} {completedConceptsCount === 1 ? 'concept' : 'concepts'}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
+                {skills.length} {skills.length === 1 ? 'concept' : 'concepts'}
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -105,6 +136,8 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
           .filter(([sectionNum]) => Number(sectionNum) > 0) // Skip section 0 (concepts without section)
           .map(([sectionNum, sectionSkills]) => {
             const sectionName = sectionSkills[0]?.sectionName || `Section ${sectionNum}`;
+            const isGenerating = sectionSkills.every(s => s.masteryLevel === 'loading');
+            const nonLoadingCount = sectionSkills.filter(s => s.masteryLevel !== 'loading').length;
 
             return (
               <div key={sectionNum}>
@@ -120,8 +153,17 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                         </div>
                       </div>
                       <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
-                      <div className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                        {sectionSkills.length} {sectionSkills.length === 1 ? 'concept' : 'concepts'}
+                      <div className="text-xs font-medium">
+                        {isGenerating ? (
+                          <span className="text-primary-600 dark:text-primary-400 flex items-center gap-1.5">
+                            <div className="animate-spin rounded-full h-2.5 w-2.5 border-b-2 border-primary-600 dark:border-primary-400"></div>
+                            Generating...
+                          </span>
+                        ) : (
+                          <span className="text-neutral-500 dark:text-neutral-400">
+                            {nonLoadingCount} {nonLoadingCount === 1 ? 'concept' : 'concepts'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -193,18 +235,24 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
       {/* Legend */}
       <div className="flex flex-wrap gap-4 text-sm pt-3 border-t border-neutral-200 dark:border-neutral-700">
-        {(['completed', 'in_progress', 'incorrect', 'not_started'] as MasteryLevel[]).map((level) => {
+        {(['loading', 'completed', 'in_progress', 'incorrect', 'not_started'] as MasteryLevel[]).map((level) => {
           const count = counts[level] || 0;
           if (count === 0) return null;
+
+          // For loading, show number of sections instead of number of squares
+          const displayCount = level === 'loading' ? generatingSectionsCount : count;
+          const displayLabel = level === 'loading'
+            ? `${generatingSectionsCount === 1 ? 'Section' : 'Sections'} Generating`
+            : getMasteryLabel(level);
 
           return (
             <div key={level} className="flex items-center gap-2">
               <div className={`w-4 h-4 rounded ${getMasteryColor(level).split(' ')[0]} shadow-sm`} />
               <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                {getMasteryLabel(level)}
+                {displayLabel}
               </span>
               <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-                {count}
+                {displayCount}
               </span>
             </div>
           );

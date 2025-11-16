@@ -44,8 +44,9 @@ export default function createUploadRouter(options = {}) {
     }
   });
 
-  // NEW ENDPOINT: LLM-based structured extraction
+  // NEW ENDPOINT: LLM-based structured extraction (ASYNC)
   // This endpoint is used when PDF_UPLOAD_STRATEGY=vision in .env
+  // Returns immediately with a job ID, processing happens in background
   router.post('/pdf-structured', upload.single('file'), async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'Missing PDF file' });
@@ -58,77 +59,57 @@ export default function createUploadRouter(options = {}) {
       const ownerDir = path.join(storageDir, ownerId);
       const pdfPath = path.join(ownerDir, `${documentId}.pdf`);
 
+      // Extract metadata from form data
+      const courseId = req.body.course_id || null;
+      const chapter = req.body.chapter || null;
+      const materialType = req.body.material_type || null;
+      const title = req.body.title || null;
+
       console.log('[upload/pdf-structured] Saving PDF to storage...');
+      console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });
 
       // Save PDF to storage
       await fs.mkdir(ownerDir, { recursive: true });
       await fs.writeFile(pdfPath, req.file.buffer);
 
       console.log(`[upload/pdf-structured] PDF saved: ${pdfPath}`);
-      console.log('[upload/pdf-structured] Extracting structured sections with LLM...');
 
-      // Extract structured sections with LLM vision
-      const extraction = await extractStructuredSections(pdfPath);
-
-      console.log(`[upload/pdf-structured] Extracted ${extraction.sections.length} sections`);
-      console.log(`[upload/pdf-structured] Title: "${extraction.title}"`);
-
-      const tenantHelpers = options.tenantHelpers;
-      if (!tenantHelpers) {
-        throw new Error('Tenant helpers not available');
-      }
-
-      // Store in database
-      await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Insert document
-        await client.query(
-          `INSERT INTO documents (id, title, pages, owner_id)
-           VALUES ($1, $2, $3, $4)`,
-          [documentId, extraction.title, extraction.sections.length, ownerId]
-        );
-
-        console.log(`[upload/pdf-structured] Document created: ${documentId}`);
-
-        // Insert sections with LLM-generated markdown
-        for (let i = 0; i < extraction.sections.length; i++) {
-          const section = extraction.sections[i];
-
-          const { rows } = await client.query(
-            `INSERT INTO sections
-             (owner_id, document_id, section_number, name, description,
-              markdown_text, concepts_generated)
-             VALUES ($1, $2, $3, $4, $5, $6, false)
-             RETURNING id`,
-            [
-              ownerId,
-              documentId,
-              i + 1,
-              section.name,
-              section.description,
-              section.markdown
-            ]
-          );
-
-          console.log(`[upload/pdf-structured] Section ${i + 1} "${section.name}": ${section.markdown.length} chars, id=${rows[0].id}`);
-        }
+      // Create job in database with metadata
+      const jobId = await options.jobTracker.createJob(ownerId, 'upload_pdf', {
+        document_id: documentId,
+        original_filename: req.file.originalname,
+        pdf_path: pdfPath,
+        course_id: courseId,
+        chapter: chapter,
+        material_type: materialType,
+        title: title
       });
 
-      console.log('[upload/pdf-structured] ✅ Upload complete');
+      // Queue the job for background processing with metadata
+      await options.uploadQueue.add({
+        jobId,
+        ownerId,
+        documentId,
+        pdfPath,
+        originalFilename: req.file.originalname,
+        courseId,
+        chapter,
+        materialType,
+        title
+      });
 
+      console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId}`);
+
+      // Return immediately with job ID
       res.json({
+        job_id: jobId,
         document_id: documentId,
-        title: extraction.title,
-        section_count: extraction.sections.length,
-        sections: extraction.sections.map((s, i) => ({
-          section_number: i + 1,
-          name: s.name,
-          description: s.description,
-          markdown_length: s.markdown.length
-        }))
+        status: 'queued',
+        message: 'Upload queued for processing'
       });
     } catch (error) {
       console.error('[upload/pdf-structured] ❌ Error:', error);
-      res.status(500).json({ error: error.message || 'Failed to extract structured sections' });
+      res.status(500).json({ error: error.message || 'Failed to queue upload' });
     }
   });
 

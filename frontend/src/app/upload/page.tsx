@@ -84,9 +84,13 @@ function UploadPageContent() {
     setResult(null);
 
     try {
-      // Step 1: Upload file
+      // Step 1: Upload file with metadata (returns immediately with job ID)
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('course_id', courseId);
+      formData.append('chapter', chapter || '');
+      formData.append('material_type', materialType);
+      formData.append('title', title || file.name.replace('.pdf', ''));
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
         body: formData
@@ -97,40 +101,32 @@ function UploadPageContent() {
       }
 
       const uploadData = await uploadRes.json();
-      setResult(uploadData);
-      setUploadedDocId(uploadData.document_id);
+      const { job_id, document_id, status } = uploadData;
 
-      // Step 2: Update metadata with course, chapter, and type
-      const metadataRes = await fetch(`/api/documents/${uploadData.document_id}/metadata`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          course_id: courseId,
-          chapter: chapter || null,
-          material_type: materialType,
-          title: title || file.name.replace('.pdf', '')
-        })
+      console.log('Upload queued:', { job_id, document_id, status });
+
+      // Step 2: Store job ID in session storage for tracking
+      const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
+      processingJobs.push({
+        job_id,
+        document_id,
+        course_id: courseId,
+        chapter: chapter || null,
+        title: title || file.name.replace('.pdf', ''),
+        type: 'upload',
+        started_at: new Date().toISOString()
       });
-
-      if (!metadataRes.ok) {
-        console.error('Failed to update metadata, but upload succeeded');
-      }
+      sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
 
       // Reset form
       setFile(null);
       setChapter('');
       setTitle('');
 
-      // Success!
-      setTimeout(() => {
-        if (courseId) {
-          router.push(`/courses/${courseId}`);
-        }
-      }, 2000);
-
+      // Redirect immediately to course page (processing will continue in background)
+      router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
       setIsUploading(false);
     }
   };
