@@ -1,6 +1,24 @@
+'use client';
+
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function HomePage() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      router.push('/courses');
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  if (!isLoaded || isSignedIn) {
+    return null; // Show nothing while checking auth or redirecting
+  }
+
   return (
     <div className="space-y-20 pb-16">
       {/* Hero Section */}

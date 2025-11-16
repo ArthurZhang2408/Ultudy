@@ -3,7 +3,8 @@
 import { FormEvent, useState, useRef, DragEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
-import { Button, Card, Input, Select, Badge } from '@/components/ui';
+import { Button, Card, Input, Badge } from '@/components/ui';
+import CustomSelect from './CustomSelect';
 
 type Course = {
   id: string;
@@ -305,20 +306,22 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Document Details</h3>
 
-                <Select
-                  label="Course"
-                  value={courseId}
-                  onChange={(e) => setCourseId(e.target.value)}
-                  required
-                  fullWidth
-                  options={[
-                    { value: '', label: 'Select a course...' },
-                    ...courses.map(course => ({
-                      value: course.id,
-                      label: course.code ? `${course.code} - ${course.name}` : course.name
-                    }))
-                  ]}
-                />
+                {!preselectedCourseId && (
+                  <Select
+                    label="Course"
+                    value={courseId}
+                    onChange={(e) => setCourseId(e.target.value)}
+                    required
+                    fullWidth
+                    options={[
+                      { value: '', label: 'Select a course...' },
+                      ...courses.map(course => ({
+                        value: course.id,
+                        label: course.code ? `${course.code} - ${course.name}` : course.name
+                      }))
+                    ]}
+                  />
+                )}
 
                 <Input
                   label="Document Title"
@@ -330,10 +333,10 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 />
 
                 <div className="grid grid-cols-2 gap-4">
-                  <Select
+                  <CustomSelect
                     label="Material Type"
                     value={materialType}
-                    onChange={(e) => setMaterialType(e.target.value)}
+                    onChange={(value) => setMaterialType(value)}
                     fullWidth
                     options={[
                       { value: 'textbook', label: 'Textbook' },

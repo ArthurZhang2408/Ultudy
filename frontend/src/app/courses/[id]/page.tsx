@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 
 type Course = {
@@ -65,6 +65,7 @@ export default function CoursePage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -494,14 +495,12 @@ export default function CoursePage() {
             </div>
           </div>
         </div>
-        <Link href={`/upload?course_id=${course.id}`}>
-          <Button variant="primary" size="lg">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            Upload Materials
-          </Button>
-        </Link>
+        <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+          Upload Materials
+        </Button>
       </div>
 
       {deleteError && (
@@ -537,14 +536,12 @@ export default function CoursePage() {
             <p className="text-neutral-600 dark:text-neutral-300">
               Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
             </p>
-            <Link href={`/upload?course_id=${course.id}`}>
-              <Button variant="primary" size="lg">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Upload Your First Document
-              </Button>
-            </Link>
+            <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Upload Your First Document
+            </Button>
           </div>
         </Card>
       ) : (
@@ -766,6 +763,13 @@ export default function CoursePage() {
         confirmText="Delete Document"
         cancelText="Cancel"
         variant="danger"
+      />
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        preselectedCourseId={courseId}
       />
     </div>
   );
