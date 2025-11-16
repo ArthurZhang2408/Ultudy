@@ -3,7 +3,6 @@ import createSearchService from '../search/service.js';
 import createStudyService from '../study/service.js';
 import { evaluateAnswer, updateConceptMastery } from '../study/checkin.service.js';
 import { createTenantHelpers } from '../db/tenant.js';
-import { extractSections, extractSectionText } from '../study/section.service.js';
 
 const DEFAULT_LESSON_K = 6;
 const DEFAULT_MCQ_COUNT = 5;
@@ -470,110 +469,6 @@ export default function createStudyRouter(options = {}) {
     } catch (error) {
       console.error('Failed to generate MCQs', error);
       res.status(500).json({ error: 'Failed to generate MCQs' });
-    }
-  });
-
-  // DEPRECATED ENDPOINT: Legacy section extraction for old documents
-  // This endpoint is only for documents created with old Python-based extraction (having full_text).
-  // Modern documents uploaded via /upload/pdf-structured already have sections created during upload.
-  // This endpoint will be removed once all legacy documents are migrated.
-  router.post('/sections/generate', async (req, res) => {
-    console.warn('[DEPRECATED] POST /sections/generate is deprecated. Modern uploads create sections automatically.');
-
-    const { document_id, chapter, force_llm = false } = req.body || {};
-    const ownerId = req.userId;
-
-    if (!document_id) {
-      return res.status(400).json({ error: 'document_id is required' });
-    }
-
-    try {
-      const sections = await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Step 1: Check if sections already exist for this document
-        const { rows: existingSections } = await client.query(
-          `SELECT id, section_number, name, description, page_start, page_end, concepts_generated, created_at
-           FROM sections
-           WHERE document_id = $1 AND owner_id = $2
-           ORDER BY section_number ASC`,
-          [document_id, ownerId]
-        );
-
-        if (existingSections.length > 0) {
-          console.log(`[sections/generate] Returning ${existingSections.length} cached sections for document ${document_id}`);
-          return existingSections;
-        }
-
-        // Step 2: Load full document text
-        const { rows } = await client.query(
-          `SELECT id, title, full_text, material_type, chapter as doc_chapter, course_id
-           FROM documents
-           WHERE id = $1 AND owner_id = $2`,
-          [document_id, ownerId]
-        );
-
-        if (rows.length === 0) {
-          throw new Error('Document not found');
-        }
-
-        const document = rows[0];
-
-        // Note: /sections/generate is for OLD python-based extraction
-        // NEW vision-based extraction creates sections directly during upload
-        if (!document.full_text) {
-          throw new Error('This endpoint is only for documents with full_text (old Python extraction). Documents uploaded with vision-based extraction already have sections.');
-        }
-
-        // Step 3: Extract sections using service (TOC or LLM)
-        console.log(`[sections/generate] Extracting sections for document ${document_id}`);
-        const extractedSections = await extractSections({
-          full_text: document.full_text,
-          title: document.title,
-          material_type: document.material_type
-        }, { forceLLM: force_llm });
-
-        console.log(`[sections/generate] Extracted sections:`, extractedSections.map(s => ({
-          section_number: s.section_number,
-          name: s.name,
-          page_start: s.page_start,
-          page_end: s.page_end
-        })));
-
-        // Step 4: Persist sections to database
-        const insertedSections = [];
-        for (const section of extractedSections) {
-          const { rows: inserted } = await client.query(
-            `INSERT INTO sections (owner_id, document_id, course_id, chapter, section_number, name, description, page_start, page_end, markdown_text, concepts_generated)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
-             RETURNING id, section_number, name, description, page_start, page_end, concepts_generated, created_at`,
-            [
-              ownerId,
-              document_id,
-              document.course_id,
-              chapter || document.doc_chapter,
-              section.section_number,
-              section.name,
-              section.description,
-              section.page_start,
-              section.page_end,
-              section.markdown_text || null
-            ]
-          );
-          insertedSections.push(inserted[0]);
-        }
-
-        console.log(`[sections/generate] Created ${insertedSections.length} sections`);
-        return insertedSections;
-      });
-
-      // Add deprecation headers
-      res.set('Deprecation', 'true');
-      res.set('Sunset', 'Wed, 31 Dec 2025 23:59:59 GMT');
-      res.json({ sections });
-    } catch (error) {
-      console.error('[sections/generate] Error:', error);
-      const errorMessage = error.message || 'Failed to generate sections';
-      const statusCode = error.message?.includes('not found') ? 404 : 500;
-      res.status(statusCode).json({ error: errorMessage });
     }
   });
 
