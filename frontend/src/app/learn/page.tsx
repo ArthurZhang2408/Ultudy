@@ -247,17 +247,21 @@ function LearnPageContent() {
 
   // Auto-load lesson when section_id is in URL (from grid click)
   useEffect(() => {
-    if (!urlSectionId || !documentId || sections.length === 0 || lesson) {
+    if (!urlSectionId || !documentId || sections.length === 0) {
       return;
     }
 
     // Find the section matching the URL parameter
     const targetSection = sections.find(s => s.id === urlSectionId);
-    if (targetSection) {
+
+    // Load if: no lesson loaded OR different section
+    const needsLoad = !lesson || selectedSection?.id !== urlSectionId;
+
+    if (targetSection && needsLoad) {
       console.log(`[learn] Auto-loading section from URL: ${targetSection.name}`);
       loadOrGenerateLesson(targetSection);
     }
-  }, [urlSectionId, documentId, sections]);
+  }, [urlSectionId, documentId, sections, lesson, selectedSection]);
 
   // Restore generating sections from sessionStorage on mount
   useEffect(() => {
