@@ -19,15 +19,38 @@ let lessonQueue;
 if (DISABLE_QUEUES) {
   console.log('[Queue] Queues disabled (CI/test mode)');
 
-  // Create mock queues for CI/testing
-  const createMockQueue = (name) => ({
-    name,
-    add: async () => ({ id: 'mock-job-id' }),
-    process: () => {},
-    on: () => {},
-    close: async () => {},
-    clean: async () => {}
-  });
+  // Create mock queues for CI/testing that process jobs synchronously
+  const createMockQueue = (name) => {
+    let processor = null;
+
+    return {
+      name,
+      add: async (data) => {
+        const mockJob = {
+          id: `mock-job-${Date.now()}-${Math.random()}`,
+          data
+        };
+
+        // If a processor is registered, execute it immediately (synchronous processing in tests)
+        if (processor) {
+          try {
+            await processor(mockJob);
+          } catch (error) {
+            console.error(`[MockQueue] ${name} job processing failed:`, error);
+            throw error;
+          }
+        }
+
+        return mockJob;
+      },
+      process: (processorFn) => {
+        processor = processorFn;
+      },
+      on: () => {},
+      close: async () => {},
+      clean: async () => {}
+    };
+  };
 
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
