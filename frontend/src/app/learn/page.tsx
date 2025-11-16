@@ -38,6 +38,15 @@ type Concept = {
   check_ins?: MCQ[];
 };
 
+type ConceptMeta = {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  lesson_position: number;
+  mastery_level: string;
+  accuracy: number;
+};
+
 type Section = {
   id: string;
   section_number: number;
@@ -50,6 +59,7 @@ type Section = {
   generating?: boolean; // Track if this section is being generated
   generation_progress?: number; // Track generation progress
   job_id?: string; // Track the generation job ID
+  concepts?: ConceptMeta[]; // All concepts for this section (fetched upfront)
 };
 
 type DocumentInfo = {
@@ -302,11 +312,53 @@ function LearnPageContent() {
       },
       onComplete: async (job: Job) => {
         console.log('[learn] Generation completed:', job);
-        setSections(prev => prev.map(s =>
-          s.id === section.id
-            ? { ...s, generating: false, concepts_generated: true }
-            : s
-        ));
+
+        // Fetch the new concepts for this section
+        try {
+          const conceptsRes = await fetch(chapter
+            ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+            : `/api/concepts/mastery?document_id=${documentId}`
+          );
+
+          if (conceptsRes.ok) {
+            const conceptsData = await conceptsRes.json();
+            const allConcepts = conceptsData.concepts || [];
+
+            // Find concepts for this specific section
+            const sectionConcepts = allConcepts
+              .filter((c: any) => c.section_id === section.id)
+              .map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                concept_number: c.concept_number,
+                lesson_position: c.lesson_position,
+                mastery_level: c.mastery_level,
+                accuracy: c.accuracy
+              }));
+
+            // Update the section with new concepts
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
+                : s
+            ));
+          } else {
+            // Fallback: just mark as generated without concepts
+            setSections(prev => prev.map(s =>
+              s.id === section.id
+                ? { ...s, generating: false, concepts_generated: true }
+                : s
+            ));
+          }
+        } catch (error) {
+          console.error('[learn] Failed to fetch concepts after generation:', error);
+          // Fallback: just mark as generated
+          setSections(prev => prev.map(s =>
+            s.id === section.id
+              ? { ...s, generating: false, concepts_generated: true }
+              : s
+          ));
+        }
 
         // Remove from polling set and sessionStorage
         pollingJobsRef.current.delete(jobId);
@@ -353,13 +405,51 @@ function LearnPageContent() {
   async function loadOrGenerateSections() {
     setLoadingSections(true);
     try {
-      // Try to load existing sections
-      const res = await fetch(`/api/sections?document_id=${documentId}`);
+      // Fetch sections and concepts in parallel for efficiency
+      const [sectionsRes, conceptsRes] = await Promise.all([
+        fetch(`/api/sections?document_id=${documentId}`),
+        fetch(chapter
+          ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+          : `/api/concepts/mastery?document_id=${documentId}`)
+      ]);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.sections && data.sections.length > 0) {
-          setSections(data.sections);
+      if (sectionsRes.ok) {
+        const sectionsData = await sectionsRes.json();
+        const sections = sectionsData.sections || [];
+
+        if (sections.length > 0) {
+          // Fetch concepts and attach to sections
+          let conceptsBySectionId: Record<string, ConceptMeta[]> = {};
+
+          if (conceptsRes.ok) {
+            const conceptsData = await conceptsRes.json();
+            const allConcepts = conceptsData.concepts || [];
+
+            // Group concepts by section_id
+            for (const concept of allConcepts) {
+              if (concept.section_id) {
+                if (!conceptsBySectionId[concept.section_id]) {
+                  conceptsBySectionId[concept.section_id] = [];
+                }
+                conceptsBySectionId[concept.section_id].push({
+                  id: concept.id,
+                  name: concept.name,
+                  concept_number: concept.concept_number,
+                  lesson_position: concept.lesson_position,
+                  mastery_level: concept.mastery_level,
+                  accuracy: concept.accuracy
+                });
+              }
+            }
+          }
+
+          // Attach concepts to their respective sections
+          const sectionsWithConcepts = sections.map((section: Section) => ({
+            ...section,
+            concepts: conceptsBySectionId[section.id] || []
+          }));
+
+          setSections(sectionsWithConcepts);
           setLoadingSections(false);
           setLoading(false);
           // Don't change view state here - let document summary screen control it
@@ -392,7 +482,12 @@ function LearnPageContent() {
 
       if (res.ok) {
         const data = await res.json();
-        setSections(data.sections || []);
+        const generatedSections = data.sections || [];
+
+        // After generating sections, re-fetch to attach concepts
+        // (In case any sections already had lessons generated)
+        await loadOrGenerateSections();
+
         setShowingSections(true);
       } else {
         const errorData = await res.json();

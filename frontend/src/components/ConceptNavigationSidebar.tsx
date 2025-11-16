@@ -208,16 +208,16 @@ export default function ConceptNavigationSidebar({
                         ) : null}
                       </button>
 
-                      {/* Concepts List (shown when expanded) */}
-                      {isExpanded && section.concepts_generated && isActive && (
+                      {/* Concepts List (shown when expanded) - now shows for ALL sections */}
+                      {isExpanded && section.concepts_generated && section.concepts && section.concepts.length > 0 && (
                         <div className="ml-6 mt-1 space-y-0.5">
-                          {concepts.map((concept, idx) => {
+                          {section.concepts.map((concept, idx) => {
                             const isCurrentConcept =
                               currentConceptName?.toLowerCase() === concept.name.toLowerCase();
 
                             return (
                               <button
-                                key={idx}
+                                key={concept.id || idx}
                                 onClick={() => onConceptClick(concept.name)}
                                 className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
                                   isCurrentConcept
