@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 
 type MCQOption = {
   letter: string;
@@ -1631,9 +1632,44 @@ function LearnPageContent() {
     );
   }
 
+  // Determine if we should show the navigation sidebar
+  const showNavigationSidebar = !showingSummary && !showingSections && lesson && sections.length > 0;
+
   // Show concept learning screen
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <>
+      {/* Concept Navigation Sidebar */}
+      {showNavigationSidebar && (
+        <ConceptNavigationSidebar
+          documentInfo={documentInfo}
+          sections={sections}
+          currentSectionId={selectedSection?.id || null}
+          currentConceptName={currentConcept?.name || null}
+          concepts={lesson?.concepts || []}
+          onSectionClick={(section) => {
+            // Navigate to section summary
+            setShowingSummary(true);
+            setShowingSections(false);
+          }}
+          onConceptClick={(conceptName) => {
+            // Navigate to specific concept
+            const concepts = lesson?.concepts || [];
+            const targetIndex = concepts.findIndex(c =>
+              c.name.toLowerCase() === conceptName.toLowerCase()
+            );
+            if (targetIndex >= 0) {
+              setCurrentConceptIndex(targetIndex);
+              setCurrentMCQIndex(0);
+              scrollToTop();
+            }
+          }}
+          onGenerateSection={(section) => {
+            generateLessonForSection(section);
+          }}
+        />
+      )}
+
+      <div className={`max-w-4xl mx-auto space-y-6 ${showNavigationSidebar ? 'ml-80' : ''}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
@@ -1874,7 +1910,8 @@ function LearnPageContent() {
           })}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
