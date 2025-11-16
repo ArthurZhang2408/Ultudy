@@ -392,6 +392,11 @@ export default function createStudyRouter(options = {}) {
 
         if (generatedLesson) {
           console.log(`[lessons/generate] Returning generated lesson (test mode)`);
+          console.log(`[lessons/generate] Generated lesson has ${generatedLesson.concepts?.length || 0} concepts`);
+          if (generatedLesson.concepts && generatedLesson.concepts.length > 0) {
+            console.log(`[lessons/generate] First concept check_ins:`, JSON.stringify(generatedLesson.concepts[0].check_ins));
+          }
+          console.log(`[lessons/generate] Flat check_ins array length:`, generatedLesson.check_ins?.length || 0);
           return res.json(generatedLesson);
         }
       }
