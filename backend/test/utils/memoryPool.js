@@ -658,6 +658,22 @@ export function createMemoryPool() {
         return { rows: [] };
       }
 
+      // Check if lesson exists with section_id IS NULL
+      if (normalized === 'SELECT id FROM lessons WHERE document_id = $1 AND owner_id = $2 AND section_id IS NULL LIMIT 1') {
+        const documentId = params[0];
+        const ownerId = params[1];
+        if (state?.currentUserId && state.currentUserId !== ownerId) {
+          return { rows: [] };
+        }
+
+        for (const lesson of lessons.values()) {
+          if (lesson.document_id === documentId && lesson.owner_id === ownerId && lesson.section_id === null) {
+            return { rows: [{ id: lesson.id }] };
+          }
+        }
+        return { rows: [] };
+      }
+
       if (normalized.startsWith('SELECT id, summary, explanation, examples, analogies, concepts, created_at FROM lessons WHERE document_id = $1 AND owner_id = $2')) {
         const documentId = params[0];
         const ownerId = params[1];

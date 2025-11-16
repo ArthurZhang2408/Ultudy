@@ -203,16 +203,18 @@ export default function CoursePage() {
           onProgress: (jobData: Job) => {
             updateJobProgress(job.job_id, jobData.progress, jobData.status);
           },
-          onComplete: (jobData: Job) => {
+          onComplete: async (jobData: Job) => {
             pollingJobsRef.current.delete(job.job_id);
-            removeProcessingJob(job.job_id);
 
-            // For lesson generation, only refresh concepts for that chapter
+            // For lesson generation, refresh concepts FIRST, then remove job
             if (job.type === 'lesson') {
               console.log('[courses] Lesson generation completed, refreshing concepts');
-              fetchConceptsForCourse();
+              await fetchConceptsForCourse();
+              console.log('[courses] Concepts refreshed, removing job from UI');
+              removeProcessingJob(job.job_id);
             } else {
               // For uploads, refresh everything
+              removeProcessingJob(job.job_id);
               fetchCourseData();
             }
           },
