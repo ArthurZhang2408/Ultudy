@@ -20,7 +20,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   const { signOut } = useClerk();
   const router = useRouter();
   const pathname = usePathname();
-  const { courses, loading } = useFetchCourses();
+  const { courses, loading, refetch } = useFetchCourses();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -354,7 +354,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
       isOpen={isCreateCourseOpen}
       onClose={() => setIsCreateCourseOpen(false)}
       onSuccess={() => {
-        fetchCourses();
+        refetch();
       }}
     />
     </>

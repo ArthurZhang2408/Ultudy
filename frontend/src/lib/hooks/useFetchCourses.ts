@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Course } from '@/types';
 
 /**
@@ -9,9 +9,12 @@ export function useFetchCourses() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
 
   useEffect(() => {
     async function fetchCourses() {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch('/api/courses');
         if (res.ok) {
@@ -29,7 +32,11 @@ export function useFetchCourses() {
     }
 
     fetchCourses();
+  }, [refetchTrigger]);
+
+  const refetch = useCallback(() => {
+    setRefetchTrigger(prev => prev + 1);
   }, []);
 
-  return { courses, loading, error, refetch: () => setLoading(true) };
+  return { courses, loading, error, refetch };
 }
