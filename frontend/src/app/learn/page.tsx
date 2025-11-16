@@ -1633,7 +1633,9 @@ function LearnPageContent() {
   }
 
   // Determine if we should show the navigation sidebar
-  const showNavigationSidebar = !showingSummary && !showingSections && lesson && sections.length > 0;
+  // Hide it if user has switched to main sidebar via ?sidebar=main
+  const showingMainSidebar = searchParams.get('sidebar') === 'main';
+  const showNavigationSidebar = !showingSummary && !showingSections && lesson && sections.length > 0 && !showingMainSidebar;
 
   // Show concept learning screen
   return (
@@ -1669,6 +1671,7 @@ function LearnPageContent() {
         />
       )}
 
+      {/* Content area - add margin only when ConceptNav is shown, not when MainSidebar is shown (LayoutClient handles MainSidebar margin) */}
       <div className={`max-w-4xl mx-auto space-y-6 ${showNavigationSidebar ? 'ml-64' : ''}`}>
       <div className="flex items-center justify-between">
         <button

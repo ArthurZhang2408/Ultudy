@@ -136,10 +136,10 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
         {isCollapsed ? (
           <button
             onClick={() => setIsCollapsed(false)}
-            className="flex items-center justify-center w-full h-8 transition-all"
+            className="flex items-center justify-center w-10 h-10 transition-all"
           >
             {isHoveringCollapsed ? (
-              <div className="flex items-center justify-center w-8 h-8">
+              <div className="flex items-center justify-center w-10 h-10">
                 <svg
                   className="w-6 h-6 text-neutral-600 dark:text-neutral-400"
                   fill="none"
@@ -150,7 +150,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
                 </svg>
               </div>
             ) : (
-              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 shadow-sm hover:shadow-md transition-shadow">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
@@ -169,52 +169,65 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
                 Ultudy
               </span>
             </Link>
-            <button
-              onClick={() => setIsCollapsed(true)}
-              className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-md transition-colors"
-              aria-label="Collapse sidebar"
-            >
-              <svg
-                className="w-5 h-5 text-neutral-600 dark:text-neutral-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {/* Back to Navigation or Collapse button */}
+            {isLearnPage ? (
+              <button
+                onClick={handleBackToNavigation}
+                className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                aria-label="Back to navigation"
+                title="Back to navigation"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-            </button>
+                <svg className="w-5 h-5 text-neutral-600 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsCollapsed(true)}
+                className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-md transition-colors"
+                aria-label="Collapse sidebar"
+              >
+                <svg
+                  className="w-5 h-5 text-neutral-600 dark:text-neutral-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
           </>
         )}
       </div>
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto px-3 py-4">
-        {/* Back to Navigation Button (when on learn page) */}
-        {isLearnPage && !isCollapsed && (
+        {/* New Course Button */}
+        {isCollapsed ? (
           <button
-            onClick={handleBackToNavigation}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors mb-4"
+            onClick={() => setIsCreateCourseOpen(true)}
+            className="w-full flex items-center justify-center mb-4"
+            title="Create new course"
+          >
+            <div className="w-10 h-10 flex items-center justify-center rounded-lg text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </div>
+          </button>
+        ) : (
+          <button
+            onClick={() => setIsCreateCourseOpen(true)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors mb-4"
+            title="Create new course"
           >
             <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            <span>Back to Navigation</span>
+            <span>New Course</span>
           </button>
         )}
-
-        {/* New Course Button */}
-        <button
-          onClick={() => setIsCreateCourseOpen(true)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 transition-colors mb-4 ${
-            isCollapsed ? 'justify-center' : ''
-          }`}
-          title="Create new course"
-        >
-          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          {!isCollapsed && <span>New Course</span>}
-        </button>
 
         {/* Courses Section */}
         {!isCollapsed && <div className="mb-2">
@@ -286,11 +299,13 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors ${
-              isCollapsed ? 'justify-center' : ''
+            className={`w-full flex items-center rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors ${
+              isCollapsed ? 'justify-center w-10 h-10 mx-auto' : 'gap-3 px-3 py-2.5'
             }`}
           >
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white font-semibold text-xs flex-shrink-0">
+            <div className={`flex items-center justify-center rounded-full bg-gradient-to-br from-primary-500 to-primary-700 text-white font-semibold text-xs flex-shrink-0 ${
+              isCollapsed ? 'w-10 h-10' : 'w-8 h-8'
+            }`}>
               {user?.imageUrl ? (
                 <img
                   src={user.imageUrl}
