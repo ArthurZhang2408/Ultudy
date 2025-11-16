@@ -1652,9 +1652,8 @@ function LearnPageContent() {
           currentConceptName={currentConcept?.name || null}
           concepts={lesson?.concepts || []}
           onSectionClick={(section) => {
-            // Navigate to section summary
-            setShowingSummary(true);
-            setShowingSections(false);
+            // Load the section's lesson when clicked from navigation
+            loadOrGenerateLesson(section);
           }}
           onConceptClick={(conceptName) => {
             // Navigate to specific concept
@@ -1675,9 +1674,9 @@ function LearnPageContent() {
         />
       )}
 
-      {/* Content area - centered in free space when sidebar extended, wider when collapsed or no sidebar */}
+      {/* Content area - consistent width with sidebar, wider when collapsed */}
       <div className={showNavigationSidebar && !isConceptNavCollapsed ? 'ml-64' : ''}>
-        <div className={`mx-auto space-y-6 ${showNavigationSidebar && !isConceptNavCollapsed ? 'max-w-4xl' : 'max-w-5xl'}`}>
+        <div className={`mx-auto space-y-6 ${showNavigationSidebar && !isConceptNavCollapsed ? 'max-w-5xl' : 'max-w-6xl'}`}>
       <div className="flex items-center justify-between">
         <button
           onClick={() => {
