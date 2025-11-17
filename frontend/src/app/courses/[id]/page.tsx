@@ -79,6 +79,8 @@ export default function CoursePage() {
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
 
   useEffect(() => {
     if (courseId) {
@@ -149,6 +151,33 @@ export default function CoursePage() {
       pollingJobsRef.current.delete(uploadJobId);
     };
   }, [searchParams]);
+
+  // Calculate how many placeholder squares fit in one row dynamically
+  useEffect(() => {
+    const calculatePlaceholders = () => {
+      if (!gridContainerRef.current) {
+        setPlaceholdersPerRow(14); // Default fallback
+        return;
+      }
+
+      const containerWidth = gridContainerRef.current.offsetWidth;
+      // Grid: 48px squares + 8px gap (gap-2 in Tailwind)
+      // Container has 16px padding on each side when in section boxes
+      const effectiveWidth = containerWidth - 32; // Subtract padding
+      const squareWithGap = 48 + 8; // 56px per square
+      const squaresPerRow = Math.floor(effectiveWidth / squareWithGap);
+
+      // Subtract 1 for the overview square to get placeholders count
+      const placeholders = Math.max(1, squaresPerRow - 1);
+      setPlaceholdersPerRow(placeholders);
+    };
+
+    // Calculate on mount and window resize
+    calculatePlaceholders();
+    window.addEventListener('resize', calculatePlaceholders);
+
+    return () => window.removeEventListener('resize', calculatePlaceholders);
+  }, []);
 
   function loadProcessingJobs() {
     try {
@@ -819,13 +848,13 @@ export default function CoursePage() {
                 isOverview: true
               });
 
-              // Add loading placeholders if generating (responsive grid will adjust columns)
+              // Add loading placeholders if generating (exactly one row dynamically calculated)
               if (isGenerating) {
                 const job = processingJobs.find(j => j.section_id === section.id);
                 const progress = job?.progress || 0;
 
-                // Generate 29 placeholders + 1 overview = 30 total (enough for 2 rows on wide screens)
-                Array.from({ length: 29 }, (_, index) => {
+                // Use dynamically calculated number of placeholders to fill exactly one row
+                Array.from({ length: placeholdersPerRow }, (_, index) => {
                   skillsWithOverviews.push({
                     id: `loading-${section.id}-${index}`,
                     name: section.name || 'Generating...',
@@ -861,13 +890,15 @@ export default function CoursePage() {
                 </div>
 
                 {/* Concept Mastery Grid */}
-                <Card hover={false}>
-                  <MasteryGrid
-                    title="Concept Progress"
-                    skills={skills}
-                    showSectionDividers={true}
-                  />
-                </Card>
+                <div ref={gridContainerRef}>
+                  <Card hover={false}>
+                    <MasteryGrid
+                      title="Concept Progress"
+                      skills={skills}
+                      showSectionDividers={true}
+                    />
+                  </Card>
+                </div>
 
                 {/* Documents List */}
                 <div className="space-y-4">

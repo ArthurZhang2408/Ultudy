@@ -138,9 +138,11 @@ You should see:
 
 ---
 
-### Step 3: Move PDF Storage to S3 (1-2 hours)
+### Step 3: Move PDF Storage to S3 (1-2 hours) ✅
 
 **Do this when you have 100+ PDFs or multiple servers**
+
+**Status**: Code ready, just needs AWS configuration
 
 #### Why?
 - Local filesystem doesn't work with multiple servers
@@ -183,14 +185,41 @@ cd backend
 npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
 ```
 
-**E. Create storage service** (I'll provide code if you want to do this)
+**E. Restart backend to enable S3 storage:** ✅
+
+**Status**: Code ready, automatically uses S3 when configured!
+
+The app automatically detects S3 credentials and switches from local storage to S3. No code changes needed!
+
+Restart backend:
+```bash
+cd backend
+npm run dev
+```
+
+You should see:
+```
+[Storage] Storage service initialized with S3 backend
+[Storage] S3 storage backend initialized { bucket: 'ultudy-pdfs-...', region: 'us-east-1' }
+```
+
+**Verify it's working:**
+- Upload a PDF through the app
+- Check AWS Console → S3 → Your bucket
+- You should see files with keys like: `user-id/document-id.pdf`
+
+**How it works:**
+- All file uploads/downloads automatically use S3
+- Existing uploads still work (backward compatible)
+- Falls back to local storage if S3 not configured
+- Zero code changes required!
 
 **Expected improvement**:
 - Unlimited storage
 - Works with multiple servers
-- 50% faster PDF downloads (with CloudFront CDN)
+- 50% faster PDF downloads (with CloudFront CDN later)
 
-**Cost**: ~$1-2 per month for 100 PDFs
+**Cost**: ~$1-2 per month for 100 PDFs ($0.023 per GB)
 
 ---
 
@@ -245,44 +274,76 @@ heroku ps:scale web=2
 
 ---
 
-### Step 5: Database Read Replicas (Advanced)
+### Step 5: Database Read Replicas (Advanced) ✅
 
 **Do this when you have 5,000+ concurrent users**
+
+**Status**: Code ready, just needs configuration
 
 #### What it does:
 - Spreads read queries across multiple database copies
 - Writes still go to primary database
 - Can handle 10x more traffic
 
+#### How it works:
+- All `queryRead()` calls automatically route to replica pool
+- All `queryWrite()` calls always use primary database
+- Automatic fallback to primary if no replica configured
+- Both pools share same connection pool settings
+
 #### Steps (AWS RDS example):
+
+**A. Create Read Replica:**
 
 1. AWS Console → RDS → Your database
 2. Actions → Create read replica
-3. Choose same region (or different for global reach)
+3. Choose:
+   - **Same region** (low latency) or **Different region** (global reach)
+   - **Instance size**: Same as primary (or smaller for testing)
 4. Wait 10-20 minutes for replica to sync
+5. Verify: Replica status shows "Available" and lag < 1 second
 
-5. Add to `.env`:
+**B. Configure Application:**
+
+Add replica URL to `.env`:
 ```env
 DATABASE_URL=postgresql://user:pass@primary.rds.amazonaws.com:5432/ultudy
 DATABASE_REPLICA_URL=postgresql://user:pass@replica.rds.amazonaws.com:5432/ultudy
 ```
 
-6. Update `backend/src/db/index.js`:
-```javascript
-// Add replica pool
-const replicaPool = process.env.DATABASE_REPLICA_URL
-  ? new Pool({ connectionString: process.env.DATABASE_REPLICA_URL, max: 200 })
-  : null;
-
-// Update queryRead to use replica
-export async function queryRead(sql, params) {
-  const pool = replicaPool || primaryPool;  // Use replica if available
-  return pool.query(sql, params);
-}
+Restart backend:
+```bash
+npm run dev
 ```
 
-**Cost**: ~$50/month per read replica
-**Capacity**: Each replica adds 5,000-10,000 concurrent user capacity
+You should see:
+```
+[DB Pool] Read replica pool configured
+```
+
+**That's it!** The app automatically uses the replica for all read queries.
+
+#### Verify It's Working:
+
+Check logs for replica connection:
+```bash
+# In production mode, you'll see separate pool stats:
+[DB Pool] Primary Stats: { total: 15, idle: 10, waiting: 0 }
+[DB Pool] Replica Stats: { total: 20, idle: 15, waiting: 0 }
+```
+
+#### Cost & Capacity:
+- **Cost**: ~$50/month per read replica (AWS RDS)
+- **Capacity**: Each replica adds 5,000-10,000 concurrent user capacity
+- **Scaling**: Can add multiple replicas (2-3 typical for global apps)
+
+#### Advanced: Multiple Replicas
+
+For global reach or extreme scale:
+```env
+DATABASE_REPLICA_URL=postgresql://user:pass@replica-1.rds.amazonaws.com:5432/ultudy
+# Future: Add load balancing across multiple replicas
+```
 
 ---
 

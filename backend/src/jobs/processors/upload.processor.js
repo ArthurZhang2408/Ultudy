@@ -2,17 +2,25 @@
  * Upload Job Processor
  *
  * Handles PDF upload and extraction in the background
+ * Works with both S3 and local filesystem storage
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import { StorageService } from '../../lib/storage.js';
 
-export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir }) {
-  const { jobId, ownerId, pdfPath, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
+export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService }) {
+  // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
+  const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
   console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
+  console.log(`[UploadProcessor] Storage: ${storageKey ? 'using storage service' : 'using legacy pdfPath'}`);
+
+  let tempPdfPath = null;
 
   try {
     // Mark job as processing
@@ -21,13 +29,34 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     // Update progress: 10% - PDF saved
     await jobTracker.updateProgress(ownerId, jobId, 10);
 
-    console.log(`[UploadProcessor] Extracting structured sections from ${pdfPath}`);
+    // Get PDF path for processing
+    let processingPath = pdfPath; // Legacy path
+
+    // If using storage service, download PDF to temp file
+    if (storageKey) {
+      const storage = storageService || new StorageService({ storageDir });
+
+      console.log(`[UploadProcessor] Downloading PDF from storage: ${storageKey}`);
+
+      // Download PDF buffer from storage (S3 or local)
+      const pdfBuffer = await storage.download(storageKey);
+
+      // Write to temp file for processing
+      tempPdfPath = path.join(os.tmpdir(), `${randomUUID()}.pdf`);
+      await fs.writeFile(tempPdfPath, pdfBuffer);
+
+      processingPath = tempPdfPath;
+
+      console.log(`[UploadProcessor] PDF downloaded to temp file: ${tempPdfPath}`);
+    }
+
+    console.log(`[UploadProcessor] Extracting structured sections from ${processingPath}`);
 
     // Update progress: 20% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
     // Extract structured sections with LLM vision
-    const extraction = await extractStructuredSections(pdfPath);
+    const extraction = await extractStructuredSections(processingPath);
 
     console.log(`[UploadProcessor] Extracted ${extraction.sections.length} sections`);
     console.log(`[UploadProcessor] Title: "${extraction.title}"`);
@@ -112,5 +141,15 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     await jobTracker.failJob(ownerId, jobId, error);
 
     throw error;
+  } finally {
+    // Cleanup temp file if created
+    if (tempPdfPath) {
+      try {
+        await fs.rm(tempPdfPath, { force: true });
+        console.log(`[UploadProcessor] Cleaned up temp file: ${tempPdfPath}`);
+      } catch (cleanupError) {
+        console.warn(`[UploadProcessor] Failed to cleanup temp file:`, cleanupError);
+      }
+    }
   }
 }

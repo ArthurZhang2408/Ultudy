@@ -10,6 +10,7 @@ import { processUploadJob } from './processors/upload.processor.js';
 import { processLessonJob } from './processors/lesson.processor.js';
 import { createJobTracker } from './tracking.js';
 import createStudyService from '../study/service.js';
+import { StorageService } from '../lib/storage.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -42,7 +43,11 @@ export function setupWorkers(options = {}) {
     llmProviderFactory
   });
 
+  // Initialize storage service (uses S3 if configured, otherwise local filesystem)
+  const storageService = new StorageService({ storageDir });
+
   console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
+  console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
 
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
@@ -50,7 +55,8 @@ export function setupWorkers(options = {}) {
     return await processUploadJob(job, {
       tenantHelpers,
       jobTracker,
-      storageDir
+      storageDir,
+      storageService
     });
   });
 

@@ -1,16 +1,15 @@
 import express from 'express';
 import multer from 'multer';
 import { randomUUID } from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { StorageService } from '../lib/storage.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
 
 export default function createUploadRouter(options = {}) {
   const router = express.Router();
+
+  // Initialize storage service (uses S3 if configured, otherwise local filesystem)
+  const storageService = options.storageService || new StorageService({ storageDir: options.storageDir });
 
   // LLM-based structured extraction (ASYNC)
   // This endpoint is used when PDF_UPLOAD_STRATEGY=vision in .env
@@ -23,9 +22,7 @@ export default function createUploadRouter(options = {}) {
     try {
       const ownerId = req.userId || 'dev-user-001';
       const documentId = randomUUID();
-      const storageDir = options.storageDir || DEFAULT_STORAGE_DIR;
-      const ownerDir = path.join(storageDir, ownerId);
-      const pdfPath = path.join(ownerDir, `${documentId}.pdf`);
+      const storageKey = StorageService.generatePdfKey(ownerId, documentId);
 
       // Extract metadata from form data
       const courseId = req.body.course_id || null;
@@ -34,19 +31,31 @@ export default function createUploadRouter(options = {}) {
       const title = req.body.title || null;
 
       console.log('[upload/pdf-structured] Saving PDF to storage...');
+      console.log('[upload/pdf-structured] Storage type:', storageService.getType());
       console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });
 
-      // Save PDF to storage
-      await fs.mkdir(ownerDir, { recursive: true });
-      await fs.writeFile(pdfPath, req.file.buffer);
+      // Save PDF to storage (S3 or local filesystem)
+      const uploadResult = await storageService.upload(storageKey, req.file.buffer, {
+        contentType: 'application/pdf',
+        metadata: {
+          originalFilename: req.file.originalname,
+          courseId: courseId || '',
+          documentId
+        }
+      });
 
-      console.log(`[upload/pdf-structured] PDF saved: ${pdfPath}`);
+      console.log(`[upload/pdf-structured] PDF saved:`, {
+        storageKey,
+        location: uploadResult.location,
+        backend: uploadResult.backend
+      });
 
       // Create job in database with metadata
       const jobId = await options.jobTracker.createJob(ownerId, 'upload_pdf', {
         document_id: documentId,
         original_filename: req.file.originalname,
-        pdf_path: pdfPath,
+        storage_key: storageKey,
+        storage_location: uploadResult.location,
         course_id: courseId,
         chapter: chapter,
         material_type: materialType,
@@ -58,7 +67,8 @@ export default function createUploadRouter(options = {}) {
         jobId,
         ownerId,
         documentId,
-        pdfPath,
+        storageKey,
+        storageLocation: uploadResult.location,
         originalFilename: req.file.originalname,
         courseId,
         chapter,

@@ -87,6 +87,73 @@ SKIP_EMBEDDINGS=true
 
 ---
 
+## Database Configuration
+
+### Primary Database Connection
+
+**Option 1: Connection String** (Recommended)
+```env
+DATABASE_URL=postgresql://user:password@host:5432/database
+```
+
+**Option 2: Individual Parameters**
+```env
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=your-password
+PGDATABASE=study_app
+```
+
+### Read Replica (Optional - For Scaling)
+
+**`DATABASE_REPLICA_URL`** - Routes read queries to a separate database replica
+
+```env
+DATABASE_REPLICA_URL=postgresql://user:password@replica-host:5432/database
+```
+
+**When to use:**
+- 5,000+ concurrent users
+- Read-heavy workload (lots of SELECT queries)
+- Need to scale beyond single database server
+
+**How it works:**
+- All `queryRead()` calls route to replica
+- All `queryWrite()` calls route to primary
+- Automatic fallback to primary if replica not configured
+
+**Setup with AWS RDS:**
+1. AWS Console → RDS → Your database → Actions → Create read replica
+2. Wait for replica to sync (10-20 minutes)
+3. Copy replica endpoint URL
+4. Add to `.env` as `DATABASE_REPLICA_URL`
+5. Restart backend
+
+**Benefits:**
+- 2-10x more read capacity
+- Primary database handles only writes
+- Can add multiple replicas for global reach
+
+### Connection Pool Settings
+
+```env
+DB_POOL_MAX=100              # Max connections per pool (default: 100)
+DB_POOL_MIN=10               # Min connections per pool (default: 10)
+DB_IDLE_TIMEOUT=30000        # Close idle connections after 30s
+DB_CONNECT_TIMEOUT=10000     # Connection timeout: 10s
+DB_STATEMENT_TIMEOUT=60000   # Query timeout: 60s
+```
+
+**Capacity guidelines:**
+- `DB_POOL_MAX=20` → ~200 concurrent users
+- `DB_POOL_MAX=100` → ~1,000 concurrent users (current)
+- `DB_POOL_MAX=200` → ~2,000 concurrent users (with replica)
+
+**Note:** If using read replica, both primary and replica pools use these same settings.
+
+---
+
 ## Quick Reference
 
 ### To use NEW vision-based extraction:

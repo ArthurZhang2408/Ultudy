@@ -56,6 +56,27 @@ if (poolConfig) {
 
 const pool = poolConfig ? new Pool(poolConfig) : null;
 
+// Read Replica Pool Configuration (Optional)
+// If DATABASE_REPLICA_URL is provided, create a separate pool for read queries
+// This enables horizontal scaling for read-heavy workloads
+let replicaPool = null;
+const DATABASE_REPLICA_URL = process.env.DATABASE_REPLICA_URL;
+
+if (DATABASE_REPLICA_URL) {
+  const replicaConfig = { connectionString: DATABASE_REPLICA_URL };
+
+  // Use same pool settings as primary
+  replicaConfig.max = parseInt(process.env.DB_POOL_MAX || '100', 10);
+  replicaConfig.min = parseInt(process.env.DB_POOL_MIN || '10', 10);
+  replicaConfig.idleTimeoutMillis = parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10);
+  replicaConfig.connectionTimeoutMillis = parseInt(process.env.DB_CONNECT_TIMEOUT || '10000', 10);
+  replicaConfig.statement_timeout = parseInt(process.env.DB_STATEMENT_TIMEOUT || '60000', 10);
+  replicaConfig.application_name = 'ultudy-backend-replica';
+
+  replicaPool = new Pool(replicaConfig);
+  console.log('[DB Pool] Read replica pool configured');
+}
+
 // Monitor pool health for production
 if (pool && NODE_ENV === 'production') {
   pool.on('error', (err) => {
@@ -72,12 +93,35 @@ if (pool && NODE_ENV === 'production') {
 
   // Log pool stats periodically (every 5 minutes)
   poolStatsInterval = setInterval(() => {
-    console.log('[DB Pool] Stats:', {
+    console.log('[DB Pool] Primary Stats:', {
       total: pool.totalCount,
       idle: pool.idleCount,
       waiting: pool.waitingCount
     });
+
+    if (replicaPool) {
+      console.log('[DB Pool] Replica Stats:', {
+        total: replicaPool.totalCount,
+        idle: replicaPool.idleCount,
+        waiting: replicaPool.waitingCount
+      });
+    }
   }, 300000);
+}
+
+// Monitor replica pool if configured
+if (replicaPool && NODE_ENV === 'production') {
+  replicaPool.on('error', (err) => {
+    console.error('[DB Pool] Unexpected error on idle replica client:', err);
+  });
+
+  replicaPool.on('connect', () => {
+    console.log('[DB Pool] New replica client connected');
+  });
+
+  replicaPool.on('remove', () => {
+    console.log('[DB Pool] Replica client removed from pool');
+  });
 }
 
 export const isDatabaseConfigured = Boolean(poolConfig);
@@ -97,13 +141,16 @@ let poolStatsInterval = null;
 
 /**
  * Execute a read query (SELECT, etc.)
- * Future: Will route to read replica pool for better performance
+ * Routes to read replica pool if available, otherwise uses primary pool
+ * This enables horizontal scaling for read-heavy workloads
  */
 export async function queryRead(sql, params) {
   if (!pool) {
     throw new Error('Database not configured');
   }
-  return pool.query(sql, params);
+  // Use replica pool if available, otherwise fall back to primary
+  const readPool = replicaPool || pool;
+  return readPool.query(sql, params);
 }
 
 /**
@@ -152,7 +199,11 @@ export async function closePool() {
   }
   if (pool) {
     await pool.end();
-    console.log('[DB Pool] Closed all connections');
+    console.log('[DB Pool] Closed primary pool connections');
+  }
+  if (replicaPool) {
+    await replicaPool.end();
+    console.log('[DB Pool] Closed replica pool connections');
   }
 }
 
