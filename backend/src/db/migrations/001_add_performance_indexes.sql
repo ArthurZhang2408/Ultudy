@@ -5,16 +5,20 @@
 
 -- Helper function to create index only if table exists
 CREATE OR REPLACE FUNCTION create_index_if_table_exists(
-    index_name TEXT,
-    table_name TEXT,
-    columns TEXT
+    idx_name TEXT,
+    tbl_name TEXT,
+    col_def TEXT
 ) RETURNS void AS $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $2) THEN
-        EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I %s', $1, $2, $3);
-        RAISE NOTICE 'Created index % on table %', $1, $2;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = tbl_name
+    ) THEN
+        EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I %s', idx_name, tbl_name, col_def);
+        RAISE NOTICE 'Created index % on table %', idx_name, tbl_name;
     ELSE
-        RAISE NOTICE 'Skipped index % - table % does not exist', $1, $2;
+        RAISE NOTICE 'Skipped index % - table % does not exist', idx_name, tbl_name;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
