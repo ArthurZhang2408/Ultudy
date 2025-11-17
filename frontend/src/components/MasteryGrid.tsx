@@ -20,7 +20,6 @@ export type SkillSquare = {
 type MasteryGridProps = {
   title: string;
   skills: SkillSquare[];
-  columns?: number;
   showSectionDividers?: boolean;
 };
 
@@ -72,7 +71,7 @@ function getMasteryLabel(level: MasteryLevel): string {
   }
 }
 
-export function MasteryGrid({ title, skills, columns = 10, showSectionDividers = false }: MasteryGridProps) {
+export function MasteryGrid({ title, skills, showSectionDividers = false }: MasteryGridProps) {
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
 
   // Count skills by mastery level
@@ -182,8 +181,7 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                 <div
                   className={`grid gap-2 ${showSectionDividers ? 'p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-800/50 dark:to-neutral-800/30 border border-neutral-200 dark:border-neutral-700' : ''}`}
                   style={{
-                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                    maxWidth: `${columns * 60}px`
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(48px, 1fr))'
                   }}
                 >
                   {sectionSkills.map((skill, index) => {
