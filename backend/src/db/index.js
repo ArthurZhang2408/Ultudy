@@ -69,7 +69,7 @@ if (pool && NODE_ENV === 'production') {
   });
 
   // Log pool stats periodically (every 5 minutes)
-  setInterval(() => {
+  poolStatsInterval = setInterval(() => {
     console.log('[DB Pool] Stats:', {
       total: pool.totalCount,
       idle: pool.idleCount,
@@ -80,8 +80,15 @@ if (pool && NODE_ENV === 'production') {
 
 export const isDatabaseConfigured = Boolean(poolConfig);
 
+// Interval for periodic pool stats logging
+let poolStatsInterval = null;
+
 // Graceful shutdown
 export async function closePool() {
+  if (poolStatsInterval) {
+    clearInterval(poolStatsInterval);
+    poolStatsInterval = null;
+  }
   if (pool) {
     await pool.end();
     console.log('[DB Pool] Closed all connections');

@@ -127,9 +127,46 @@ export function validateFileUpload(options = {}) {
 
 /**
  * Rate limiting helper (basic in-memory implementation)
- * For production, use Redis-based rate limiting
+ *
+ * NOTE: This is suitable for development/testing only.
+ * For production with multiple server instances, use Redis-based rate limiting
+ * (e.g., express-rate-limit with redis store) to share state across processes.
  */
 const rateLimitStore = new Map();
+let cleanupInterval = null;
+
+/**
+ * Start periodic cleanup of expired rate limit entries
+ * @param {number} windowMs - Cleanup interval (default: 60000ms)
+ */
+export function startRateLimitCleanup(windowMs = 60000) {
+  if (cleanupInterval) return; // Already running
+
+  cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [k, v] of rateLimitStore.entries()) {
+      if (v.resetTime < now) {
+        rateLimitStore.delete(k);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`[RateLimit] Cleaned up ${cleaned} expired entries`);
+    }
+  }, windowMs / 2); // Clean up twice per window
+}
+
+/**
+ * Stop periodic cleanup (for graceful shutdown)
+ */
+export function stopRateLimitCleanup() {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
+    console.log('[RateLimit] Stopped cleanup interval');
+  }
+}
 
 export function createRateLimiter(options = {}) {
   const {
@@ -138,17 +175,12 @@ export function createRateLimiter(options = {}) {
     keyGenerator = (req) => req.userId || req.ip
   } = options;
 
+  // Start cleanup when first limiter is created
+  startRateLimitCleanup(windowMs);
+
   return (req, res, next) => {
     const key = keyGenerator(req);
     const now = Date.now();
-
-    // Clean up old entries
-    const cutoff = now - windowMs;
-    for (const [k, v] of rateLimitStore.entries()) {
-      if (v.resetTime < cutoff) {
-        rateLimitStore.delete(k);
-      }
-    }
 
     // Check current user
     const userLimit = rateLimitStore.get(key) || { count: 0, resetTime: now + windowMs };
