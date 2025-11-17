@@ -251,11 +251,11 @@ Database (with RLS)
 5. Create feature doc if complex
 
 ### Deploy to Production
-1. Review [SCALABILITY_GUIDE.md](./SCALABILITY_GUIDE.md)
-2. Set up Redis caching
-3. Configure environment variables
-4. Run database migrations
-5. Enable production mode (`NODE_ENV=production`)
+1. Follow [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for complete deployment instructions
+2. Use [DEPLOYMENT_CHECKLIST.md](./DEPLOYMENT_CHECKLIST.md) to track progress
+3. Review [SCALABILITY_GUIDE.md](./SCALABILITY_GUIDE.md) for scaling beyond 1,000 users
+4. Configure environment variables (see `.env.production.example` files)
+5. Run database migrations in production
 
 ### Troubleshooting
 - Check `backend/ENV_CONFIGURATION.md` for config issues

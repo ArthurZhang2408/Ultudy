@@ -23,7 +23,9 @@ When you open this repository:
 |----------|---------|--------------|
 | **README.md** | Project overview, getting started, tech stack | First time setup |
 | **PRODUCT_VISION.md** | Product goals, user stories, feature roadmap | Understanding product direction |
-| **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | Production deployment |
+| **DEPLOYMENT_GUIDE.md** | Complete deployment guide to ultudy.com | Deploying to production |
+| **DEPLOYMENT_CHECKLIST.md** | Step-by-step deployment checklist | During deployment |
+| **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | After deployment, scaling |
 | **CLERK_SETUP.md** | Authentication setup with Clerk | Setting up auth |
 
 ### Backend Documentation
@@ -55,6 +57,8 @@ When you open this repository:
 Files that represent the current state of the system:
 - `README.md` - Main project documentation
 - `PRODUCT_VISION.md` - Product strategy
+- `DEPLOYMENT_GUIDE.md` - Production deployment guide
+- `DEPLOYMENT_CHECKLIST.md` - Deployment verification checklist
 - `SCALABILITY_GUIDE.md` - Production scaling guide
 - `CLERK_SETUP.md` - Authentication setup
 - `backend/PDF_EXTRACTION_GUIDE.md` - PDF processing
@@ -252,6 +256,9 @@ cat SCALABILITY_GUIDE.md
 
 ### "How does PDF extraction work?"
 → See `backend/PDF_EXTRACTION_GUIDE.md`
+
+### "How do I deploy to production?"
+→ See `DEPLOYMENT_GUIDE.md` and `DEPLOYMENT_CHECKLIST.md`
 
 ### "How do I scale to production?"
 → See `SCALABILITY_GUIDE.md`
