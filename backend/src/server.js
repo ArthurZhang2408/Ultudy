@@ -4,6 +4,7 @@ import { validateLLMProviderConfig } from './providers/llm/index.js';
 import { validateConfig } from './config.js';
 import { closePool } from './db/index.js';
 import { stopRateLimitCleanup } from './middleware/validation.js';
+import { closeCache } from './lib/cache.js';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ async function gracefulShutdown(signal) {
   // Clean up resources
   try {
     await closePool();
+    await closeCache();
     stopRateLimitCleanup();
     console.log('[Server] Cleanup completed');
     process.exit(0);
