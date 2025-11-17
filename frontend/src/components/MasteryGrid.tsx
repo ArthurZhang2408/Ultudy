@@ -181,7 +181,7 @@ export function MasteryGrid({ title, skills, showSectionDividers = false }: Mast
                 <div
                   className={`grid gap-2 ${showSectionDividers ? 'p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-800/50 dark:to-neutral-800/30 border border-neutral-200 dark:border-neutral-700' : ''}`}
                   style={{
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(48px, 1fr))'
+                    gridTemplateColumns: 'repeat(auto-fill, 48px)'
                   }}
                 >
                   {sectionSkills.map((skill, index) => {
