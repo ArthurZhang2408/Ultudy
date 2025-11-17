@@ -129,10 +129,11 @@ function LearnPageContent() {
       return null;
     }
 
-    // Use document_id, chapter, and section_id to ensure each section has separate progress
-    const docId = lessonData.document_id || documentId;
-    const chapterVal = lessonData.chapter || chapter;
-    const sectionId = lessonData.section_id || selectedSection?.id;
+    // ALWAYS use URL parameters as source of truth for consistency
+    // This ensures the same section always gets the same key, regardless of lesson object structure
+    const docId = documentId; // Always use URL param
+    const chapterVal = chapter; // Always use URL param
+    const sectionId = urlSectionId || selectedSection?.id; // Prefer URL, fallback to state
 
     if (!docId) {
       return null;
