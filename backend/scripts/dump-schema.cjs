@@ -3,7 +3,12 @@ const { Pool } = require('pg');
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/study_app';
 
 async function dumpSchema() {
-  const pool = new Pool({ connectionString: DATABASE_URL });
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: DATABASE_URL.includes('neon.tech') || DATABASE_URL.includes('supabase')
+      ? { rejectUnauthorized: false }
+      : false
+  });
 
   try {
     console.log('📊 DUMPING DATABASE SCHEMA...\n');
