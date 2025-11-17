@@ -2,39 +2,11 @@
 
 import Link from 'next/link';
 import { useAuth } from '@clerk/nextjs';
-import { useState, useEffect } from 'react';
 import { Button, Card, Badge } from '@/components/ui';
-
-type Course = {
-  id: string;
-  name: string;
-  code: string | null;
-  term: string | null;
-  exam_date: string | null;
-  created_at: string;
-};
+import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 
 function CoursesHomePage() {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchCourses();
-  }, []);
-
-  async function fetchCourses() {
-    try {
-      const res = await fetch('/api/courses');
-      if (res.ok) {
-        const data = await res.json();
-        setCourses(data.courses || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch courses:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const { courses, loading } = useFetchCourses();
 
   if (loading) {
     return (

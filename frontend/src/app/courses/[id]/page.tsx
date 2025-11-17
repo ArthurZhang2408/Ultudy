@@ -819,12 +819,13 @@ export default function CoursePage() {
                 isOverview: true
               });
 
-              // Add loading placeholders if generating
+              // Add loading placeholders if generating (responsive grid will adjust columns)
               if (isGenerating) {
                 const job = processingJobs.find(j => j.section_id === section.id);
                 const progress = job?.progress || 0;
 
-                Array.from({ length: 8 }, (_, index) => {
+                // Generate 29 placeholders + 1 overview = 30 total (enough for 2 rows on wide screens)
+                Array.from({ length: 29 }, (_, index) => {
                   skillsWithOverviews.push({
                     id: `loading-${section.id}-${index}`,
                     name: section.name || 'Generating...',
@@ -864,7 +865,6 @@ export default function CoursePage() {
                   <MasteryGrid
                     title="Concept Progress"
                     skills={skills}
-                    columns={15}
                     showSectionDividers={true}
                   />
                 </Card>

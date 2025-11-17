@@ -5,12 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { Button, Card, Input, Badge, Select } from '@/components/ui';
 import CustomSelect from './CustomSelect';
-
-type Course = {
-  id: string;
-  name: string;
-  code: string | null;
-};
+import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -20,7 +15,7 @@ interface UploadModalProps {
 
 export default function UploadModal({ isOpen, onClose, preselectedCourseId }: UploadModalProps) {
   const router = useRouter();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const { courses } = useFetchCourses();
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
   const [chapter, setChapter] = useState('');
@@ -37,11 +32,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchCourses();
-      if (preselectedCourseId) {
-        setCourseId(preselectedCourseId);
-      }
+    if (isOpen && preselectedCourseId) {
+      setCourseId(preselectedCourseId);
     }
   }, [isOpen, preselectedCourseId]);
 
@@ -66,18 +58,6 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       };
     }
   }, [isOpen, onClose]);
-
-  async function fetchCourses() {
-    try {
-      const res = await fetch('/api/courses');
-      if (res.ok) {
-        const data = await res.json();
-        setCourses(data.courses || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch courses:', error);
-    }
-  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -217,8 +197,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 <p className="text-neutral-600 dark:text-neutral-300">
                   Create a course first before uploading materials
                 </p>
-                <Button onClick={() => { onClose(); router.push('/courses'); }} variant="primary">
-                  Create Your First Course
+                <Button onClick={() => { onClose(); router.push('/'); }} variant="primary">
+                  Go to Home
                 </Button>
               </div>
             </div>

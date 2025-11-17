@@ -6,107 +6,19 @@ import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 import { getCachedLesson, setCachedLesson, clearCachedLesson } from '@/lib/lessonCache';
-
-type MCQOption = {
-  letter: string;
-  text: string;
-  correct: boolean;
-  explanation: string;
-};
-
-type MCQ = {
-  question: string;
-  options: MCQOption[];
-  expected_answer: string;
-  hint?: string;
-};
-
-type Formula = {
-  formula: string;
-  variables: string;
-};
-
-type Concept = {
-  id?: string;
-  name: string;
-  explanation: string;
-  analogies?: string[];
-  examples?: string[];
-  formulas?: Formula[];
-  important_notes?: string[];
-  is_main_concept?: boolean;
-  parent_concept?: string;
-  check_ins?: MCQ[];
-};
-
-type ConceptMeta = {
-  id: string;
-  name: string;
-  concept_number: number | null;
-  lesson_position: number;
-  mastery_level: string;
-  accuracy: number;
-};
-
-type Section = {
-  id: string;
-  section_number: number;
-  name: string;
-  description: string | null;
-  page_start: number | null;
-  page_end: number | null;
-  concepts_generated: boolean;
-  created_at: string;
-  generating?: boolean; // Track if this section is being generated
-  generation_progress?: number; // Track generation progress
-  job_id?: string; // Track the generation job ID
-  concepts?: ConceptMeta[]; // All concepts for this section (fetched upfront)
-};
-
-type DocumentInfo = {
-  id: string;
-  title: string;
-  material_type: string | null;
-  chapter: string | null;
-  pages: number;
-  uploaded_at: string;
-  course_id: string | null;
-};
-
-type Lesson = {
-  id?: string;
-  document_id?: string;
-  course_id?: string | null;
-  chapter?: string | null;
-  section_id?: string | null;
-  topic?: string;
-  summary?: string;
-  explanation?: string;
-  concepts?: Concept[];
-  created_at?: string;
-};
-
-type AnswerRecord = {
-  selected: string;
-  correct: boolean;
-};
-
-type StoredProgress = {
-  conceptIndex: number;
-  mcqIndex: number;
-  conceptProgress: Array<[number, 'completed' | 'skipped' | 'wrong']>;
-  answerHistory: Record<string, AnswerRecord>;
-};
-
-type MasteryUpdate = {
-  concept_id: string;
-  concept: string;
-  old_state: string;
-  new_state: string;
-  total_attempts: number;
-  correct_attempts: number;
-  accuracy_percent: number;
-};
+import type {
+  MCQ,
+  MCQOption,
+  Formula,
+  Concept,
+  Lesson,
+  ConceptMeta,
+  Section,
+  DocumentInfo,
+  AnswerRecord,
+  StoredProgress,
+  MasteryUpdate
+} from '@/types';
 
 // Helper function to parse JSONB fields and normalize lesson structure
 function normalizeLesson(rawLesson: any): Lesson {
@@ -1425,7 +1337,7 @@ function LearnPageContent() {
       if (courseId) {
         router.push(`/courses/${courseId}`);
       } else {
-        router.push('/courses');
+        router.push('/'); // Home page shows all courses
       }
     }
   }
@@ -1474,7 +1386,7 @@ function LearnPageContent() {
       if (courseId) {
         router.push(`/courses/${courseId}`);
       } else {
-        router.push('/courses');
+        router.push('/'); // Home page shows all courses
       }
     }
   }
@@ -1490,10 +1402,17 @@ function LearnPageContent() {
     }
 
     if (currentConceptIndex > 0) {
-      const previousConcept = lesson.concepts?.[currentConceptIndex - 1];
+      const previousConceptIndex = currentConceptIndex - 1;
+      const previousConcept = lesson.concepts?.[previousConceptIndex];
       const previousTotal = previousConcept?.check_ins?.length || 0;
-      setCurrentConceptIndex((prev) => prev - 1);
+
+      setCurrentConceptIndex(previousConceptIndex);
       setCurrentMCQIndex(previousTotal > 0 ? previousTotal - 1 : 0);
+
+      // Update URL to preserve state on refresh (matching handleNextMCQ behavior)
+      if (previousConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(previousConcept.name)}`);
+      }
     }
   }
 
@@ -1510,7 +1429,7 @@ function LearnPageContent() {
           <button
             onClick={() => {
               setError(null);
-              router.push('/courses');
+              router.push('/'); // Home page shows all courses
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
@@ -1535,7 +1454,7 @@ function LearnPageContent() {
             <button
               onClick={() => {
                 setError(null);
-                router.push('/courses');
+                router.push('/'); // Home page shows all courses
               }}
               className="rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-red-900 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
             >
@@ -1565,8 +1484,25 @@ function LearnPageContent() {
     if (courseId) {
       router.push(`/courses/${courseId}`);
     } else {
-      router.push('/courses');
+      router.push('/'); // Home page shows all courses
     }
+    return <LearnPageFallback />;
+  }
+
+  // Show loading state while lesson is being generated or loaded
+  if (generatingLesson) {
+    return <LearnPageFallback />;
+  }
+
+  // Check if section is currently generating
+  const currentSection = sections.find(s => s.id === urlSectionId);
+  if (currentSection?.generating) {
+    return <LearnPageFallback />;
+  }
+
+  // Check if we're loading a lesson for an existing section (not yet loaded)
+  // This prevents "Failed to load lesson" flash when clicking a concept
+  if (!lesson && urlSectionId && currentSection && currentSection.concepts_generated) {
     return <LearnPageFallback />;
   }
 
@@ -1575,7 +1511,7 @@ function LearnPageContent() {
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-neutral-100">Failed to load lesson</h2>
         <button
-          onClick={() => router.push('/courses')}
+          onClick={() => router.push('/')}
           className="mt-4 text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
         >
           ← Back to courses
@@ -1617,7 +1553,7 @@ function LearnPageContent() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <button
-            onClick={() => router.push('/courses')}
+            onClick={() => router.push('/')}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← Back to courses
@@ -1657,7 +1593,7 @@ function LearnPageContent() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => router.push('/courses')}
+              onClick={() => router.push('/')}
               className="rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-amber-900 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
             >
               Go Back
@@ -1713,7 +1649,7 @@ function LearnPageContent() {
               if (courseId) {
                 router.push(`/courses/${courseId}`);
               } else {
-                router.push('/courses');
+                router.push('/'); // Home page shows all courses
               }
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
@@ -2090,11 +2026,43 @@ function LearnPageContent() {
 
 function LearnPageFallback() {
   return (
-    <div className="flex items-center justify-center py-12">
-      <div className="text-center space-y-4">
-        <div className="text-slate-600 dark:text-neutral-300">Loading your lesson...</div>
-        <div className="text-sm text-slate-500 dark:text-neutral-400">
-          Checking for cached lesson or generating new one (up to 10 seconds for first time)
+    <div className="space-y-6 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="h-4 w-32 skeleton rounded" />
+        <div className="h-4 w-24 skeleton rounded" />
+      </div>
+
+      {/* Concept card skeleton */}
+      <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-4">
+        <div className="h-8 w-3/4 skeleton rounded-lg" />
+        <div className="space-y-3">
+          <div className="h-4 w-full skeleton rounded" />
+          <div className="h-4 w-full skeleton rounded" />
+          <div className="h-4 w-2/3 skeleton rounded" />
+        </div>
+      </div>
+
+      {/* MCQ skeleton */}
+      <div className="rounded-lg border-2 border-slate-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-md space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-6 w-48 skeleton rounded" />
+          <div className="h-4 w-24 skeleton rounded" />
+        </div>
+        <div className="h-5 w-full skeleton rounded" />
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-16 w-full skeleton rounded-lg" />
+          ))}
+        </div>
+      </div>
+
+      {/* Progress skeleton */}
+      <div className="space-y-2">
+        <div className="h-4 w-32 skeleton rounded" />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-2 flex-1 skeleton rounded-full" />
+          ))}
         </div>
       </div>
     </div>

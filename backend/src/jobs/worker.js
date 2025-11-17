@@ -29,8 +29,7 @@ export function setupWorkers(options = {}) {
     tenantHelpers,
     pool,
     storageDir = DEFAULT_STORAGE_DIR,
-    llmProviderFactory,
-    embeddingsProviderFactory
+    llmProviderFactory
   } = options;
 
   if (!tenantHelpers) {

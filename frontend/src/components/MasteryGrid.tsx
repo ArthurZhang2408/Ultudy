@@ -20,7 +20,6 @@ export type SkillSquare = {
 type MasteryGridProps = {
   title: string;
   skills: SkillSquare[];
-  columns?: number;
   showSectionDividers?: boolean;
 };
 
@@ -72,7 +71,7 @@ function getMasteryLabel(level: MasteryLevel): string {
   }
 }
 
-export function MasteryGrid({ title, skills, columns = 10, showSectionDividers = false }: MasteryGridProps) {
+export function MasteryGrid({ title, skills, showSectionDividers = false }: MasteryGridProps) {
   const [hoveredSkill, setHoveredSkill] = useState<string | null>(null);
 
   // Count skills by mastery level
@@ -93,7 +92,15 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
   const loadingCount = counts['loading'] || 0;
   const completedConceptsCount = skills.length - loadingCount;
-  const generatingSectionsCount = loadingCount > 0 ? Math.ceil(loadingCount / 8) : 0;
+
+  // Count actual number of sections generating (not estimated from loading squares)
+  // A section is generating if it has any loading squares
+  const generatingSections = new Set(
+    skills
+      .filter(skill => skill.masteryLevel === 'loading' && skill.sectionNumber)
+      .map(skill => skill.sectionNumber)
+  );
+  const generatingSectionsCount = generatingSections.size;
 
   return (
     <div className="space-y-4">
@@ -174,17 +181,22 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                 <div
                   className={`grid gap-2 ${showSectionDividers ? 'p-4 rounded-xl bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-800/50 dark:to-neutral-800/30 border border-neutral-200 dark:border-neutral-700' : ''}`}
                   style={{
-                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                    maxWidth: `${columns * 60}px`
+                    gridTemplateColumns: 'repeat(auto-fill, 48px)'
                   }}
                 >
                   {sectionSkills.map((skill, index) => {
+                    // Calculate display number excluding overview squares
+                    // This ensures placeholders show 1-8, not 2-9
+                    const nonOverviewSkillsBefore = sectionSkills
+                      .slice(0, index)
+                      .filter(s => !s.isOverview).length;
+
                     const displayNumber =
                       typeof skill.conceptNumber === 'number' && skill.conceptNumber > 0
                         ? skill.conceptNumber
                         : typeof skill.lessonPosition === 'number'
                         ? skill.lessonPosition + 1
-                        : index + 1;
+                        : nonOverviewSkillsBefore + 1;
 
                     return (
                       <div key={skill.id} className="relative group">
@@ -219,6 +231,9 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                                 </div>
                               )}
                             </>
+                          ) : skill.masteryLevel === 'loading' ? (
+                            // Show empty square for loading placeholders
+                            null
                           ) : (
                             displayNumber
                           )}
