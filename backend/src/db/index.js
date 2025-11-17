@@ -37,8 +37,55 @@ if (DATABASE_URL) {
   poolConfig = { connectionString: defaultLocalConnection };
 }
 
+// Production-ready connection pool configuration
+if (poolConfig) {
+  // Configure pool size for high concurrency
+  poolConfig.max = parseInt(process.env.DB_POOL_MAX || '20', 10); // Max connections
+  poolConfig.min = parseInt(process.env.DB_POOL_MIN || '5', 10); // Min connections
+  poolConfig.idleTimeoutMillis = parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10); // 30s
+  poolConfig.connectionTimeoutMillis = parseInt(process.env.DB_CONNECT_TIMEOUT || '10000', 10); // 10s
+
+  // Statement timeout to prevent long-running queries from blocking
+  poolConfig.statement_timeout = parseInt(process.env.DB_STATEMENT_TIMEOUT || '60000', 10); // 60s
+
+  // Application name for connection tracking
+  poolConfig.application_name = 'ultudy-backend';
+}
+
 const pool = poolConfig ? new Pool(poolConfig) : null;
 
+// Monitor pool health for production
+if (pool && NODE_ENV === 'production') {
+  pool.on('error', (err) => {
+    console.error('[DB Pool] Unexpected error on idle client:', err);
+  });
+
+  pool.on('connect', () => {
+    console.log('[DB Pool] New client connected');
+  });
+
+  pool.on('remove', () => {
+    console.log('[DB Pool] Client removed from pool');
+  });
+
+  // Log pool stats periodically (every 5 minutes)
+  setInterval(() => {
+    console.log('[DB Pool] Stats:', {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 300000);
+}
+
 export const isDatabaseConfigured = Boolean(poolConfig);
+
+// Graceful shutdown
+export async function closePool() {
+  if (pool) {
+    await pool.end();
+    console.log('[DB Pool] Closed all connections');
+  }
+}
 
 export default pool;
