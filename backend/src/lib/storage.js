@@ -13,8 +13,6 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('Storage');
@@ -107,11 +105,13 @@ class LocalStorageBackend extends StorageBackend {
  * AWS S3 storage backend
  */
 class S3StorageBackend extends StorageBackend {
-  constructor(config) {
+  constructor(config, awsSdk) {
     super();
     this.bucket = config.bucket;
     this.region = config.region || 'us-east-1';
+    this.awsSdk = awsSdk;
 
+    const { S3Client } = awsSdk;
     this.client = new S3Client({
       region: this.region,
       credentials: {
@@ -127,6 +127,7 @@ class S3StorageBackend extends StorageBackend {
   }
 
   async upload(key, buffer, options = {}) {
+    const { PutObjectCommand } = this.awsSdk;
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
@@ -153,6 +154,7 @@ class S3StorageBackend extends StorageBackend {
   }
 
   async download(key) {
+    const { GetObjectCommand } = this.awsSdk;
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key
@@ -171,6 +173,7 @@ class S3StorageBackend extends StorageBackend {
   }
 
   async delete(key) {
+    const { DeleteObjectCommand } = this.awsSdk;
     const command = new DeleteObjectCommand({
       Bucket: this.bucket,
       Key: key
@@ -185,6 +188,7 @@ class S3StorageBackend extends StorageBackend {
   }
 
   async exists(key) {
+    const { HeadObjectCommand } = this.awsSdk;
     try {
       const command = new HeadObjectCommand({
         Bucket: this.bucket,
@@ -202,6 +206,9 @@ class S3StorageBackend extends StorageBackend {
   }
 
   async getSignedDownloadUrl(key, expiresIn = 3600) {
+    const { GetObjectCommand } = this.awsSdk;
+    const { getSignedUrl } = this.awsSdk.presigner;
+
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key
@@ -234,35 +241,76 @@ class S3StorageBackend extends StorageBackend {
  */
 export class StorageService {
   constructor(options = {}) {
+    this.type = 'local'; // Default type until initialization completes
+    this.backend = null; // Will be set during initialization
+    this._initPromise = this._initialize(options);
+  }
+
+  async _initialize(options) {
     const useS3 =
       process.env.AWS_ACCESS_KEY_ID &&
       process.env.AWS_SECRET_ACCESS_KEY &&
       process.env.AWS_S3_BUCKET;
 
     if (useS3) {
-      // Use S3 backend
-      this.backend = new S3StorageBackend({
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        bucket: process.env.AWS_S3_BUCKET,
-        region: process.env.AWS_REGION || 'us-east-1'
-      });
+      try {
+        // Dynamically import AWS SDK only when S3 is configured
+        const [clientS3, presigner] = await Promise.all([
+          import('@aws-sdk/client-s3'),
+          import('@aws-sdk/s3-request-presigner')
+        ]);
 
-      logger.info('Storage service initialized with S3 backend', {
-        bucket: process.env.AWS_S3_BUCKET,
-        region: process.env.AWS_REGION || 'us-east-1'
-      });
+        const awsSdk = {
+          S3Client: clientS3.S3Client,
+          PutObjectCommand: clientS3.PutObjectCommand,
+          GetObjectCommand: clientS3.GetObjectCommand,
+          DeleteObjectCommand: clientS3.DeleteObjectCommand,
+          HeadObjectCommand: clientS3.HeadObjectCommand,
+          presigner: { getSignedUrl: presigner.getSignedUrl }
+        };
+
+        // Use S3 backend
+        this.backend = new S3StorageBackend({
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+          bucket: process.env.AWS_S3_BUCKET,
+          region: process.env.AWS_REGION || 'us-east-1'
+        }, awsSdk);
+
+        this.type = 's3';
+
+        logger.info('Storage service initialized with S3 backend', {
+          bucket: process.env.AWS_S3_BUCKET,
+          region: process.env.AWS_REGION || 'us-east-1'
+        });
+      } catch (error) {
+        // Fallback to local storage if AWS SDK not available
+        logger.warn('AWS SDK not available, falling back to local storage', {
+          error: error.message
+        });
+
+        const baseDir = options.storageDir || path.resolve(process.cwd(), 'storage');
+        this.backend = new LocalStorageBackend(baseDir);
+        this.type = 'local';
+
+        logger.info('Storage service initialized with local filesystem backend (fallback)', {
+          baseDir
+        });
+      }
     } else {
       // Use local filesystem backend
       const baseDir = options.storageDir || path.resolve(process.cwd(), 'storage');
       this.backend = new LocalStorageBackend(baseDir);
+      this.type = 'local';
 
       logger.info('Storage service initialized with local filesystem backend', {
         baseDir
       });
     }
+  }
 
-    this.type = useS3 ? 's3' : 'local';
+  async _ensureInitialized() {
+    await this._initPromise;
   }
 
   /**
@@ -273,6 +321,7 @@ export class StorageService {
    * @returns {Promise<Object>} Upload result
    */
   async upload(key, buffer, options = {}) {
+    await this._ensureInitialized();
     return this.backend.upload(key, buffer, options);
   }
 
@@ -282,6 +331,7 @@ export class StorageService {
    * @returns {Promise<Buffer>} File contents
    */
   async download(key) {
+    await this._ensureInitialized();
     return this.backend.download(key);
   }
 
@@ -290,6 +340,7 @@ export class StorageService {
    * @param {string} key - Storage key
    */
   async delete(key) {
+    await this._ensureInitialized();
     return this.backend.delete(key);
   }
 
@@ -299,6 +350,7 @@ export class StorageService {
    * @returns {Promise<boolean>}
    */
   async exists(key) {
+    await this._ensureInitialized();
     return this.backend.exists(key);
   }
 
@@ -309,6 +361,7 @@ export class StorageService {
    * @returns {Promise<string>} Download URL or file path
    */
   async getSignedDownloadUrl(key, expiresIn = 3600) {
+    await this._ensureInitialized();
     return this.backend.getSignedDownloadUrl(key, expiresIn);
   }
 

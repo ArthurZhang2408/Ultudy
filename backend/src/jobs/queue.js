@@ -8,16 +8,22 @@
 import Queue from 'bull';
 
 // Redis connection configuration
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_URL = process.env.REDIS_URL;
 
-// Check if we should disable queues (for CI/testing without Redis)
-const DISABLE_QUEUES = process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true';
+// Check if we should disable queues (for CI/testing without Redis, or no Redis configured)
+const DISABLE_QUEUES = process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true' || !REDIS_URL;
 
 let uploadQueue;
 let lessonQueue;
+let redisConnectionFailed = false;
 
 if (DISABLE_QUEUES) {
-  console.log('[Queue] Queues disabled (CI/test mode)');
+  if (!REDIS_URL) {
+    console.log('[Queue] Redis not configured - using mock queues (jobs process synchronously)');
+    console.log('[Queue] To enable async processing, set REDIS_URL in .env');
+  } else {
+    console.log('[Queue] Queues disabled (CI/test mode)');
+  }
 
   // Create mock queues for CI/testing that process jobs synchronously
   const createMockQueue = (name) => {
@@ -62,6 +68,8 @@ if (DISABLE_QUEUES) {
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
 } else {
+  console.log(`[Queue] Connecting to Redis at ${REDIS_URL}`);
+
   // Create separate queues for different job types
   uploadQueue = new Queue('upload-processing', REDIS_URL, {
     defaultJobOptions: {
@@ -72,6 +80,12 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false, // Keep completed jobs for status checking
       removeOnFail: false // Keep failed jobs for debugging
+    },
+    settings: {
+      // Limit retries to prevent flooding logs
+      maxRetriesPerRequest: 3,
+      // Connection timeout
+      connectTimeout: 10000
     }
   });
 
@@ -84,6 +98,10 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false,
       removeOnFail: false
+    },
+    settings: {
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000
     }
   });
 }
@@ -92,9 +110,21 @@ export { uploadQueue, lessonQueue };
 
 // Only set up event handlers and cleanup for real queues (not in CI/test mode)
 if (!DISABLE_QUEUES) {
+  let uploadErrorCount = 0;
+  let lessonErrorCount = 0;
+  const MAX_ERROR_LOGS = 5;
+
   // Job event handlers for logging
   uploadQueue.on('error', (error) => {
-    console.error('[uploadQueue] Queue error:', error);
+    uploadErrorCount++;
+    if (uploadErrorCount <= MAX_ERROR_LOGS) {
+      console.error('[uploadQueue] Queue error:', error);
+      if (uploadErrorCount === MAX_ERROR_LOGS) {
+        console.error('[uploadQueue] Redis connection errors detected. Further errors will be suppressed.');
+        console.error('[uploadQueue] Please check your REDIS_URL or remove it from .env if Redis is not available.');
+      }
+    }
+    redisConnectionFailed = true;
   });
 
   uploadQueue.on('failed', (job, error) => {
@@ -106,7 +136,15 @@ if (!DISABLE_QUEUES) {
   });
 
   lessonQueue.on('error', (error) => {
-    console.error('[lessonQueue] Queue error:', error);
+    lessonErrorCount++;
+    if (lessonErrorCount <= MAX_ERROR_LOGS) {
+      console.error('[lessonQueue] Queue error:', error);
+      if (lessonErrorCount === MAX_ERROR_LOGS) {
+        console.error('[lessonQueue] Redis connection errors detected. Further errors will be suppressed.');
+        console.error('[lessonQueue] Please check your REDIS_URL or remove it from .env if Redis is not available.');
+      }
+    }
+    redisConnectionFailed = true;
   });
 
   lessonQueue.on('failed', (job, error) => {
