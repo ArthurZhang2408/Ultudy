@@ -1493,6 +1493,12 @@ function LearnPageContent() {
     return <LearnPageFallback />;
   }
 
+  // Check if we're loading a lesson for an existing section (not yet loaded)
+  // This prevents "Failed to load lesson" flash when clicking a concept
+  if (!lesson && urlSectionId && currentSection && currentSection.concepts_generated) {
+    return <LearnPageFallback />;
+  }
+
   if (!lesson || !lesson.concepts || lesson.concepts.length === 0) {
     return (
       <div className="text-center py-12">

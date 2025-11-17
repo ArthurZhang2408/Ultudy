@@ -93,7 +93,15 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
 
   const loadingCount = counts['loading'] || 0;
   const completedConceptsCount = skills.length - loadingCount;
-  const generatingSectionsCount = loadingCount > 0 ? Math.ceil(loadingCount / 8) : 0;
+
+  // Count actual number of sections generating (not estimated from loading squares)
+  // A section is generating if it has any loading squares
+  const generatingSections = new Set(
+    skills
+      .filter(skill => skill.masteryLevel === 'loading' && skill.sectionNumber)
+      .map(skill => skill.sectionNumber)
+  );
+  const generatingSectionsCount = generatingSections.size;
 
   return (
     <div className="space-y-4">
@@ -179,12 +187,18 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                   }}
                 >
                   {sectionSkills.map((skill, index) => {
+                    // Calculate display number excluding overview squares
+                    // This ensures placeholders show 1-8, not 2-9
+                    const nonOverviewSkillsBefore = sectionSkills
+                      .slice(0, index)
+                      .filter(s => !s.isOverview).length;
+
                     const displayNumber =
                       typeof skill.conceptNumber === 'number' && skill.conceptNumber > 0
                         ? skill.conceptNumber
                         : typeof skill.lessonPosition === 'number'
                         ? skill.lessonPosition + 1
-                        : index + 1;
+                        : nonOverviewSkillsBefore + 1;
 
                     return (
                       <div key={skill.id} className="relative group">
