@@ -819,12 +819,12 @@ export default function CoursePage() {
                 isOverview: true
               });
 
-              // Add loading placeholders if generating (full row of 15)
+              // Add loading placeholders if generating (14 placeholders + 1 overview = 15 total)
               if (isGenerating) {
                 const job = processingJobs.find(j => j.section_id === section.id);
                 const progress = job?.progress || 0;
 
-                Array.from({ length: 15 }, (_, index) => {
+                Array.from({ length: 14 }, (_, index) => {
                   skillsWithOverviews.push({
                     id: `loading-${section.id}-${index}`,
                     name: section.name || 'Generating...',
