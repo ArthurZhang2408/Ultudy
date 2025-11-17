@@ -1337,7 +1337,7 @@ function LearnPageContent() {
       if (courseId) {
         router.push(`/courses/${courseId}`);
       } else {
-        router.push('/courses');
+        router.push('/'); // Home page shows all courses
       }
     }
   }
@@ -1386,7 +1386,7 @@ function LearnPageContent() {
       if (courseId) {
         router.push(`/courses/${courseId}`);
       } else {
-        router.push('/courses');
+        router.push('/'); // Home page shows all courses
       }
     }
   }
@@ -1422,7 +1422,7 @@ function LearnPageContent() {
           <button
             onClick={() => {
               setError(null);
-              router.push('/courses');
+              router.push('/'); // Home page shows all courses
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
@@ -1447,7 +1447,7 @@ function LearnPageContent() {
             <button
               onClick={() => {
                 setError(null);
-                router.push('/courses');
+                router.push('/'); // Home page shows all courses
               }}
               className="rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-red-900 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30"
             >
@@ -1477,8 +1477,19 @@ function LearnPageContent() {
     if (courseId) {
       router.push(`/courses/${courseId}`);
     } else {
-      router.push('/courses');
+      router.push('/'); // Home page shows all courses
     }
+    return <LearnPageFallback />;
+  }
+
+  // Show loading state while lesson is being generated or loaded
+  if (generatingLesson) {
+    return <LearnPageFallback />;
+  }
+
+  // Check if section is currently generating
+  const currentSection = sections.find(s => s.id === urlSectionId);
+  if (currentSection?.generating) {
     return <LearnPageFallback />;
   }
 
@@ -1487,7 +1498,7 @@ function LearnPageContent() {
       <div className="text-center py-12">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-neutral-100">Failed to load lesson</h2>
         <button
-          onClick={() => router.push('/courses')}
+          onClick={() => router.push('/')}
           className="mt-4 text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
         >
           ← Back to courses
@@ -1529,7 +1540,7 @@ function LearnPageContent() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <button
-            onClick={() => router.push('/courses')}
+            onClick={() => router.push('/')}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"
           >
             ← Back to courses
@@ -1569,7 +1580,7 @@ function LearnPageContent() {
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => router.push('/courses')}
+              onClick={() => router.push('/')}
               className="rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-neutral-800 px-4 py-2 text-sm font-medium text-amber-900 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/30"
             >
               Go Back
@@ -1625,7 +1636,7 @@ function LearnPageContent() {
               if (courseId) {
                 router.push(`/courses/${courseId}`);
               } else {
-                router.push('/courses');
+                router.push('/'); // Home page shows all courses
               }
             }}
             className="text-sm text-slate-600 dark:text-neutral-300 hover:text-slate-900 dark:hover:text-neutral-100"

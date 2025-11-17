@@ -197,8 +197,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 <p className="text-neutral-600 dark:text-neutral-300">
                   Create a course first before uploading materials
                 </p>
-                <Button onClick={() => { onClose(); router.push('/courses'); }} variant="primary">
-                  Create Your First Course
+                <Button onClick={() => { onClose(); router.push('/'); }} variant="primary">
+                  Go to Home
                 </Button>
               </div>
             </div>
