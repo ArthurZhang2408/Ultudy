@@ -56,6 +56,9 @@ if (poolConfig) {
 
 const pool = poolConfig ? new Pool(poolConfig) : null;
 
+// Interval for periodic pool stats logging (declare early to avoid TDZ error)
+let poolStatsInterval = null;
+
 // Read Replica Pool Configuration (Optional)
 // If DATABASE_REPLICA_URL is provided, create a separate pool for read queries
 // This enables horizontal scaling for read-heavy workloads
@@ -125,9 +128,6 @@ if (replicaPool && NODE_ENV === 'production') {
 }
 
 export const isDatabaseConfigured = Boolean(poolConfig);
-
-// Interval for periodic pool stats logging
-let poolStatsInterval = null;
 
 /**
  * Query helpers for read/write splitting
