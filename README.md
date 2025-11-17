@@ -1,182 +1,280 @@
 # Ultudy - AI-Powered Study Platform
 
-An AI-powered study companion that transforms uploaded course PDFs into structured, interactive learning experiences.
+**Last Updated:** 2025-01-17
+
+> **📚 New to this repo?** Start with [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) for a complete overview of all documentation.
+
+An AI-powered study companion that transforms uploaded course PDFs into structured, interactive learning experiences using vision-based PDF extraction and full-context lesson generation.
 
 ## Features
 
-- **Smart PDF Processing** — Vision-based extraction with section detection
-- **Course Organization** — Multi-course support with document management
-- **Adaptive Lessons** — Full-context AI-generated lessons with mastery tracking
-- **Interactive Check-ins** — Concept-level MCQs with explanations
+- **Smart PDF Processing** — Vision-based extraction with automatic section detection
+- **Course Organization** — Multi-course support with chapter/document management
+- **Adaptive Lessons** — Full-context AI-generated lessons with embedded check-ins
+- **Interactive Check-ins** — Concept-level MCQs with explanations and hints
 - **Progress Tracking** — Per-concept mastery levels and accuracy metrics
+- **Scalable Architecture** — Connection pooling, caching, async processing
 
 ## Tech Stack
 
-- **Frontend:** Next.js 14, React 18, TailwindCSS, Clerk Authentication
-- **Backend:** Node.js, Express, Bull (job queues), Redis
+- **Frontend:** Next.js 14, React 18, TypeScript, TailwindCSS, Clerk Authentication
+- **Backend:** Node.js, Express, Bull (job queues), Redis (optional caching)
 - **Database:** PostgreSQL with Row-Level Security (multi-tenant)
 - **AI:** Google Gemini Vision & LLM (with OpenAI fallback support)
-- **Infrastructure:** Async job processing, session-based caching
+- **Infrastructure:** Async job processing, optional Redis caching, connection pooling
 
 ## Documentation
 
-- 🔐 [Authentication Setup](./CLERK_SETUP.md)
-- 📚 [Product Vision](./PRODUCT_VISION.md)
-- 🏗️ [Lesson Generation Architecture](./LESSON_GENERATION_ARCHITECTURE.md)
+### Essential Guides
+- 📖 **[Documentation Index](./DOCUMENTATION_INDEX.md)** - Start here! Complete documentation overview
+- 🎯 **[Product Vision](./PRODUCT_VISION.md)** - Product goals and roadmap
+- 🚀 **[Scalability Guide](./SCALABILITY_GUIDE.md)** - Scale from 1k to 100k+ users
+- 🔐 **[Authentication Setup](./CLERK_SETUP.md)** - Clerk integration guide
 
-## Getting Started
-> This section will be filled in Milestone 1 when we scaffold the apps.
-```bash
-# coming soon
-```
+### Technical Guides
+- 📄 **[PDF Extraction Guide](./backend/PDF_EXTRACTION_GUIDE.md)** - PDF processing modes
+- 🏗️ **[Lesson Architecture](./LESSON_GENERATION_ARCHITECTURE.md)** - How lessons are generated
+- ⚡ **[Async Operations](./ASYNC_OPERATIONS.md)** - Job queue architecture
+- 🔧 **[Environment Config](./backend/ENV_CONFIGURATION.md)** - All environment variables
 
-### Local database & backend
+## Quick Start
+
+### Prerequisites
+- Node.js 20+
+- PostgreSQL 14+
+- Docker (optional, for local database)
+- Redis (optional, for caching)
+
+### 1. Database Setup
+
+Using Docker:
 ```bash
 docker compose up -d db
-cp backend/.env.example backend/.env
-# (DATABASE_URL already matches compose)
-cd backend
-npm ci
-npm run check:pgvector  # optional: verifies whether IVFFLAT/HNSW indexes support 3072 dimensions
-npm run migrate
-npm run dev
-# check: curl http://localhost:3001/db/health
 ```
 
+Or use your own PostgreSQL instance and set `DATABASE_URL` in `.env`.
+
+### 2. Backend Setup
+
 ```bash
-# Upload a PDF (vision-based structured extraction)
-curl -H "X-User-Id: dev-user-001" \
-  -F file=@/path/to/file.pdf \
+cd backend
+cp .env.example .env
+# Edit .env to add your GEMINI_API_KEY and DATABASE_URL
+npm install
+npm run migrate
+npm run dev
+```
+
+The backend starts at `http://localhost:3001`.
+
+Check health: `curl http://localhost:3001/db/health`
+
+### 3. Frontend Setup
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+# Configure Clerk keys in .env.local
+npm install
+npm run dev
+```
+
+The frontend starts at `http://localhost:3000`.
+
+### 4. Run Database Migrations
+
+```bash
+cd backend
+node src/db/migrations/run.js
+```
+
+This adds performance indexes for better query speed.
+
+## Usage Examples
+
+### Upload a PDF
+
+```bash
+# Get auth token from Clerk (or use dev mode)
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  -F file=@/path/to/textbook.pdf \
   -F course_id=<course-id> \
   -F chapter="Chapter 1" \
   -F material_type=textbook \
+  -F title="Introduction to Calculus" \
   http://localhost:3001/upload/pdf-structured
+```
 
-# Generate lesson for a document section
-curl -H "X-User-Id: dev-user-001" \
+### Generate Lesson for a Section
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"document_id":"<doc-id>","section_id":"<section-id>"}' \
+  -d '{
+    "document_id":"<doc-id>",
+    "section_id":"<section-id>",
+    "include_check_ins":true
+  }' \
   http://localhost:3001/lessons/generate
 ```
 
-### Authentication & multi-tenant request scoping
-- `AUTH_MODE=dev` (default) keeps the existing `X-User-Id` header workflow. Supply a UUID per request; when it is omitted the shared dev ID `00000000-0000-0000-0000-000000000001` is applied automatically for local testing.
-- `AUTH_MODE=jwt` enables bearer token authentication. The backend verifies signatures via the configured JWKS (`AUTH_JWT_JWKS_URL`) and, if provided, enforces the issuer (`AUTH_JWT_ISS`) and audience (`AUTH_JWT_AUD`) claims. The verified token’s `sub` claim becomes the effective user id.
+## Authentication
 
-Example requests:
+### Development Mode (Default)
+```bash
+AUTH_MODE=dev
+```
+Uses `X-User-Id` headers for testing. Default dev user: `00000000-0000-0000-0000-000000000001`
 
 ```bash
-# dev header mode
 curl -H "X-User-Id: dev-user-001" \
-  -F file=@/path/to/file.pdf \
-  -F course_id=<course-id> \
-  http://localhost:3001/upload/pdf-structured
-
-# JWT mode
-TOKEN="$(cat /path/to/token.jwt)"
-curl -H "Authorization: Bearer $TOKEN" \
-  -F file=@/path/to/file.pdf \
-  -F course_id=<course-id> \
-  http://localhost:3001/upload/pdf-structured
+  http://localhost:3001/api/courses
 ```
 
-Configure JWT mode by setting the env vars in `backend/.env`:
-
+### Production Mode (Clerk JWT)
 ```bash
 AUTH_MODE=jwt
-AUTH_JWT_ISS=https://<your-issuer>/
-AUTH_JWT_AUD=<expected-audience>
-AUTH_JWT_JWKS_URL=https://<your-issuer>/.well-known/jwks.json
+AUTH_JWT_ISS=https://your-clerk-domain.clerk.accounts.dev
+AUTH_JWT_AUD=your-audience
+AUTH_JWT_JWKS_URL=https://your-clerk-domain.clerk.accounts.dev/.well-known/jwks.json
 ```
 
-#### Database enforcement with RLS
-- Every request that touches tenant data runs inside `withTenant(userId, fn)` (`backend/src/db/tenant.js`). The helper opens a transaction, sets the Postgres session GUC `app.user_id`, and ensures all queries use the same client.
-- Postgres row-level security is enabled on the `documents` and `chunks` tables. Policies only expose rows where `owner_id::text = current_setting('app.user_id', true)` and reject inserts/updates with mismatched owners.
-- Application-level filters remain for redundancy, but the database is now the source of truth for isolation. When adding new queries, always wrap them with `withTenant()` (or its `runAs` shortcut) so the RLS policies can evaluate the correct tenant context.
+See [CLERK_SETUP.md](./CLERK_SETUP.md) for detailed instructions.
 
-The compatibility probe logs which index type (if any) will be created so you can adjust expectations locally. Once the backend is running with a configured database, you can verify connectivity at [`/db/health`](http://localhost:3001/db/health). If you skip creating a `.env` file, the backend automatically falls back to `postgresql://postgres:postgres@localhost:5432/study_app` in non-production environments, so make sure the Docker Compose database is up before starting the server.
+## LLM Provider Configuration
 
-### Study endpoints
-Turn retrieved chunks into lessons or multiple-choice practice scoped to the requesting user. The mock LLM provider is enabled by default so responses are deterministic in development.
-
+### Mock Mode (Default - No API Key Required)
 ```bash
-# Lesson (scoped to user)
-U=00000000-0000-0000-0000-000000000001
-curl -s -H "X-User-Id: $U" -H "Content-Type: application/json" \
-  -d '{"query":"Fourier transform basics","k":6}' \
-  http://localhost:3001/study/lesson | jq .
-
-# MCQs
-curl -s -H "X-User-Id: $U" -H "Content-Type: application/json" \
-  -d '{"topic":"signals","n":5,"difficulty":"med"}' \
-  http://localhost:3001/practice/mcq | jq .
+LLM_PROVIDER=mock
 ```
+Generates deterministic responses for testing. No external API calls.
 
-### Frontend MVP
-
-The Milestone 5 frontend lives in [`frontend/`](./frontend) and provides upload, search, and study flows against the existing backend APIs.
-
-#### Prerequisites
-
-- Node.js 20+
-- Backend running locally at `http://localhost:3001`
-
-#### Setup & development server
-
+### Gemini (Recommended)
 ```bash
-cd frontend
-cp -n .env.local.example .env.local
-# (optional) adjust NEXT_PUBLIC_BACKEND_URL to match your backend origin
-npm ci
-npm run dev
-# visit http://localhost:3000
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=your-api-key
+GEMINI_GEN_MODEL=gemini-1.5-flash  # or gemini-1.5-pro
 ```
 
-When the dev server loads:
+Get your API key from [Google AI Studio](https://aistudio.google.com/).
 
-1. Enter a UUID in the header bar and press **Save**. This value is stored in `localStorage` and sent as the `X-User-Id` header on every request (defaults to the shared dev user ID).
-2. Use the navigation links to upload PDFs, run searches, and generate lessons or MCQs. Responses display inline as structured text.
-
-> **Upload size limit:** the frontend respects the backend's `multer` configuration. Large PDFs above the backend limit will fail with a 413 response.
-
-#### Building for production
-
+### OpenAI (Alternative)
 ```bash
-cd frontend
-npm run typecheck
-npm run build
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-api-key
 ```
 
-### Embeddings provider configuration
-- `EMBEDDINGS_PROVIDER=mock` (default) generates deterministic pseudo-embeddings for local development and automated tests. No external services are required.
-- `EMBEDDINGS_PROVIDER=gemini` enables Google Gemini embeddings (`gemini-embedding-001`) at 3072 dimensions. Provide `GEMINI_API_KEY`, optionally override `GEMINI_EMBED_MODEL`, and ensure `GEMINI_EMBED_DIM` matches the pgvector column size. Gemini embeddings are unit-normalized, so cosine/L2 search works without additional scaling. Run `GET /admin/embed-probe` to confirm connectivity (`curl http://localhost:3001/admin/embed-probe`).
-- To switch to OpenAI embeddings locally, set `EMBEDDINGS_PROVIDER=openai` and supply an `OPENAI_API_KEY` in `backend/.env`, then restart the backend server. The code path is stubbed so CI never invokes the OpenAI API.
-- `LLM_PROVIDER=mock` (default) keeps lesson and MCQ generation offline. Set `LLM_PROVIDER=gemini` (with `GEMINI_API_KEY` + optional `GEMINI_GEN_MODEL`) for Gemini-powered lessons/MCQs, or `LLM_PROVIDER=openai` with a valid `OPENAI_API_KEY` to enable OpenAI outputs.
+## Scaling to Production
 
-### Gemini setup
+**Current Capacity**: ~1,000 concurrent users
 
-1. Visit [Google AI Studio](https://aistudio.google.com/) and create an API key. Paste it into `backend/.env` as `GEMINI_API_KEY` (the backend exits early at boot if the key is missing outside CI).
-2. Optional overrides:
-   - `GEMINI_EMBED_MODEL` (default `gemini-embedding-001`)
-   - `GEMINI_EMBED_DIM` (default `3072`; must match the `chunks.embedding` column definition)
-   - `GEMINI_GEN_MODEL` (default `gemini-1.5-flash`; `gemini-1.5-pro` works as long as the account has access)
-3. Restart the backend and verify the probe endpoint:
+See [SCALABILITY_GUIDE.md](./SCALABILITY_GUIDE.md) for:
+- Adding Redis caching (2x capacity)
+- Database read replicas (10x capacity)
+- Multiple app servers with load balancing
+- S3 storage for PDFs
+- Scaling to 100,000+ users
 
-```bash
-curl -H "X-User-Id: 00000000-0000-0000-0000-000000000001" http://localhost:3001/admin/embed-probe | jq
+## Architecture Overview
+
+```
+Frontend (Next.js)
+    ↓ API calls
+Backend (Express)
+    ↓ PostgreSQL
+Database (with RLS)
+    + Bull Queue (async jobs)
+    + Redis (optional cache)
+    + Gemini Vision (PDF extraction)
+    + Gemini LLM (lesson generation)
 ```
 
-Gemini embeddings are returned in 3072-dimensional, L2-normalized vectors. If you later decide to shrink the dimensionality (e.g., 1536 or 768) set `GEMINI_EMBED_DIM` and `outputDimensionality` accordingly and run a Postgres migration to resize the `vector` column.
+### Key Design Decisions
 
-**Rate limits & troubleshooting**
+1. **Vision-based PDF Extraction** - Uses Gemini Vision to extract text, formulas, diagrams directly from PDF pages
+2. **Full-context Lessons** - Each section gets complete context for rich, connected learning
+3. **Async Processing** - PDF upload and lesson generation happen in background jobs
+4. **Multi-tenancy with RLS** - Database-level isolation using PostgreSQL Row-Level Security
+5. **No Embeddings/RAG** - Removed for simpler, more maintainable architecture
 
-- Free-tier keys enforce per-minute quotas. The embedding client retries with exponential backoff on HTTP 429/5xx errors; sustained throttling surfaces as a 5xx error to the caller.
-- A `401`/`403` response typically means the API key is invalid or lacks access to the requested model—double check the AI Studio project and regenerate the key if needed.
-- A `dimension mismatch` error means the API returned a vector with a different length than `GEMINI_EMBED_DIM`; confirm the env var, pgvector column definition, and any `outputDimensionality` overrides.
+### What Changed (Jan 2025 Refactoring)
 
-## Contributing / Workflow
-This repo will be developed with OpenAI **Codex** (agent) creating PRs from plans.
-All merges require human review.
+**Removed:**
+- ❌ Embedding system (pgvector, chunks table)
+- ❌ Vector search / RAG architecture
+- ❌ `/search` endpoints
+- ❌ Text chunking system
+
+**Added:**
+- ✅ Vision-based PDF extraction
+- ✅ Section-based organization
+- ✅ Full-context lesson generation
+- ✅ Scalability features (connection pooling, caching)
+- ✅ Improved async job processing
+
+## Project Structure
+
+```
+/
+├── frontend/           # Next.js app
+│   ├── src/app/       # Pages (courses, learn)
+│   ├── src/components/# React components
+│   ├── src/lib/       # Utilities
+│   └── src/types/     # TypeScript definitions
+│
+├── backend/           # Express API
+│   ├── src/routes/   # API endpoints
+│   ├── src/providers/# LLM providers
+│   ├── src/services/ # Business logic
+│   ├── src/jobs/     # Queue workers
+│   ├── src/db/       # Database & migrations
+│   └── src/lib/      # Utilities (logger, cache)
+│
+└── docs/             # Documentation
+```
+
+## Development Workflow
+
+1. **Make code changes**
+2. **Update relevant documentation** (see [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md))
+3. **Run tests** (if applicable)
+4. **Commit with clear message**
+5. **Update "Last Updated" dates in docs**
+
+## Common Tasks
+
+### Add a New Feature
+1. Implement code changes
+2. Update `README.md` if public-facing
+3. Update `PRODUCT_VISION.md` if product-related
+4. Add to `DOCUMENTATION_INDEX.md`
+5. Create feature doc if complex
+
+### Deploy to Production
+1. Review [SCALABILITY_GUIDE.md](./SCALABILITY_GUIDE.md)
+2. Set up Redis caching
+3. Configure environment variables
+4. Run database migrations
+5. Enable production mode (`NODE_ENV=production`)
+
+### Troubleshooting
+- Check `backend/ENV_CONFIGURATION.md` for config issues
+- Run `node backend/src/db/migrations/inspect_schema.js` to see database schema
+- Check backend logs for errors
+- Verify API key configuration
+
+## Contributing
+
+This project follows these principles:
+- **Documentation-first**: Update docs with every code change
+- **Self-maintaining docs**: See [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md)
+- **Keep it simple**: Remove complexity when possible
+- **Production-ready**: Code should scale and handle errors gracefully
 
 ## License
-MIT — see [`LICENSE`](./LICENSE)
+
+MIT — see [LICENSE](./LICENSE)
+
+---
+
+**Need help?** Check [DOCUMENTATION_INDEX.md](./DOCUMENTATION_INDEX.md) for all available documentation.
