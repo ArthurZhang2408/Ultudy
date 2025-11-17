@@ -1,93 +1,54 @@
--- Performance Indexes Migration (Safe Version)
--- Safe to run multiple times (uses IF NOT EXISTS)
--- Only adds indexes for tables that exist in your database
--- Run this with: node backend/src/db/migrations/run.js
+-- Performance Indexes Migration
+-- Based on actual schema inspection
+-- Only adds indexes that don't already exist and will help performance
 
--- Helper function to create index only if table exists
-CREATE OR REPLACE FUNCTION create_index_if_table_exists(
-    idx_name TEXT,
-    tbl_name TEXT,
-    col_def TEXT
-) RETURNS void AS $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'public'
-        AND table_name = tbl_name
-    ) THEN
-        EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I %s', idx_name, tbl_name, col_def);
-        RAISE NOTICE 'Created index % on table %', idx_name, tbl_name;
-    ELSE
-        RAISE NOTICE 'Skipped index % - table % does not exist', idx_name, tbl_name;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
+-- Documents: Add index on chapter for filtering by chapter
+-- (already has owner_id and owner_id+course_id indexes)
+CREATE INDEX IF NOT EXISTS idx_documents_chapter ON documents(chapter);
 
--- Courses table indexes
-SELECT create_index_if_table_exists('idx_courses_owner_id', 'courses', '(owner_id)');
-SELECT create_index_if_table_exists('idx_courses_created_at', 'courses', '(created_at DESC)');
+-- Lessons: Add index on course_id for course-level queries
+-- (already has owner_id+document_id and owner_id+course_id+chapter)
+CREATE INDEX IF NOT EXISTS idx_lessons_course_id ON lessons(course_id);
 
--- Documents table indexes
-SELECT create_index_if_table_exists('idx_documents_course_id', 'documents', '(course_id)');
-SELECT create_index_if_table_exists('idx_documents_owner_id', 'documents', '(owner_id)');
-SELECT create_index_if_table_exists('idx_documents_chapter', 'documents', '(chapter)');
-SELECT create_index_if_table_exists('idx_documents_owner_course', 'documents', '(owner_id, course_id)');
+-- Lessons: Add index on document_id for document-level queries
+CREATE INDEX IF NOT EXISTS idx_lessons_document_id ON lessons(document_id);
 
--- Lessons table indexes
-SELECT create_index_if_table_exists('idx_lessons_document_id', 'lessons', '(document_id)');
-SELECT create_index_if_table_exists('idx_lessons_section_id', 'lessons', '(section_id)');
-SELECT create_index_if_table_exists('idx_lessons_course_id', 'lessons', '(course_id)');
-SELECT create_index_if_table_exists('idx_lessons_doc_section', 'lessons', '(document_id, section_id)');
+-- Sections: Add index on section_number for ordering
+CREATE INDEX IF NOT EXISTS idx_sections_section_number ON sections(section_number);
 
--- Sections table indexes
-SELECT create_index_if_table_exists('idx_sections_document_id', 'sections', '(document_id)');
-SELECT create_index_if_table_exists('idx_sections_section_number', 'sections', '(section_number)');
+-- Concepts: Add index on document_id for document-level queries
+CREATE INDEX IF NOT EXISTS idx_concepts_document_id ON concepts(document_id);
 
--- Concepts mastery table indexes (might be named differently)
-SELECT create_index_if_table_exists('idx_concepts_mastery_owner', 'concepts_mastery', '(owner_id)');
-SELECT create_index_if_table_exists('idx_concepts_mastery_section', 'concepts_mastery', '(section_id)');
-SELECT create_index_if_table_exists('idx_concepts_mastery_course', 'concepts_mastery', '(course_id)');
-SELECT create_index_if_table_exists('idx_concepts_mastery_owner_section', 'concepts_mastery', '(owner_id, section_id)');
-SELECT create_index_if_table_exists('idx_concepts_mastery_course_chapter', 'concepts_mastery', '(course_id, chapter)');
+-- Concepts: Add index on course_id alone (has composite but not single)
+CREATE INDEX IF NOT EXISTS idx_concepts_course_id ON concepts(course_id);
 
--- Try alternative table name: concept_mastery (singular)
-SELECT create_index_if_table_exists('idx_concept_mastery_owner', 'concept_mastery', '(owner_id)');
-SELECT create_index_if_table_exists('idx_concept_mastery_section', 'concept_mastery', '(section_id)');
-SELECT create_index_if_table_exists('idx_concept_mastery_course', 'concept_mastery', '(course_id)');
-SELECT create_index_if_table_exists('idx_concept_mastery_owner_section', 'concept_mastery', '(owner_id, section_id)');
-SELECT create_index_if_table_exists('idx_concept_mastery_course_chapter', 'concept_mastery', '(course_id, chapter)');
+-- Study sessions: Add index on course_id alone for course analytics
+CREATE INDEX IF NOT EXISTS idx_study_sessions_course_id ON study_sessions(course_id);
 
--- Check-ins table indexes
-SELECT create_index_if_table_exists('idx_check_ins_concept_id', 'check_ins', '(concept_id)');
-SELECT create_index_if_table_exists('idx_check_ins_owner_id', 'check_ins', '(owner_id)');
-SELECT create_index_if_table_exists('idx_check_ins_created_at', 'check_ins', '(created_at DESC)');
-
--- Study sessions table indexes
-SELECT create_index_if_table_exists('idx_study_sessions_owner_id', 'study_sessions', '(owner_id)');
-SELECT create_index_if_table_exists('idx_study_sessions_course_id', 'study_sessions', '(course_id)');
-SELECT create_index_if_table_exists('idx_study_sessions_created_at', 'study_sessions', '(created_at DESC)');
-
--- Jobs table indexes
-SELECT create_index_if_table_exists('idx_jobs_status', 'jobs', '(status)');
-SELECT create_index_if_table_exists('idx_jobs_owner_id', 'jobs', '(owner_id)');
-SELECT create_index_if_table_exists('idx_jobs_created_at', 'jobs', '(created_at DESC)');
-
--- Cleanup: Drop the helper function
-DROP FUNCTION IF EXISTS create_index_if_table_exists;
+-- Problem types: Add index on course_id alone
+CREATE INDEX IF NOT EXISTS idx_problem_types_course_id ON problem_types(course_id);
 
 -- Print completion message
 DO $$
 DECLARE
-    table_count INTEGER;
-    index_count INTEGER;
+    new_indexes INTEGER;
 BEGIN
-    SELECT COUNT(*) INTO table_count FROM information_schema.tables WHERE table_schema = 'public';
-    SELECT COUNT(*) INTO index_count FROM pg_indexes WHERE schemaname = 'public';
+    SELECT COUNT(*) INTO new_indexes
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+    AND indexname LIKE 'idx_%';
 
     RAISE NOTICE '';
     RAISE NOTICE '====================================';
-    RAISE NOTICE 'Performance indexes migration complete!';
-    RAISE NOTICE 'Database has % tables with % indexes', table_count, index_count;
-    RAISE NOTICE 'Run ANALYZE to update query planner statistics';
+    RAISE NOTICE 'Performance indexes created successfully!';
+    RAISE NOTICE 'Total custom indexes: %', new_indexes;
+    RAISE NOTICE '';
+    RAISE NOTICE 'Note: Your database already had excellent indexes!';
+    RAISE NOTICE 'This migration added a few supplementary indexes.';
+    RAISE NOTICE '';
+    RAISE NOTICE 'Running ANALYZE to update query planner...';
     RAISE NOTICE '====================================';
 END $$;
+
+-- Update query planner statistics
+ANALYZE;
