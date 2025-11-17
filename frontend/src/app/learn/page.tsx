@@ -1402,10 +1402,17 @@ function LearnPageContent() {
     }
 
     if (currentConceptIndex > 0) {
-      const previousConcept = lesson.concepts?.[currentConceptIndex - 1];
+      const previousConceptIndex = currentConceptIndex - 1;
+      const previousConcept = lesson.concepts?.[previousConceptIndex];
       const previousTotal = previousConcept?.check_ins?.length || 0;
-      setCurrentConceptIndex((prev) => prev - 1);
+
+      setCurrentConceptIndex(previousConceptIndex);
       setCurrentMCQIndex(previousTotal > 0 ? previousTotal - 1 : 0);
+
+      // Update URL to preserve state on refresh (matching handleNextMCQ behavior)
+      if (previousConcept && selectedSection) {
+        router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(previousConcept.name)}`);
+      }
     }
   }
 
