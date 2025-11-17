@@ -233,6 +233,9 @@ export function MasteryGrid({ title, skills, columns = 10, showSectionDividers =
                                 </div>
                               )}
                             </>
+                          ) : skill.masteryLevel === 'loading' ? (
+                            // Show empty square for loading placeholders
+                            null
                           ) : (
                             displayNumber
                           )}

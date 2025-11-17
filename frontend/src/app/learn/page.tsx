@@ -2019,11 +2019,43 @@ function LearnPageContent() {
 
 function LearnPageFallback() {
   return (
-    <div className="flex items-center justify-center py-12">
-      <div className="text-center space-y-4">
-        <div className="text-slate-600 dark:text-neutral-300">Loading your lesson...</div>
-        <div className="text-sm text-slate-500 dark:text-neutral-400">
-          Checking for cached lesson or generating new one (up to 10 seconds for first time)
+    <div className="space-y-6 animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="h-4 w-32 skeleton rounded" />
+        <div className="h-4 w-24 skeleton rounded" />
+      </div>
+
+      {/* Concept card skeleton */}
+      <div className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-4">
+        <div className="h-8 w-3/4 skeleton rounded-lg" />
+        <div className="space-y-3">
+          <div className="h-4 w-full skeleton rounded" />
+          <div className="h-4 w-full skeleton rounded" />
+          <div className="h-4 w-2/3 skeleton rounded" />
+        </div>
+      </div>
+
+      {/* MCQ skeleton */}
+      <div className="rounded-lg border-2 border-slate-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-md space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-6 w-48 skeleton rounded" />
+          <div className="h-4 w-24 skeleton rounded" />
+        </div>
+        <div className="h-5 w-full skeleton rounded" />
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-16 w-full skeleton rounded-lg" />
+          ))}
+        </div>
+      </div>
+
+      {/* Progress skeleton */}
+      <div className="space-y-2">
+        <div className="h-4 w-32 skeleton rounded" />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-2 flex-1 skeleton rounded-full" />
+          ))}
         </div>
       </div>
     </div>
