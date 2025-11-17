@@ -3,21 +3,26 @@
  *
  * Handles PDF upload with immediate response and async processing
  * Decouples file upload from LLM extraction for better performance
+ *
+ * Supports both local filesystem and S3 storage
  */
 
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '../lib/logger.js';
+import { StorageService } from '../lib/storage.js';
 
 const logger = createLogger('UploadService');
 
 export class UploadService {
-  constructor({ storageDir, tenantHelpers, jobTracker, uploadQueue }) {
-    this.storageDir = storageDir;
+  constructor({ storageDir, tenantHelpers, jobTracker, uploadQueue, storageService }) {
+    this.storageService = storageService || new StorageService({ storageDir });
     this.tenantHelpers = tenantHelpers;
     this.jobTracker = jobTracker;
     this.uploadQueue = uploadQueue;
+
+    logger.info('UploadService initialized', {
+      storageType: this.storageService.getType()
+    });
   }
 
   /**
@@ -26,22 +31,32 @@ export class UploadService {
    */
   async uploadPDF({ file, ownerId, courseId, chapter, materialType, title }) {
     const documentId = randomUUID();
-    const ownerDir = path.join(this.storageDir, ownerId);
-    const pdfPath = path.join(ownerDir, `${documentId}.pdf`);
+    const storageKey = StorageService.generatePdfKey(ownerId, documentId);
 
     logger.info('Starting PDF upload', {
       documentId,
       courseId,
       filename: file.originalname,
-      size: file.size
+      size: file.size,
+      storageType: this.storageService.getType()
     });
 
     try {
-      // 1. Save PDF to storage
-      await fs.mkdir(ownerDir, { recursive: true });
-      await fs.writeFile(pdfPath, file.buffer);
+      // 1. Save PDF to storage (S3 or local filesystem)
+      const uploadResult = await this.storageService.upload(storageKey, file.buffer, {
+        contentType: 'application/pdf',
+        metadata: {
+          originalFilename: file.originalname,
+          courseId: courseId || '',
+          documentId
+        }
+      });
 
-      logger.info('PDF saved to storage', { pdfPath });
+      logger.info('PDF saved to storage', {
+        storageKey,
+        location: uploadResult.location,
+        backend: uploadResult.backend
+      });
 
       // 2. Create document record immediately (shows as "processing" to user)
       await this.tenantHelpers.withTenant(ownerId, async (client) => {
@@ -66,7 +81,8 @@ export class UploadService {
       const jobId = await this.jobTracker.createJob(ownerId, 'upload_pdf', {
         document_id: documentId,
         original_filename: file.originalname,
-        pdf_path: pdfPath,
+        storage_key: storageKey,
+        storage_location: uploadResult.location,
         course_id: courseId,
         chapter: chapter,
         material_type: materialType,
@@ -77,7 +93,8 @@ export class UploadService {
         jobId,
         ownerId,
         documentId,
-        pdfPath,
+        storageKey,
+        storageLocation: uploadResult.location,
         originalFilename: file.originalname,
         courseId,
         chapter,
@@ -85,7 +102,7 @@ export class UploadService {
         title
       });
 
-      logger.info('Extraction job queued', { jobId, documentId });
+      logger.info('Extraction job queued', { jobId, documentId, storageKey });
 
       // 4. Return immediately - user can see document while processing
       return {
@@ -99,7 +116,8 @@ export class UploadService {
 
       // Cleanup on failure
       try {
-        await fs.rm(pdfPath, { force: true });
+        await this.storageService.delete(storageKey);
+        logger.info('Cleaned up failed upload', { storageKey });
       } catch (cleanupError) {
         logger.warn('Cleanup failed', { error: cleanupError.message });
       }
