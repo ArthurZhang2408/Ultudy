@@ -19,9 +19,11 @@ export function useFetchCourses(includeArchived = false) {
         const url = includeArchived
           ? '/api/courses?include_archived=true'
           : '/api/courses';
+        console.log('[useFetchCourses] Fetching:', url, '| includeArchived:', includeArchived);
         const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
+          console.log('[useFetchCourses] Received:', data.courses?.length, 'courses');
           setCourses(data.courses || []);
         } else {
           throw new Error(`Failed to fetch courses: ${res.statusText}`);
