@@ -28,7 +28,8 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
       setName(course.name || '');
       setCode(course.code || '');
       setTerm(course.term || '');
-      setExamDate(course.exam_date || '');
+      // Handle both "YYYY-MM-DD" and ISO timestamp formats
+      setExamDate(course.exam_date ? course.exam_date.split('T')[0] : '');
     } else if (!isOpen) {
       // Reset form when modal closes
       setName('');

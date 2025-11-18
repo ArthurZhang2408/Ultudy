@@ -9,4 +9,5 @@ COPY . .
 
 EXPOSE 3001
 
-CMD ["node", "src/server.js"]
+# Run migrations on startup, then start the server
+CMD ["sh", "-c", "npm run migrate && node src/server.js"]

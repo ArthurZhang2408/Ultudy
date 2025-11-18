@@ -256,7 +256,9 @@ function CoursesHomePage() {
                         <span className="text-sm text-neutral-600 dark:text-neutral-300">
                           Exam: {(() => {
                             // Parse date string as local date to avoid timezone issues
-                            const [year, month, day] = course.exam_date.split('-').map(Number);
+                            // Handle both "YYYY-MM-DD" and ISO timestamp formats
+                            const dateStr = course.exam_date.split('T')[0]; // Extract date part if ISO timestamp
+                            const [year, month, day] = dateStr.split('-').map(Number);
                             const localDate = new Date(year, month - 1, day);
                             return localDate.toLocaleDateString('en-US', {
                               month: 'short',
