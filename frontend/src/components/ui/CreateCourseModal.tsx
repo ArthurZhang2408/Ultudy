@@ -61,6 +61,10 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
 
       if (res.ok) {
         setFormData({ name: '', code: '', term: '', exam_date: '' });
+
+        // Notify other components
+        window.dispatchEvent(new CustomEvent('coursesUpdated'));
+
         onClose();
         onSuccess();
       } else {

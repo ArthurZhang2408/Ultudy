@@ -16,8 +16,6 @@ export default function createCoursesRouter(options = {}) {
     const ownerId = req.userId;
     const { include_archived } = req.query;
 
-    console.log('[GET /courses] Request:', { ownerId, include_archived });
-
     try {
       const courses = await tenantHelpers.withTenant(ownerId, async (client) => {
         // Check if archived column exists to avoid transaction abort
@@ -28,8 +26,6 @@ export default function createCoursesRouter(options = {}) {
              AND column_name = 'archived'`
         );
         const hasArchivedColumn = columnCheck.length > 0;
-
-        console.log('[GET /courses] Archived column exists:', hasArchivedColumn);
 
         if (hasArchivedColumn) {
           // Auto-archive courses past exam date
@@ -48,8 +44,6 @@ export default function createCoursesRouter(options = {}) {
             ? 'owner_id = $1'
             : 'owner_id = $1 AND archived = false';
 
-          console.log('[GET /courses] Query WHERE:', whereClause);
-
           const { rows } = await client.query(
             `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
              FROM courses
@@ -58,13 +52,9 @@ export default function createCoursesRouter(options = {}) {
             [ownerId]
           );
 
-          console.log('[GET /courses] Returned', rows.length, 'courses');
-          console.log('[GET /courses] Archived count:', rows.filter(r => r.archived).length);
-
           return rows;
         } else {
           // Archived column doesn't exist yet, use old query
-          console.log('[GET /courses] Archived column not yet available, using backwards-compatible query');
           const { rows } = await client.query(
             `SELECT id, name, code, term, exam_date, created_at, updated_at
              FROM courses

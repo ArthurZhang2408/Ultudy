@@ -20,8 +20,6 @@ export async function GET(request: NextRequest) {
     const queryString = searchParams.toString();
     const backendUrl = `${getBackendUrl()}/courses${queryString ? `?${queryString}` : ''}`;
 
-    console.log('[api/courses] Proxying GET to:', backendUrl);
-
     const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {

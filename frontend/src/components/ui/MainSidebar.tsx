@@ -46,15 +46,14 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
     refetch();
   }, [pathname, refetch]);
 
-  // Version check console log
+  // Listen for course updates from other components
   useEffect(() => {
-    console.log('🎓 Ultudy Sidebar v2.1 - Archive toggle fixed!');
-    console.log('📊 Total courses:', allCourses.length);
-    console.log('✅ Active courses:', allCourses.filter(c => !c.archived).length);
-    console.log('📦 Archived courses:', allCourses.filter(c => c.archived).length);
-    console.log('👁️ Showing archived:', showArchived);
-    console.log('📋 Displaying:', courses.length, 'courses');
-  }, [allCourses, courses, showArchived]);
+    const handleCoursesUpdated = () => {
+      refetch();
+    };
+    window.addEventListener('coursesUpdated', handleCoursesUpdated);
+    return () => window.removeEventListener('coursesUpdated', handleCoursesUpdated);
+  }, [refetch]);
 
   // Close user menu when clicking outside
   useEffect(() => {

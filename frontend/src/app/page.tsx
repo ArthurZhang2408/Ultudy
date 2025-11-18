@@ -5,7 +5,7 @@ import { useAuth } from '@clerk/nextjs';
 import { Button, Card, Badge } from '@/components/ui';
 import EditCourseModal from '@/components/ui/EditCourseModal';
 import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 function CoursesHomePage() {
@@ -18,6 +18,15 @@ function CoursesHomePage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
+
+  // Listen for course updates from other components
+  useEffect(() => {
+    const handleCoursesUpdated = () => {
+      refetch();
+    };
+    window.addEventListener('coursesUpdated', handleCoursesUpdated);
+    return () => window.removeEventListener('coursesUpdated', handleCoursesUpdated);
+  }, [refetch]);
 
   const handleArchiveToggle = async (course: any, e: React.MouseEvent) => {
     e.preventDefault();
@@ -35,6 +44,9 @@ function CoursesHomePage() {
       if (!response.ok) {
         throw new Error('Failed to archive course');
       }
+
+      // Notify other components
+      window.dispatchEvent(new CustomEvent('coursesUpdated'));
 
       // Refresh courses list
       await refetch();
@@ -58,6 +70,9 @@ function CoursesHomePage() {
       if (!response.ok) {
         throw new Error('Failed to delete course');
       }
+
+      // Notify other components
+      window.dispatchEvent(new CustomEvent('coursesUpdated'));
 
       // Refresh courses list
       await refetch();
