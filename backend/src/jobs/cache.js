@@ -3,6 +3,9 @@
  *
  * Caches generated lessons to avoid regenerating the same content.
  * Uses Redis for distributed caching across multiple workers.
+ *
+ * IMPORTANT: Uses singleton pattern to prevent connection exhaustion
+ * in serverless environments (Vercel, Railway, etc.)
  */
 
 import { createClient } from 'redis';
@@ -12,44 +15,77 @@ const CACHE_ENABLED = process.env.ENABLE_LESSON_CACHE !== 'false';
 const CACHE_TTL = parseInt(process.env.LESSON_CACHE_TTL || '86400', 10); // 24 hours default
 
 let cacheClient = null;
+let isConnecting = false;
+let connectionPromise = null;
 
-async function getCacheClient() {
+/**
+ * Initialize Redis client as a singleton to prevent connection exhaustion.
+ * In serverless environments, each function instance reuses the same client.
+ */
+async function initializeCacheClient() {
   // Disable cache in test/CI mode or if explicitly disabled
   if (!CACHE_ENABLED || process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true') {
     return null;
   }
 
+  // If already connected, return existing client
   if (cacheClient && cacheClient.isOpen) {
     return cacheClient;
   }
 
-  try {
-    cacheClient = createClient({
-      url: REDIS_URL,
-      socket: {
-        connectTimeout: 3000, // Fail fast if Redis is unavailable
-        reconnectStrategy: (retries) => {
-          if (retries > 10) {
-            console.error('[Cache] Too many reconnection attempts, disabling cache');
-            return false;
-          }
-          return Math.min(retries * 100, 3000);
-        }
-      }
-    });
-
-    cacheClient.on('error', (err) => {
-      console.error('[Cache] Redis client error:', err);
-    });
-
-    await cacheClient.connect();
-    console.log('[Cache] Connected to Redis cache');
-
-    return cacheClient;
-  } catch (error) {
-    console.error('[Cache] Failed to connect to Redis cache, caching disabled:', error.message);
-    return null;
+  // If connection is in progress, wait for it
+  if (isConnecting && connectionPromise) {
+    return connectionPromise;
   }
+
+  // Start new connection
+  isConnecting = true;
+  connectionPromise = (async () => {
+    try {
+      cacheClient = createClient({
+        url: REDIS_URL,
+        socket: {
+          connectTimeout: 5000,
+          // Serverless-friendly reconnection strategy
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.error('[LessonCache] Max reconnection attempts reached, disabling cache');
+              return false;
+            }
+            return Math.min(retries * 200, 1000);
+          },
+          // Keep connections alive in serverless environments
+          keepAlive: 30000
+        }
+      });
+
+      cacheClient.on('error', (err) => {
+        console.error('[LessonCache] Redis error:', err.message);
+      });
+
+      cacheClient.on('reconnecting', () => {
+        console.log('[LessonCache] Reconnecting to Redis...');
+      });
+
+      await cacheClient.connect();
+      console.log('[LessonCache] Connected to Redis (singleton instance)');
+
+      return cacheClient;
+    } catch (error) {
+      console.error('[LessonCache] Failed to connect to Redis, caching disabled:', error.message);
+      cacheClient = null;
+      return null;
+    } finally {
+      isConnecting = false;
+      connectionPromise = null;
+    }
+  })();
+
+  return connectionPromise;
+}
+
+async function getCacheClient() {
+  return initializeCacheClient();
 }
 
 /**

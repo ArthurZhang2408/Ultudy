@@ -202,7 +202,7 @@ export default function createCoursesRouter(options = {}) {
         }
 
         if (updates.length === 0) {
-          return res.status(400).json({ error: 'No fields to update' });
+          throw new Error('No fields to update');
         }
 
         updates.push(`updated_at = NOW()`);
@@ -237,7 +237,11 @@ export default function createCoursesRouter(options = {}) {
       res.json(course);
     } catch (error) {
       console.error('Failed to update course', error);
-      res.status(500).json({ error: error.message || 'Failed to update course' });
+      // Return 400 for validation errors, 500 for server errors
+      const statusCode = error.message === 'No fields to update' ||
+                        error.message?.includes('Archive feature not yet available')
+                        ? 400 : 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to update course' });
     }
   });
 
