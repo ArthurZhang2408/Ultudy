@@ -725,7 +725,7 @@ function LandingPage() {
               {
                 icon: '📊',
                 title: 'Track Mastery',
-                description: 'Know exactly what you know and what you don't. Focus on weak spots with adaptive practice.',
+                description: "Know exactly what you know and what you don't. Focus on weak spots with adaptive practice.",
                 gradient: 'from-green-500 to-emerald-500',
               },
             ].map((feature, index) => (
