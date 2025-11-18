@@ -43,6 +43,14 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
     refetch();
   }, [pathname, refetch]);
 
+  // Version check console log
+  useEffect(() => {
+    console.log('🎓 Ultudy Sidebar v2.0 - Archive feature enabled!');
+    console.log('📊 Courses loaded:', courses.length);
+    console.log('📦 Archived courses:', courses.filter(c => c.archived).length);
+    console.log('👁️ Showing archived:', showArchived);
+  }, [courses, showArchived]);
+
   // Close user menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
