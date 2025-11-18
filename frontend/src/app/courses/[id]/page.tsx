@@ -732,7 +732,7 @@ export default function CoursePage() {
         </div>
       )}
 
-      {documents.length === 0 ? (
+      {documents.length === 0 && processingJobs.length === 0 ? (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
