@@ -14,14 +14,31 @@ export default function createCoursesRouter(options = {}) {
   // GET /courses - List all courses for the user
   router.get('/', async (req, res) => {
     const ownerId = req.userId;
+    const { include_archived } = req.query;
 
     try {
       const courses = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, created_at, updated_at
-           FROM courses
+        // Auto-archive courses past exam date
+        await client.query(
+          `UPDATE courses
+           SET archived = true, archived_at = NOW()
            WHERE owner_id = $1
-           ORDER BY created_at DESC`,
+             AND archived = false
+             AND exam_date IS NOT NULL
+             AND exam_date < CURRENT_DATE`,
+          [ownerId]
+        );
+
+        // Fetch courses (optionally include archived)
+        const whereClause = include_archived === 'true'
+          ? 'owner_id = $1'
+          : 'owner_id = $1 AND archived = false';
+
+        const { rows } = await client.query(
+          `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
+           FROM courses
+           WHERE ${whereClause}
+           ORDER BY archived ASC, created_at DESC`,
           [ownerId]
         );
         return rows;
@@ -69,7 +86,7 @@ export default function createCoursesRouter(options = {}) {
     try {
       const course = await tenantHelpers.withTenant(ownerId, async (client) => {
         const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, created_at, updated_at
+          `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
            FROM courses
            WHERE id = $1 AND owner_id = $2`,
           [id, ownerId]
@@ -91,7 +108,7 @@ export default function createCoursesRouter(options = {}) {
   // PATCH /courses/:id - Update a course
   router.patch('/:id', async (req, res) => {
     const { id } = req.params;
-    const { name, code, term, exam_date } = req.body || {};
+    const { name, code, term, exam_date, archived } = req.body || {};
     const ownerId = req.userId;
 
     const updates = [];
@@ -114,6 +131,16 @@ export default function createCoursesRouter(options = {}) {
       updates.push(`exam_date = $${valueIndex++}`);
       values.push(exam_date);
     }
+    if (archived !== undefined) {
+      updates.push(`archived = $${valueIndex++}`);
+      values.push(archived);
+      // Set archived_at when archiving, clear when unarchiving
+      if (archived) {
+        updates.push(`archived_at = NOW()`);
+      } else {
+        updates.push(`archived_at = NULL`);
+      }
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
@@ -128,7 +155,7 @@ export default function createCoursesRouter(options = {}) {
           `UPDATE courses
            SET ${updates.join(', ')}
            WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
-           RETURNING id, name, code, term, exam_date, created_at, updated_at`,
+           RETURNING id, name, code, term, exam_date, archived, archived_at, created_at, updated_at`,
           values
         );
         return rows[0] || null;
