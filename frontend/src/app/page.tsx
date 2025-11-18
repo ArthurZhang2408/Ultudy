@@ -133,7 +133,7 @@ function CoursesHomePage() {
         </div>
 
         {/* Show Archived Toggle */}
-        {archivedCount > 0 && (
+        {(archivedCount > 0 || showArchived) && (
           <Button
             variant={showArchived ? 'primary' : 'outline'}
             onClick={() => setShowArchived(!showArchived)}
