@@ -26,8 +26,15 @@ export default function createJobsRouter(options = {}) {
       const job = await jobTracker.getJob(ownerId, id);
 
       if (!job) {
+        console.log(`[jobs/:id] Job ${id} not found for owner ${ownerId}`);
         return res.status(404).json({ error: 'Job not found' });
       }
+
+      console.log(`[jobs/:id] Job ${id} status:`, {
+        type: job.type,
+        status: job.status,
+        progress: job.progress
+      });
 
       res.json({
         id: job.id,
