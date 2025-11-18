@@ -693,11 +693,18 @@ export default function CoursePage() {
               )}
               {course.exam_date && (
                 <Badge variant="warning" size="md" dot>
-                  Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  Exam: {(() => {
+                    // Parse date string as local date to avoid timezone issues
+                    // Handle both "YYYY-MM-DD" and ISO timestamp formats
+                    const dateStr = course.exam_date.split('T')[0]; // Extract date part if ISO timestamp
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    const localDate = new Date(year, month - 1, day);
+                    return localDate.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    });
+                  })()}
                 </Badge>
               )}
             </div>
