@@ -27,10 +27,10 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
   const showMainSidebar = searchParams.get('sidebar') === 'main';
   const hideMainSidebar = isLearnPage && !showMainSidebar;
 
-  // If in landing mode, don't render the authenticated layout
+  // If in landing mode, render children without sidebar/layout
   // (user will be redirected to homepage by the useEffect above)
   if (isLandingMode) {
-    return null;
+    return <>{children}</>;
   }
 
   return (

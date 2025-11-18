@@ -22,8 +22,8 @@ The application checks the `NEXT_PUBLIC_LAUNCH_MODE` environment variable to det
 
 | Mode | Behavior | Use Case |
 |------|----------|----------|
-| `landing` | Shows landing page to **all users** (including authenticated) | Pre-launch, maintenance mode |
-| `app` | Shows full application (landing page only for non-authenticated users) | Post-launch, normal operation |
+| `landing` | Shows "Coming Soon" pre-launch page to **all users** (including authenticated), no sidebar | Pre-launch, maintenance mode |
+| `app` | Shows full application (regular landing page only for non-authenticated users) | Post-launch, normal operation |
 
 **Default:** If not set, defaults to `app` mode (full application)
 
@@ -148,7 +148,7 @@ cd frontend
 npm run dev
 ```
 
-Visit `http://localhost:3000` - you should see the landing page even if signed in.
+Visit `http://localhost:3000` - you should see the "Coming Soon" pre-launch page even if signed in, with no sidebar.
 
 ### Test App Mode
 
@@ -189,9 +189,9 @@ useEffect(() => {
   }
 }, [isLandingMode, pathname, router]);
 
-// Don't render authenticated layout in landing mode
+// Don't render authenticated layout in landing mode - just return children
 if (isLandingMode) {
-  return null;
+  return <>{children}</>;
 }
 ```
 
@@ -207,17 +207,20 @@ const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
 const isLandingMode = launchMode === 'landing';
 
 if (isLandingMode) {
-  return <LandingPage />;  // Everyone sees landing page
+  return <PreLaunchPage />;  // Everyone sees "Coming Soon" page
 }
 
 if (isSignedIn) {
   return <CoursesHomePage />;  // Authenticated users see app
 }
 
-return <LandingPage />;  // Non-authenticated users see landing page
+return <LandingPage />;  // Non-authenticated users see regular landing page
 ```
 
-This determines what content to show on the homepage.
+This determines what content to show on the homepage:
+- **PreLaunchPage**: "Ultudy is launching soon" with coming soon message
+- **LandingPage**: Regular marketing page with "Get Started" buttons
+- **CoursesHomePage**: Full authenticated app with courses
 
 ---
 

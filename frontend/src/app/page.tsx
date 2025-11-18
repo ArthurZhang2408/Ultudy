@@ -400,9 +400,9 @@ export default function HomePage() {
     return null;
   }
 
-  // If in landing mode, always show landing page (even for signed-in users)
+  // If in landing mode, always show pre-launch page (even for signed-in users)
   if (isLandingMode) {
-    return <LandingPage />;
+    return <PreLaunchPage />;
   }
 
   // If signed in, show courses page content directly
@@ -414,7 +414,72 @@ export default function HomePage() {
   return <LandingPage />;
 }
 
-// Extracted landing page component for reusability
+// Pre-launch page shown when NEXT_PUBLIC_LAUNCH_MODE=landing
+function PreLaunchPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      {/* Background decorations */}
+      <div className="absolute inset-0 -z-10">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-200/30 dark:bg-primary-900/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-success-200/20 dark:bg-success-900/10 rounded-full blur-3xl" />
+      </div>
+
+      <div className="max-w-4xl mx-auto text-center space-y-8 animate-fade-in">
+        {/* Logo/Badge */}
+        <div className="inline-flex items-center gap-2 px-6 py-3 bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-800 rounded-full text-primary-700 dark:text-primary-300 text-sm font-medium">
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838l-2.727 1.17 1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z" />
+          </svg>
+          Coming Soon
+        </div>
+
+        {/* Main heading */}
+        <h1 className="text-6xl md:text-7xl lg:text-8xl font-bold text-neutral-900 dark:text-neutral-100 leading-tight">
+          <span className="bg-gradient-to-r from-primary-600 to-primary-800 dark:from-primary-400 dark:to-primary-600 bg-clip-text text-transparent">
+            Ultudy
+          </span>
+          <br />
+          <span className="text-4xl md:text-5xl lg:text-6xl">
+            is launching soon
+          </span>
+        </h1>
+
+        {/* Description */}
+        <p className="text-xl md:text-2xl text-neutral-600 dark:text-neutral-300 max-w-2xl mx-auto leading-relaxed">
+          An AI-powered study companion that transforms your course materials into personalized, adaptive learning experiences.
+        </p>
+
+        {/* Feature highlights */}
+        <div className="grid md:grid-cols-3 gap-6 mt-12 max-w-3xl mx-auto">
+          {[
+            { icon: '📚', text: 'Upload any course material' },
+            { icon: '🤖', text: 'AI-generated lessons' },
+            { icon: '📊', text: 'Track your progress' },
+          ].map((feature, index) => (
+            <div key={index} className="flex flex-col items-center gap-2 p-4 bg-white/50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700">
+              <span className="text-3xl">{feature.icon}</span>
+              <span className="text-sm text-neutral-700 dark:text-neutral-300 font-medium">
+                {feature.text}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Call to action */}
+        <div className="pt-8">
+          <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+            We're putting the finishing touches on something special.
+          </p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-500">
+            Stay tuned for the launch announcement.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Regular landing page for non-authenticated users (app mode)
 function LandingPage() {
   return (
     <div className="space-y-20 pb-16">
