@@ -14,17 +14,57 @@ export default function createCoursesRouter(options = {}) {
   // GET /courses - List all courses for the user
   router.get('/', async (req, res) => {
     const ownerId = req.userId;
+    const { include_archived } = req.query;
 
     try {
       const courses = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, created_at, updated_at
-           FROM courses
-           WHERE owner_id = $1
-           ORDER BY created_at DESC`,
-          [ownerId]
+        // Check if archived column exists to avoid transaction abort
+        const { rows: columnCheck } = await client.query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_name = 'courses'
+             AND column_name = 'archived'`
         );
-        return rows;
+        const hasArchivedColumn = columnCheck.length > 0;
+
+        if (hasArchivedColumn) {
+          // Auto-archive courses past exam date
+          await client.query(
+            `UPDATE courses
+             SET archived = true, archived_at = NOW()
+             WHERE owner_id = $1
+               AND archived = false
+               AND exam_date IS NOT NULL
+               AND exam_date < CURRENT_DATE`,
+            [ownerId]
+          );
+
+          // Fetch courses with archived columns
+          const whereClause = include_archived === 'true'
+            ? 'owner_id = $1'
+            : 'owner_id = $1 AND archived = false';
+
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
+             FROM courses
+             WHERE ${whereClause}
+             ORDER BY archived ASC, created_at DESC`,
+            [ownerId]
+          );
+
+          return rows;
+        } else {
+          // Archived column doesn't exist yet, use old query
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, created_at, updated_at
+             FROM courses
+             WHERE owner_id = $1
+             ORDER BY created_at DESC`,
+            [ownerId]
+          );
+          // Add archived: false to all courses for backwards compatibility
+          return rows.map(row => ({ ...row, archived: false, archived_at: null, updated_at: row.updated_at || row.created_at }));
+        }
       });
 
       res.json({ courses });
@@ -68,13 +108,33 @@ export default function createCoursesRouter(options = {}) {
 
     try {
       const course = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, created_at, updated_at
-           FROM courses
-           WHERE id = $1 AND owner_id = $2`,
-          [id, ownerId]
+        // Check if archived column exists
+        const { rows: columnCheck } = await client.query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_name = 'courses'
+             AND column_name = 'archived'`
         );
-        return rows[0] || null;
+        const hasArchivedColumn = columnCheck.length > 0;
+
+        if (hasArchivedColumn) {
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
+             FROM courses
+             WHERE id = $1 AND owner_id = $2`,
+            [id, ownerId]
+          );
+          return rows[0] || null;
+        } else {
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, created_at, updated_at
+             FROM courses
+             WHERE id = $1 AND owner_id = $2`,
+            [id, ownerId]
+          );
+          const course = rows[0] || null;
+          return course ? { ...course, archived: false, archived_at: null, updated_at: course.updated_at || course.created_at } : null;
+        }
       });
 
       if (!course) {
@@ -91,47 +151,83 @@ export default function createCoursesRouter(options = {}) {
   // PATCH /courses/:id - Update a course
   router.patch('/:id', async (req, res) => {
     const { id } = req.params;
-    const { name, code, term, exam_date } = req.body || {};
+    const { name, code, term, exam_date, archived } = req.body || {};
     const ownerId = req.userId;
-
-    const updates = [];
-    const values = [];
-    let valueIndex = 1;
-
-    if (name !== undefined) {
-      updates.push(`name = $${valueIndex++}`);
-      values.push(name);
-    }
-    if (code !== undefined) {
-      updates.push(`code = $${valueIndex++}`);
-      values.push(code);
-    }
-    if (term !== undefined) {
-      updates.push(`term = $${valueIndex++}`);
-      values.push(term);
-    }
-    if (exam_date !== undefined) {
-      updates.push(`exam_date = $${valueIndex++}`);
-      values.push(exam_date);
-    }
-
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-
-    updates.push(`updated_at = NOW()`);
-    values.push(id, ownerId);
 
     try {
       const course = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `UPDATE courses
-           SET ${updates.join(', ')}
-           WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
-           RETURNING id, name, code, term, exam_date, created_at, updated_at`,
-          values
+        // Check if archived column exists
+        const { rows: columnCheck } = await client.query(
+          `SELECT column_name
+           FROM information_schema.columns
+           WHERE table_name = 'courses'
+             AND column_name = 'archived'`
         );
-        return rows[0] || null;
+        const hasArchivedColumn = columnCheck.length > 0;
+
+        // If trying to update archived but column doesn't exist, return error
+        if (archived !== undefined && !hasArchivedColumn) {
+          throw new Error('Archive feature not yet available. Please try again later.');
+        }
+
+        const updates = [];
+        const values = [];
+        let valueIndex = 1;
+
+        if (name !== undefined) {
+          updates.push(`name = $${valueIndex++}`);
+          values.push(name);
+        }
+        if (code !== undefined) {
+          updates.push(`code = $${valueIndex++}`);
+          values.push(code);
+        }
+        if (term !== undefined) {
+          updates.push(`term = $${valueIndex++}`);
+          values.push(term);
+        }
+        if (exam_date !== undefined) {
+          updates.push(`exam_date = $${valueIndex++}`);
+          values.push(exam_date);
+        }
+        if (archived !== undefined && hasArchivedColumn) {
+          updates.push(`archived = $${valueIndex++}`);
+          values.push(archived);
+          // Set archived_at when archiving, clear when unarchiving
+          if (archived) {
+            updates.push(`archived_at = NOW()`);
+          } else {
+            updates.push(`archived_at = NULL`);
+          }
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({ error: 'No fields to update' });
+        }
+
+        updates.push(`updated_at = NOW()`);
+        values.push(id, ownerId);
+
+        if (hasArchivedColumn) {
+          const { rows } = await client.query(
+            `UPDATE courses
+             SET ${updates.join(', ')}
+             WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
+             RETURNING id, name, code, term, exam_date, archived, archived_at, created_at, updated_at`,
+            values
+          );
+          return rows[0] || null;
+        } else {
+          const { rows } = await client.query(
+            `UPDATE courses
+             SET ${updates.join(', ')}
+             WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
+             RETURNING id, name, code, term, exam_date, created_at, updated_at`,
+            values
+          );
+          const course = rows[0] || null;
+          return course ? { ...course, archived: false, archived_at: null, updated_at: course.updated_at } : null;
+        }
       });
 
       if (!course) {
@@ -141,7 +237,7 @@ export default function createCoursesRouter(options = {}) {
       res.json(course);
     } catch (error) {
       console.error('Failed to update course', error);
-      res.status(500).json({ error: 'Failed to update course' });
+      res.status(500).json({ error: error.message || 'Failed to update course' });
     }
   });
 

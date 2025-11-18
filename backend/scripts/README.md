@@ -1,6 +1,61 @@
-# PDF Extraction Scripts
+# Backend Utility Scripts
 
-This directory contains scripts for extracting content from PDFs with different approaches.
+**Last Updated:** 2025-01-18
+
+This directory contains utility scripts for development, testing, and maintenance.
+
+---
+
+## Categories
+
+1. **Database Utilities** - Schema management and cache clearing
+2. **PDF Extraction Scripts** - Testing and comparing PDF extraction methods
+
+---
+
+## Database Utilities
+
+### `dump-schema.cjs` - Database Schema Dump
+**Usage**: `node scripts/dump-schema.cjs`
+
+**What it does**: Exports complete database schema including:
+- All table structures (columns, types, constraints)
+- Primary keys and foreign keys
+- Indexes and unique constraints
+- Row counts for each table
+
+**When to use**:
+- Before making schema changes (backup)
+- Documenting current database structure
+- Comparing local vs production schemas
+- Troubleshooting migration issues
+
+**Environment**: Reads `DATABASE_URL` from environment variables
+
+---
+
+### `clear-cached-lessons.js` - Clear Cached Lessons
+**Usage**: `node scripts/clear-cached-lessons.js [--all] [--section-only]`
+
+**What it does**: Clears cached lessons from database to force clean regeneration
+
+**Options**:
+- `--all` - Clear ALL lessons (document-level and section-level)
+- `--section-only` - Clear only section-scoped lessons (default)
+
+**When to use**:
+- After changing lesson generation pipeline
+- When cached lessons are corrupted
+- Testing lesson generation changes
+- Debugging lesson quality issues
+
+**Safety**: 3-second delay before deletion with cancel option
+
+---
+
+## PDF Extraction Scripts
+
+This section contains scripts for extracting content from PDFs with different approaches.
 
 ## Quick Start
 

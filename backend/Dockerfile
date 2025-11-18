@@ -9,4 +9,5 @@ COPY . .
 
 EXPOSE 3001
 
-CMD ["node", "src/server.js"]
+# Start server (includes migration)
+CMD ["npm", "start"]

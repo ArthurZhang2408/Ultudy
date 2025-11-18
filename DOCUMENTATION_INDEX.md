@@ -23,7 +23,11 @@ When you open this repository:
 |----------|---------|--------------|
 | **README.md** | Project overview, getting started, tech stack | First time setup |
 | **PRODUCT_VISION.md** | Product goals, user stories, feature roadmap | Understanding product direction |
-| **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | Production deployment |
+| **DEVELOPMENT_PIPELINE.md** | Development workflow and environment strategy | Setting up dev pipeline |
+| **DEPLOYMENT_GUIDE.md** | Complete deployment guide to ultudy.com | Deploying to production |
+| **DEPLOYMENT_CHECKLIST.md** | Step-by-step deployment checklist | During deployment |
+| **PRODUCTION_FIXES.md** | Production deployment troubleshooting | After deployment, fixing issues |
+| **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | After deployment, scaling |
 | **CLERK_SETUP.md** | Authentication setup with Clerk | Setting up auth |
 
 ### Backend Documentation
@@ -32,6 +36,7 @@ When you open this repository:
 |----------|---------|----------|
 | **PDF_EXTRACTION_GUIDE.md** | PDF processing modes and configuration | `backend/` |
 | **ENV_CONFIGURATION.md** | Environment variables reference | `backend/` |
+| **scripts/README.md** | Database and PDF extraction utilities | `backend/scripts/` |
 | **migrations/README.md** | Database migration guide | `backend/src/db/migrations/` |
 
 ### Frontend Documentation
@@ -55,10 +60,15 @@ When you open this repository:
 Files that represent the current state of the system:
 - `README.md` - Main project documentation
 - `PRODUCT_VISION.md` - Product strategy
+- `DEVELOPMENT_PIPELINE.md` - Development workflow and CI/CD
+- `DEPLOYMENT_GUIDE.md` - Production deployment guide
+- `DEPLOYMENT_CHECKLIST.md` - Deployment verification checklist
+- `PRODUCTION_FIXES.md` - Production troubleshooting guide
 - `SCALABILITY_GUIDE.md` - Production scaling guide
 - `CLERK_SETUP.md` - Authentication setup
 - `backend/PDF_EXTRACTION_GUIDE.md` - PDF processing
 - `backend/ENV_CONFIGURATION.md` - Environment configuration
+- `backend/scripts/README.md` - Utility scripts documentation
 - `backend/src/db/migrations/README.md` - Database migrations
 - `LESSON_GENERATION_ARCHITECTURE.md` - Core architecture
 - `ASYNC_OPERATIONS.md` - Async job processing
@@ -229,18 +239,23 @@ When creating new documentation, use this template:
 ## 🎯 Quick Commands Reference
 
 ```bash
+# Database utilities
+cd backend && node scripts/dump-schema.cjs                    # Dump schema
+cd backend && node scripts/clear-cached-lessons.js            # Clear lesson cache
+
 # Run migrations
 cd backend && node src/db/migrations/run.js
 
-# Inspect database schema
+# Inspect database schema (deprecated - use scripts/dump-schema.cjs)
 cd backend && node src/db/migrations/inspect_schema.js
 
 # Start development
 cd backend && npm run dev
 cd frontend && npm run dev
 
-# Check scalability guide
-cat SCALABILITY_GUIDE.md
+# Check guides
+cat PRODUCTION_FIXES.md     # Production troubleshooting
+cat SCALABILITY_GUIDE.md    # Scaling guide
 ```
 
 ---
@@ -253,6 +268,12 @@ cat SCALABILITY_GUIDE.md
 ### "How does PDF extraction work?"
 → See `backend/PDF_EXTRACTION_GUIDE.md`
 
+### "How do I set up the development pipeline?"
+→ See `DEVELOPMENT_PIPELINE.md`
+
+### "How do I deploy to production?"
+→ See `DEPLOYMENT_GUIDE.md` and `DEPLOYMENT_CHECKLIST.md`
+
 ### "How do I scale to production?"
 → See `SCALABILITY_GUIDE.md`
 
@@ -263,7 +284,10 @@ cat SCALABILITY_GUIDE.md
 → See `backend/ENV_CONFIGURATION.md` and `backend/.env.example`
 
 ### "What database tables exist?"
-→ Run: `node backend/src/db/migrations/inspect_schema.js`
+→ Run: `node backend/scripts/dump-schema.cjs`
+
+### "How do I troubleshoot production issues?"
+→ See `PRODUCTION_FIXES.md`
 
 ### "How do lessons get generated?"
 → See `LESSON_GENERATION_ARCHITECTURE.md`

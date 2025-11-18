@@ -204,7 +204,8 @@ type FormattedTextProps = {
  */
 function preprocessMathTags(text: string): string {
   // Convert <eqs>...</eqs> to $...$
-  return text.replace(/<eqs>(.*?)<\/eqs>/gs, '$$$1$$');
+  // Use replacement function to preserve backslashes in LaTeX
+  return text.replace(/<eqs>(.*?)<\/eqs>/gs, (_match, latex) => `$${latex}$`);
 }
 
 /**

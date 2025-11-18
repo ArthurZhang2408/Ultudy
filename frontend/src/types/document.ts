@@ -19,5 +19,8 @@ export type Course = {
   code?: string | null;
   term?: string | null;
   exam_date?: string | null;
+  archived: boolean;
+  archived_at?: string | null;
   created_at: string;
+  updated_at: string;
 };

@@ -6,6 +6,8 @@ import { createPortal } from 'react-dom';
 import { Button, Card, Input, Badge, Select } from '@/components/ui';
 import CustomSelect from './CustomSelect';
 import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
+import { getBackendUrl } from '@/lib/api';
+import { useAuth } from '@clerk/nextjs';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -15,6 +17,7 @@ interface UploadModalProps {
 
 export default function UploadModal({ isOpen, onClose, preselectedCourseId }: UploadModalProps) {
   const router = useRouter();
+  const { getToken } = useAuth();
   const { courses } = useFetchCourses();
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
@@ -83,17 +86,48 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       formData.append('material_type', materialType);
       formData.append('title', title || file.name.replace('.pdf', ''));
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData
-      });
+      // For files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
+      const FILE_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB
+      const useDirectUpload = file.size > FILE_SIZE_LIMIT;
+
+      let uploadRes;
+      if (useDirectUpload) {
+        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
+
+        // Get auth token for direct backend upload
+        const token = await getToken();
+        if (!token) {
+          throw new Error('Authentication required');
+        }
+
+        // Upload directly to backend
+        uploadRes = await fetch(`${getBackendUrl()}/upload/pdf-structured`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          body: formData
+        });
+      } else {
+        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
+
+        // Use Vercel API route as proxy (for files <= 4MB)
+        uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+      }
 
       if (!uploadRes.ok) {
-        throw new Error('Upload failed');
+        const errorData = await uploadRes.json().catch(() => ({}));
+        console.error('[UploadModal] Upload failed:', uploadRes.status, errorData);
+        throw new Error(errorData.error || 'Upload failed');
       }
 
       const uploadData = await uploadRes.json();
       const { job_id, document_id } = uploadData;
+
+      console.log('[UploadModal] Upload successful:', { job_id, document_id });
 
       // Store job in session storage
       const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
@@ -117,6 +151,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       // Redirect to course page
       router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
     } catch (err) {
+      console.error('[UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
       setIsUploading(false);
     }
@@ -231,7 +266,6 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     ref={fileInputRef}
                     type="file"
                     accept="application/pdf"
-                    required
                     onChange={handleFileSelect}
                     className="hidden"
                   />

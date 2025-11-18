@@ -5,7 +5,7 @@ import type { Course } from '@/types';
  * Custom hook to fetch courses from the API
  * Eliminates code duplication across multiple components
  */
-export function useFetchCourses() {
+export function useFetchCourses(includeArchived = false) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -16,7 +16,10 @@ export function useFetchCourses() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('/api/courses');
+        const url = includeArchived
+          ? '/api/courses?include_archived=true'
+          : '/api/courses';
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setCourses(data.courses || []);
@@ -32,7 +35,7 @@ export function useFetchCourses() {
     }
 
     fetchCourses();
-  }, [refetchTrigger]);
+  }, [refetchTrigger, includeArchived]);
 
   const refetch = useCallback(() => {
     setRefetchTrigger(prev => prev + 1);

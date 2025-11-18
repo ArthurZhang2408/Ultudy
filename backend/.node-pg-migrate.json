@@ -1,0 +1,7 @@
+{
+  "migrations-dir": "db/migrations",
+  "driver": "pg",
+  "ssl": {
+    "rejectUnauthorized": false
+  }
+}
