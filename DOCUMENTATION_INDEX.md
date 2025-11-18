@@ -23,6 +23,7 @@ When you open this repository:
 |----------|---------|--------------|
 | **README.md** | Project overview, getting started, tech stack | First time setup |
 | **PRODUCT_VISION.md** | Product goals, user stories, feature roadmap | Understanding product direction |
+| **DEVELOPMENT_PIPELINE.md** | Development workflow and environment strategy | Setting up dev pipeline |
 | **DEPLOYMENT_GUIDE.md** | Complete deployment guide to ultudy.com | Deploying to production |
 | **DEPLOYMENT_CHECKLIST.md** | Step-by-step deployment checklist | During deployment |
 | **PRODUCTION_FIXES.md** | Production deployment troubleshooting | After deployment, fixing issues |
@@ -59,6 +60,7 @@ When you open this repository:
 Files that represent the current state of the system:
 - `README.md` - Main project documentation
 - `PRODUCT_VISION.md` - Product strategy
+- `DEVELOPMENT_PIPELINE.md` - Development workflow and CI/CD
 - `DEPLOYMENT_GUIDE.md` - Production deployment guide
 - `DEPLOYMENT_CHECKLIST.md` - Deployment verification checklist
 - `PRODUCTION_FIXES.md` - Production troubleshooting guide
@@ -265,6 +267,9 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How does PDF extraction work?"
 → See `backend/PDF_EXTRACTION_GUIDE.md`
+
+### "How do I set up the development pipeline?"
+→ See `DEVELOPMENT_PIPELINE.md`
 
 ### "How do I deploy to production?"
 → See `DEPLOYMENT_GUIDE.md` and `DEPLOYMENT_CHECKLIST.md`
