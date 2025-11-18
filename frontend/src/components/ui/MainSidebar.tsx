@@ -20,7 +20,8 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   const { signOut } = useClerk();
   const router = useRouter();
   const pathname = usePathname();
-  const { courses, loading, refetch } = useFetchCourses();
+  const [showArchived, setShowArchived] = useState(false);
+  const { courses, loading, refetch } = useFetchCourses(showArchived);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -36,6 +37,11 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   useEffect(() => {
     onCollapseChange?.(isCollapsed);
   }, [isCollapsed, onCollapseChange]);
+
+  // Refetch courses when pathname changes (user might have archived from another page)
+  useEffect(() => {
+    refetch();
+  }, [pathname, refetch]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -205,11 +211,22 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
         {/* Courses Section */}
         {!isCollapsed && <div className="mb-2">
           {!isCollapsed && (
-            <div className="px-3 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                Courses
-              </span>
-            </div>
+            <>
+              <div className="px-3 mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                  Courses
+                </span>
+                {courses.some(c => c.archived) && (
+                  <button
+                    onClick={() => setShowArchived(!showArchived)}
+                    className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                    title={showArchived ? 'Hide archived' : 'Show archived'}
+                  >
+                    {showArchived ? 'Hide' : `+${courses.filter(c => c.archived).length}`}
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           {loading ? (
@@ -233,6 +250,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
             <div className="space-y-1">
               {courses.map((course) => {
                 const isActive = pathname.startsWith(`/courses/${course.id}`);
+                const isArchived = course.archived;
                 return (
                   <Link
                     key={course.id}
@@ -240,18 +258,31 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
                       isActive
                         ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-900 dark:text-primary-100 font-medium'
+                        : isArchived
+                        ? 'text-neutral-500 dark:text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800 opacity-60'
                         : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800'
                     }`}
-                    title={course.name}
+                    title={`${course.name}${isArchived ? ' (Archived)' : ''}`}
                   >
-                    <div className={`w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 ${isCollapsed ? 'mx-auto' : ''}`}>
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      isArchived
+                        ? 'bg-gradient-to-br from-neutral-400 to-neutral-500'
+                        : 'bg-gradient-to-br from-primary-500 to-primary-600'
+                    } ${isCollapsed ? 'mx-auto' : ''}`}>
                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                       </svg>
                     </div>
                     {!isCollapsed && (
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{course.code || course.name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium truncate">{course.code || course.name}</div>
+                          {isArchived && (
+                            <span className="text-xs px-1.5 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded">
+                              Archived
+                            </span>
+                          )}
+                        </div>
                         {course.code && (
                           <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
                             {course.name}
