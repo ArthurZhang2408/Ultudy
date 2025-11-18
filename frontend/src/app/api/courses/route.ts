@@ -15,7 +15,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const backendResponse = await fetch(`${getBackendUrl()}/courses`, {
+    // Forward query parameters from the original request
+    const { searchParams } = new URL(request.url);
+    const queryString = searchParams.toString();
+    const backendUrl = `${getBackendUrl()}/courses${queryString ? `?${queryString}` : ''}`;
+
+    console.log('[api/courses] Proxying GET to:', backendUrl);
+
+    const backendResponse = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
