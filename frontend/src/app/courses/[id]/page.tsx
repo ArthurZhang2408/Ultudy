@@ -905,12 +905,23 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
-                    {/* Processing Jobs - Filter by chapter and exclude completed jobs */}
-                    {processingJobs.filter(job =>
-                      (job.chapter || 'Uncategorized') === chapter &&
-                      job.type === 'upload' &&
-                      job.status !== 'completed'
-                    ).map((job) => (
+                    {/* Processing Jobs - Filter by chapter, exclude completed jobs, and hide if document already exists */}
+                    {processingJobs.filter(job => {
+                      // Filter by chapter and type
+                      if ((job.chapter || 'Uncategorized') !== chapter || job.type !== 'upload') {
+                        return false;
+                      }
+                      // Exclude completed jobs
+                      if (job.status === 'completed') {
+                        return false;
+                      }
+                      // Hide job if the document already exists in the documents list
+                      const documentExists = documentsByChapter[chapter]?.some(doc => doc.id === job.document_id);
+                      if (documentExists) {
+                        return false;
+                      }
+                      return true;
+                    }).map((job) => (
                       <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">
