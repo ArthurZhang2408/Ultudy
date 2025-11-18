@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { MainSidebar, UploadModal } from '@/components/ui';
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
@@ -9,11 +9,29 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Check launch mode - redirect to landing page if in pre-launch mode
+  const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
+  const isLandingMode = launchMode === 'landing';
+
+  useEffect(() => {
+    // If in landing mode and not on homepage, redirect to homepage
+    if (isLandingMode && pathname !== '/') {
+      router.push('/');
+    }
+  }, [isLandingMode, pathname, router]);
 
   // Hide main sidebar on learn page (unless user explicitly requests it)
   const isLearnPage = pathname === '/learn';
   const showMainSidebar = searchParams.get('sidebar') === 'main';
   const hideMainSidebar = isLearnPage && !showMainSidebar;
+
+  // If in landing mode, don't render the authenticated layout
+  // (user will be redirected to homepage by the useEffect above)
+  if (isLandingMode) {
+    return null;
+  }
 
   return (
     <>

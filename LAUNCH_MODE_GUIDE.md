@@ -169,8 +169,35 @@ Visit `http://localhost:3000`:
 
 ## Code Implementation
 
-### Location
+### Locations
 
+The launch mode check is implemented in two places for complete protection:
+
+#### 1. Layout Level Protection
+**File:** `frontend/src/app/layout-client.tsx`
+
+**Key Logic:**
+
+```typescript
+const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
+const isLandingMode = launchMode === 'landing';
+
+useEffect(() => {
+  // Redirect any authenticated route to homepage in landing mode
+  if (isLandingMode && pathname !== '/') {
+    router.push('/');
+  }
+}, [isLandingMode, pathname, router]);
+
+// Don't render authenticated layout in landing mode
+if (isLandingMode) {
+  return null;
+}
+```
+
+This protects ALL routes (`/learn`, `/courses/[id]`, etc.) - users cannot bypass the landing page by direct navigation.
+
+#### 2. Homepage Display
 **File:** `frontend/src/app/page.tsx`
 
 **Key Logic:**
@@ -189,6 +216,8 @@ if (isSignedIn) {
 
 return <LandingPage />;  // Non-authenticated users see landing page
 ```
+
+This determines what content to show on the homepage.
 
 ---
 
@@ -220,6 +249,13 @@ npm run dev
 3. Check if there's a CDN cache (Vercel Edge, CloudFlare) that needs purging
 4. Verify the environment variable is correctly set to `app`
 
+### Issue: Users can access deep links like /learn or /courses/[id] in landing mode
+
+**Solution:** This should NOT be possible with the current implementation. The `LayoutClient` component automatically redirects all non-homepage routes to `/` in landing mode. If this is happening:
+1. Verify `layout-client.tsx` includes the launch mode check
+2. Check browser console for errors preventing the redirect
+3. Clear Next.js cache: `rm -rf .next && npm run dev`
+
 ---
 
 ## Best Practices
@@ -234,9 +270,10 @@ npm run dev
 ### Security Considerations
 
 - The landing page is public and doesn't require authentication
-- In `landing` mode, authenticated users still can't access protected routes directly
-- API endpoints should still validate authentication regardless of launch mode
-- Don't rely solely on frontend mode - always verify permissions on backend
+- In `landing` mode, ALL routes (including deep links) redirect to homepage - no bypass possible
+- The layout guard ensures authenticated content never renders in landing mode
+- API endpoints still validate authentication regardless of launch mode (backend protection)
+- This is a frontend UX control - backend should always verify permissions independently
 
 ### Performance
 
