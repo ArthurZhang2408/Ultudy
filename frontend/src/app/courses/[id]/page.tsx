@@ -819,7 +819,8 @@ export default function CoursePage() {
               const isGenerating = processingJobs.some(job =>
                 job.type === 'lesson' &&
                 job.section_id === section.id &&
-                (job.chapter || 'Uncategorized') === chapter
+                (job.chapter || 'Uncategorized') === chapter &&
+                job.status !== 'completed'
               );
 
               // Add section overview square FIRST
@@ -904,8 +905,12 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
-                    {/* Processing Jobs - Filter by chapter */}
-                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter && job.type === 'upload').map((job) => (
+                    {/* Processing Jobs - Filter by chapter and exclude completed jobs */}
+                    {processingJobs.filter(job =>
+                      (job.chapter || 'Uncategorized') === chapter &&
+                      job.type === 'upload' &&
+                      job.status !== 'completed'
+                    ).map((job) => (
                       <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">
