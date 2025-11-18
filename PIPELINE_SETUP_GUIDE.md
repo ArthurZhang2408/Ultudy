@@ -15,10 +15,10 @@ deploy-ultudy-domain → Production (ultudy.com)
 
 To proper pipeline:
 ```
-main (production) → ultudy.com
-staging → staging.ultudy.com
-develop → testing environment
-feature/* → preview deployments
+production → ultudy.com (live site)
+staging → staging.ultudy.com (pre-production testing)
+main → development (Claude creates PRs here)
+feature/* → preview deployments (Claude creates these)
 ```
 
 ---
@@ -55,46 +55,29 @@ git checkout -b production
 git push -u origin production
 ```
 
-**Step 2: Update main branch to be staging**
+**Step 2: Create Staging Branch from Main**
 
 ```bash
-# Merge deployment fixes into main
+# Main stays as development - just create staging from it
 git checkout main
-git merge claude/deploy-ultudy-domain-01TxuoY8kJHnN7DRLAHf5pR9
-git push origin main
-
-# Optionally rename main to staging
-git branch -m main staging
-git push -u origin staging
-git push origin :main  # Delete old main
-```
-
-**Alternative (if you want to keep main as production):**
-```bash
-# Make main the production branch
-git checkout main
-git reset --hard production
-git push --force origin main
-
-# Create staging from old main
-git checkout -b staging origin/main~1
+git checkout -b staging
 git push -u origin staging
 ```
 
-**Step 3: Create develop branch**
+**Step 3: Main Stays as Development (No Changes Needed)**
 
 ```bash
-# Create develop from staging (or main)
-git checkout staging  # or main if that's your staging
-git checkout -b develop
-git push -u origin develop
+# main branch stays as-is - it's your active development branch
+# Claude Code will create feature branches from main
+# Claude Code will create PRs to main
+# No action needed for main
 ```
 
 **Result:**
 ```
 ✅ production branch → Ready for ultudy.com
 ✅ staging branch → Ready for staging.ultudy.com
-✅ develop branch → Ready for testing
+✅ main branch → Active development (unchanged)
 ```
 
 ---
@@ -212,13 +195,16 @@ Copy from production, update:
 - NODE_ENV=staging
 ```
 
-**Step 5: Create Testing/Develop Service (Optional)**
+**Step 5: Development Service (Optional)**
 
 ```
-Repeat steps above but:
-- Branch: develop
-- Database: ultudy_testing
-- Domain: Railway auto-generated or testing.ultudy.com
+Only needed if you want deployed backend for main branch
+Otherwise, use local backend during development
+
+If creating:
+- Branch: main
+- Database: ultudy_development or local database
+- Domain: Railway auto-generated
 ```
 
 ---
@@ -438,16 +424,25 @@ git push origin production
    ✅ Railway auto-deploys
 ```
 
-**Test Development:**
+**Test Claude Workflow:**
 ```
-1. Create test feature branch
-   git checkout develop
-   git checkout -b feature/test-pipeline
-   git push -u origin feature/test-pipeline
+1. Ask Claude to create a feature
+   User: "Claude, add a test feature"
 
-2. Check Vercel
-   ✅ Preview deployment created
+2. Claude creates feature branch
+   Claude: git checkout -b feature/test-pipeline
+   Claude: [develops feature]
+   Claude: git push -u origin feature/test-pipeline
+   Claude: gh pr create --base main
+
+3. Check GitHub & Vercel
+   ✅ PR created to main branch
+   ✅ Vercel preview deployment created
    ✅ Unique URL generated
+
+4. Merge PR
+   ✅ Feature branch auto-deleted
+   ✅ Changes in main branch
 ```
 
 ---
@@ -456,7 +451,7 @@ git push origin production
 
 - [ ] Production branch created and protected
 - [ ] Staging branch created
-- [ ] Develop branch created
+- [ ] Main branch kept as development (no changes)
 - [ ] Vercel production points to production branch
 - [ ] Vercel staging deployed (staging.ultudy.com)
 - [ ] Railway production service configured
@@ -467,17 +462,19 @@ git push origin production
 - [ ] Branch protection rules enabled
 - [ ] Landing page deployed to production
 - [ ] All environments tested and verified
+- [ ] Claude Code workflow tested
 - [ ] Team documentation updated
-- [ ] CI/CD workflow documented
 
 ---
 
 ## 🔄 Next Steps
 
-1. **Train team on new workflow:**
-   - Share DEVELOPMENT_PIPELINE.md
-   - Walk through feature branch → develop → staging → production flow
-   - Practice creating PRs
+1. **Start using Claude Code:**
+   - Share DEVELOPMENT_PIPELINE.md with team
+   - Request features: "Claude, add X feature"
+   - Claude creates feature branches → PRs to main
+   - Review and merge PRs
+   - Promote main → staging → production when ready
 
 2. **Set up monitoring:**
    - Vercel Analytics for all environments

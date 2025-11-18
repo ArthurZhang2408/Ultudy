@@ -10,10 +10,10 @@
 
 | Environment | Purpose | Domain | Branch | Auto-Deploy |
 |-------------|---------|--------|--------|-------------|
-| **Production** | Live app for users | `ultudy.com` | `main` | ✅ Yes |
+| **Production** | Live app for users | `ultudy.com` | `production` | ✅ Yes |
 | **Staging** | Pre-production testing | `staging.ultudy.com` or Vercel preview | `staging` | ✅ Yes |
-| **Testing** | Integration testing | `testing.ultudy.com` or Vercel preview | `develop` | ✅ Yes |
-| **Development** | Feature development | Local or Vercel preview | `feature/*` | ⚠️ Preview only |
+| **Development** | Active development (Claude PRs here) | Vercel preview | `main` | ✅ Yes |
+| **Feature Branches** | Individual features | Vercel preview | `feature/*` | ⚠️ Preview only |
 
 ---
 
@@ -22,164 +22,189 @@
 ### Current Setup (As of 2025-01-18)
 
 ```
-main branch → Contains working code (should be staging)
-deploy-ultudy-domain branch → Production fixes (should merge to main)
+main branch → Contains working code (keep as development)
+deploy-ultudy-domain branch → Production fixes (will become production)
 ultudy.com → Deployed from deploy-ultudy-domain branch
 ```
 
 ### Migration Steps
 
-**Step 1: Preserve Current Production**
+**Step 1: Create Production Branch**
 ```bash
 # Tag current production state
 git tag production-v1.0.0
 
-# Create production branch from current deploy branch
+# Create production branch from current deployment
 git checkout deploy-ultudy-domain
 git checkout -b production
 git push -u origin production
 ```
 
-**Step 2: Reorganize Branches**
+**Step 2: Create Staging Branch**
 ```bash
-# Merge deploy fixes into main (becomes staging)
+# Create staging from main (current working code)
 git checkout main
-git merge deploy-ultudy-domain
-
-# Create develop branch from main
-git checkout -b develop
-git push -u origin develop
-
-# Update main to be production-ready
-git checkout main
-# Add landing page (see below)
+git checkout -b staging
+git push -u origin staging
 ```
 
-**Step 3: Update Deployment Targets**
+**Step 3: Main Stays as Development**
+```bash
+# main branch stays as-is (active development)
+# Claude Code will create feature branches and PR to main
+# No changes needed to main
+```
+
+**Step 4: Update Deployment Targets**
 - Vercel: Point ultudy.com to `production` branch
-- Vercel: Create staging.ultudy.com preview from `staging` branch
-- Railway: Create separate projects for each environment
+- Vercel: Point staging.ultudy.com to `staging` branch
+- Vercel: Point development preview to `main` branch
+- Railway: Create separate services for production/staging/main
 
 ---
 
-## 🌳 Git Branching Strategy (Git Flow)
+## 🌳 Git Branching Strategy (Simplified)
 
 ### Branch Hierarchy
 
 ```
-main (production)
+production (live site at ultudy.com)
   ↑
-  └─── staging (pre-production)
+  └─── staging (pre-production testing)
          ↑
-         └─── develop (integration)
+         └─── main (active development - Claude PRs here)
                 ↑
-                └─── feature/* (new features)
+                └─── feature/* (Claude creates these)
                 └─── bugfix/* (bug fixes)
-                └─── hotfix/* (urgent production fixes)
+                └─── hotfix/* (urgent fixes)
 ```
 
 ### Branch Purposes
 
-#### `main` - Production
+#### `production` - Live Production
 - **Purpose:** Production-ready code deployed to ultudy.com
-- **Protection:** Require pull request reviews, CI/CD checks
+- **Protection:** ✅ Require pull request reviews, CI/CD checks, admin-only
 - **Deploy to:** Production (ultudy.com)
 - **Merge from:** `staging` only (after thorough testing)
+- **Who updates:** Team lead / Admin only
 
 #### `staging` - Pre-Production
 - **Purpose:** Final testing before production release
-- **Protection:** Require pull request reviews
+- **Protection:** ✅ Require pull request reviews
 - **Deploy to:** staging.ultudy.com or Vercel preview
-- **Merge from:** `develop` (after integration testing passes)
+- **Merge from:** `main` (after features are complete)
+- **Who updates:** Developer after testing in main
 
-#### `develop` - Integration Testing
-- **Purpose:** Integrate all feature branches for testing
-- **Protection:** Basic CI/CD checks
-- **Deploy to:** testing.ultudy.com or Vercel preview
-- **Merge from:** `feature/*`, `bugfix/*`
+#### `main` - Active Development (Claude works here!)
+- **Purpose:** Primary development branch where all features land
+- **Protection:** ⚠️ Optional - basic CI/CD checks
+- **Deploy to:** Vercel preview (auto-generated URL)
+- **Merge from:** `feature/*` branches via pull request
+- **Who updates:** **Claude Code creates PRs to main**
 
-#### `feature/*` - Feature Development
+#### `feature/*` - Feature Development (Claude creates these)
 - **Purpose:** Individual feature development
 - **Naming:** `feature/user-profile`, `feature/payment-integration`
+- **Created by:** **Claude Code when you request a new feature**
 - **Deploy to:** Vercel preview URLs (optional)
-- **Merge to:** `develop` via pull request
+- **Merge to:** `main` via pull request (created by Claude)
+- **Lifecycle:** Created → Developed → PR to main → Merged → Deleted
 
 #### `bugfix/*` - Bug Fixes
 - **Purpose:** Non-urgent bug fixes
 - **Naming:** `bugfix/upload-progress-animation`
-- **Merge to:** `develop`
+- **Merge to:** `main`
 
 #### `hotfix/*` - Urgent Production Fixes
 - **Purpose:** Critical production bugs that can't wait for release cycle
 - **Naming:** `hotfix/security-patch`, `hotfix/auth-failure`
-- **Merge to:** `main` AND `develop` (keep in sync)
+- **Merge to:** `production` AND `main` (keep in sync)
 
 ---
 
 ## 🚀 Deployment Workflow
 
-### Feature Development → Production
+### Claude Code Workflow (Your Primary Workflow)
 
 ```
-1. Create feature branch from develop
-   git checkout develop
-   git pull origin develop
-   git checkout -b feature/new-feature
+1. You request a feature
+   User: "Add user profile page"
 
-2. Develop and commit
-   [Make changes]
+2. Claude creates feature branch from main
+   git checkout main
+   git pull origin main
+   git checkout -b feature/user-profile
+
+3. Claude develops the feature
+   [Claude writes code, tests locally]
    git add .
-   git commit -m "Add new feature"
+   git commit -m "Add user profile page with avatar upload"
 
-3. Push and create PR to develop
-   git push -u origin feature/new-feature
-   [Create PR: feature/new-feature → develop]
+4. Claude pushes and creates PR to main
+   git push -u origin feature/user-profile
+   gh pr create --base main --title "Add user profile page"
+   [Auto-deploys to Vercel preview for testing]
 
-4. Merge to develop (after code review)
-   [PR merged, auto-deploys to testing environment]
+5. You review and merge PR
+   [Review code in GitHub]
+   [Click "Merge pull request"]
+   [Feature branch auto-deleted]
+   [Changes auto-deploy to main's Vercel preview]
 
-5. Test in testing environment
-   [QA team tests at testing.ultudy.com]
-
-6. Promote to staging
+6. When ready, promote main → staging (manual)
    git checkout staging
-   git merge develop
+   git merge main
    git push origin staging
    [Auto-deploys to staging.ultudy.com]
 
 7. Final testing in staging
-   [Stakeholder review at staging.ultudy.com]
+   [Test at staging.ultudy.com]
+   [Stakeholder approval]
 
-8. Release to production
-   git checkout main
+8. Release to production (manual)
+   git checkout production
    git merge staging
    git tag v1.1.0
-   git push origin main --tags
+   git push origin production --tags
    [Auto-deploys to ultudy.com]
 ```
+
+### Summary: Your Workflow
+
+**Daily development:**
+- Claude creates `feature/*` branches
+- Claude creates PRs to `main`
+- You merge PRs to `main`
+- `main` is always your latest development code
+
+**Weekly/bi-weekly releases:**
+- Promote `main` → `staging` (test)
+- Promote `staging` → `production` (release)
 
 ### Hotfix Workflow (Urgent Production Fix)
 
 ```
-1. Create hotfix branch from main
-   git checkout main
+1. Create hotfix branch from production
+   git checkout production
    git checkout -b hotfix/critical-bug
 
-2. Fix the bug
-   [Make minimal changes to fix critical issue]
+2. Fix the bug (or ask Claude to fix it)
+   User: "There's a critical auth bug in production"
+   [Claude creates hotfix branch, fixes bug]
    git commit -m "hotfix: Fix critical authentication bug"
 
-3. Merge to main (production)
-   git checkout main
+3. Merge to production (urgent release)
+   git checkout production
    git merge hotfix/critical-bug
    git tag v1.0.1
-   git push origin main --tags
-   [Auto-deploys to production]
+   git push origin production --tags
+   [Auto-deploys to ultudy.com immediately]
 
-4. Merge back to develop (keep in sync)
-   git checkout develop
+4. Merge back to main (keep in sync)
+   git checkout main
    git merge hotfix/critical-bug
-   git push origin develop
+   git push origin main
+   [Prevents regression in future releases]
 
 5. Delete hotfix branch
    git branch -d hotfix/critical-bug
@@ -195,7 +220,7 @@ main (production)
 ```
 Project: ultudy-production
 Domain: ultudy.com, www.ultudy.com
-Branch: main
+Branch: production
 Environment Variables:
   - NEXT_PUBLIC_API_URL=https://ultudy-backend-production.up.railway.app
   - CLERK_* (production keys)
@@ -212,32 +237,39 @@ Environment Variables:
   - CLERK_* (test/staging keys)
 ```
 
-**Testing/Development:**
+**Development:**
 ```
-Branch: develop or feature/*
+Branch: main
 Environment Variables: Same as staging
-Deploy: Automatic preview URLs
+Deploy: Automatic preview URL (e.g., ultudy-main.vercel.app)
+```
+
+**Feature Branches:**
+```
+Branch: feature/*
+Environment Variables: Inherits from main
+Deploy: Automatic preview URLs (e.g., ultudy-git-feature-xyz.vercel.app)
 ```
 
 **Vercel Configuration:**
 
 1. **Go to Vercel Dashboard → Project Settings → Git**
-   - Production Branch: `main`
+   - Production Branch: `production`
    - Automatic deployments for all branches: Enabled
    - Preview deployments: Enabled
 
 2. **Environment Variables by Environment:**
    ```
-   Production: main branch only
-   Preview: staging, develop, feature/* branches
+   Production: production branch only
+   Preview: staging, main, feature/* branches
    Development: Local .env files
    ```
 
 3. **Custom Domains:**
    ```
-   ultudy.com → main branch (production)
+   ultudy.com → production branch
    staging.ultudy.com → staging branch
-   # testing uses auto-generated URLs
+   # main and feature/* use auto-generated preview URLs
    ```
 
 ---
@@ -247,7 +279,7 @@ Deploy: Automatic preview URLs
 **Production Service:**
 ```
 Service: ultudy-backend-production
-Branch: main
+Branch: production
 Environment Variables:
   - DATABASE_URL=postgresql://...@neon-production.tech/ultudy
   - REDIS_URL=redis://...@redis-production.railway.internal:6379
@@ -270,11 +302,12 @@ Environment Variables:
   - ALLOWED_ORIGINS=https://staging.ultudy.com
 ```
 
-**Testing/Development Service:**
+**Development Service (Optional):**
 ```
-Service: ultudy-backend-testing
-Branch: develop
+Service: ultudy-backend-development
+Branch: main
 Environment Variables: Similar to staging
+Note: You may not need this if main uses local backend during development
 ```
 
 **Database Strategy:**
@@ -367,46 +400,46 @@ export default function LandingPage() {
 
 ## 🔄 Maintenance Workflow
 
-### Weekly Release Cycle
+### Typical Release Cycle
 
-**Monday-Thursday: Development**
+**Daily: Feature Development (with Claude)**
 ```
-1. Developers create feature branches
-2. PRs merged to develop
-3. Testing team tests in testing environment
-```
-
-**Friday: Staging Promotion**
-```
-1. Merge develop → staging
-2. Stakeholder review in staging environment
-3. Final QA checks
+1. You request features from Claude
+2. Claude creates feature branches from main
+3. Claude creates PRs to main
+4. You review and merge PRs
+5. main always has latest development code
 ```
 
-**Following Monday: Production Release**
+**Weekly/Bi-weekly: Staging Promotion**
 ```
-1. Merge staging → main
+1. Merge main → staging (when features are ready)
+2. Test in staging environment (staging.ultudy.com)
+3. Stakeholder review
+4. Final QA checks
+```
+
+**After Approval: Production Release**
+```
+1. Merge staging → production
 2. Tag release (v1.x.0)
-3. Monitor production metrics
+3. Monitor production metrics (ultudy.com)
 4. Rollback if issues detected
 ```
 
 ### Database Migration Strategy
 
-**Development:**
+**Development (on main):**
 ```bash
-# Create migration on feature branch
+# Claude creates migration on feature branch
 cd backend
 node src/db/migrations/create.js add_user_preferences
 
 # Test locally
 npm run migrate:up
-```
 
-**Testing:**
-```bash
-# Migrations auto-run on develop branch deployment
-# Railway runs migrations via start script or separate service
+# Merge to main via PR
+# Test migration works on main's preview environment
 ```
 
 **Staging:**
@@ -431,9 +464,9 @@ npm run migrate:up
 vercel rollback
 
 # Or redeploy previous version
-git checkout main
+git checkout production
 git reset --hard v1.0.0
-git push --force origin main
+git push --force origin production
 ```
 
 **Database Rollback:**
@@ -526,34 +559,35 @@ git config alias.hotfix 'checkout -b hotfix/'
 ## 🚦 Quick Command Reference
 
 ```bash
-# Start new feature
-git checkout develop && git pull
+# Claude creates feature (you don't run this, Claude does)
+git checkout main && git pull
 git checkout -b feature/my-feature
+# [Claude develops]
+git push -u origin feature/my-feature
+gh pr create --base main --title "Add my feature"
 
-# Merge feature to develop
-git checkout develop
-git merge feature/my-feature
-git push origin develop
+# You merge PR via GitHub UI
+# Click "Merge pull request" button
 
-# Promote develop to staging
+# Promote main to staging (you run this when ready)
 git checkout staging
-git merge develop
+git merge main
 git push origin staging
 
-# Release to production
-git checkout main
+# Release staging to production (you run this after testing)
+git checkout production
 git merge staging
 git tag v1.1.0
-git push origin main --tags
+git push origin production --tags
 
-# Urgent hotfix
-git checkout main
+# Urgent hotfix (Claude or you)
+git checkout production
 git checkout -b hotfix/critical-fix
 # [make fix]
-git checkout main && git merge hotfix/critical-fix
+git checkout production && git merge hotfix/critical-fix
 git tag v1.0.1
-git push origin main --tags
-git checkout develop && git merge hotfix/critical-fix
+git push origin production --tags
+git checkout main && git merge hotfix/critical-fix  # Keep main in sync
 ```
 
 ---
@@ -579,11 +613,11 @@ For new developers joining the team:
    cd ../frontend && npm install
    ```
 
-3. **Create first feature branch:**
-   ```bash
-   git checkout develop
-   git checkout -b feature/my-first-feature
-   ```
+3. **Understand the workflow:**
+   - Claude creates feature branches from `main`
+   - Claude creates PRs to `main`
+   - You review and merge PRs
+   - Promote `main` → `staging` → `production` manually
 
 4. **Read documentation:**
    - `README.md` - Project overview
@@ -593,10 +627,17 @@ For new developers joining the team:
 ---
 
 **Next Steps:**
-1. Implement branching strategy (create staging, develop branches)
+1. Implement branching strategy (create production, staging branches)
 2. Set up Vercel environments (production, staging domains)
-3. Configure Railway services (separate production, staging, testing)
+3. Configure Railway services (separate production, staging)
 4. Create landing page for ultudy.com
-5. Update team documentation
+5. Start using Claude Code to develop features!
 
-**Remember:** This pipeline grows with your team. Start simple, add complexity as needed.
+**Claude Code Workflow:**
+- You: "Add user authentication"
+- Claude: Creates `feature/user-auth` branch, develops, creates PR to `main`
+- You: Review and merge PR
+- Claude: Branch auto-deleted after merge
+- You: When ready, promote `main` → `staging` → `production`
+
+**Remember:** `main` is your active development branch. Claude always creates PRs to `main`.
