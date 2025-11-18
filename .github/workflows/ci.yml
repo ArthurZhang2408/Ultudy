@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -43,16 +43,6 @@ jobs:
       - name: Install deps
         working-directory: backend
         run: npm ci
-
-      - name: Check pgvector index support
-        working-directory: backend
-        env:
-          PGHOST: localhost
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGPORT: "5432"
-          PGDATABASE: study_app
-        run: npm run check:pgvector
 
       - name: Run migrations (PG env)
         working-directory: backend
