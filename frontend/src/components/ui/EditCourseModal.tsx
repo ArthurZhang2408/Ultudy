@@ -29,6 +29,12 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
       setCode(course.code || '');
       setTerm(course.term || '');
       setExamDate(course.exam_date || '');
+    } else if (!isOpen) {
+      // Reset form when modal closes
+      setName('');
+      setCode('');
+      setTerm('');
+      setExamDate('');
     }
   }, [isOpen, course]);
 

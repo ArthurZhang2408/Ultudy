@@ -254,11 +254,16 @@ function CoursesHomePage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <span className="text-sm text-neutral-600 dark:text-neutral-300">
-                          Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
-                          })}
+                          Exam: {(() => {
+                            // Parse date string as local date to avoid timezone issues
+                            const [year, month, day] = course.exam_date.split('-').map(Number);
+                            const localDate = new Date(year, month - 1, day);
+                            return localDate.toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            });
+                          })()}
                         </span>
                       </div>
                     )}

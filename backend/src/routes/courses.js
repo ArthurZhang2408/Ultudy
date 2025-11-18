@@ -18,30 +18,49 @@ export default function createCoursesRouter(options = {}) {
 
     try {
       const courses = await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Auto-archive courses past exam date
-        await client.query(
-          `UPDATE courses
-           SET archived = true, archived_at = NOW()
-           WHERE owner_id = $1
-             AND archived = false
-             AND exam_date IS NOT NULL
-             AND exam_date < CURRENT_DATE`,
-          [ownerId]
-        );
+        // Try to auto-archive courses past exam date (only if archived column exists)
+        try {
+          await client.query(
+            `UPDATE courses
+             SET archived = true, archived_at = NOW()
+             WHERE owner_id = $1
+               AND archived = false
+               AND exam_date IS NOT NULL
+               AND exam_date < CURRENT_DATE`,
+            [ownerId]
+          );
+        } catch (archiveError) {
+          // Archived column doesn't exist yet, skip auto-archiving
+          console.log('Archived column not yet available, skipping auto-archive');
+        }
 
-        // Fetch courses (optionally include archived)
-        const whereClause = include_archived === 'true'
-          ? 'owner_id = $1'
-          : 'owner_id = $1 AND archived = false';
+        // Fetch courses (try with archived columns first, fall back if they don't exist)
+        try {
+          const whereClause = include_archived === 'true'
+            ? 'owner_id = $1'
+            : 'owner_id = $1 AND archived = false';
 
-        const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
-           FROM courses
-           WHERE ${whereClause}
-           ORDER BY archived ASC, created_at DESC`,
-          [ownerId]
-        );
-        return rows;
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
+             FROM courses
+             WHERE ${whereClause}
+             ORDER BY archived ASC, created_at DESC`,
+            [ownerId]
+          );
+          return rows;
+        } catch (selectError) {
+          // Archived columns don't exist yet, use old query
+          console.log('Falling back to query without archived columns');
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, created_at, updated_at
+             FROM courses
+             WHERE owner_id = $1
+             ORDER BY created_at DESC`,
+            [ownerId]
+          );
+          // Add archived: false to all courses for backwards compatibility
+          return rows.map(row => ({ ...row, archived: false, archived_at: null }));
+        }
       });
 
       res.json({ courses });
@@ -85,13 +104,26 @@ export default function createCoursesRouter(options = {}) {
 
     try {
       const course = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
-           FROM courses
-           WHERE id = $1 AND owner_id = $2`,
-          [id, ownerId]
-        );
-        return rows[0] || null;
+        // Try with archived columns first, fall back if they don't exist
+        try {
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, archived, archived_at, created_at, updated_at
+             FROM courses
+             WHERE id = $1 AND owner_id = $2`,
+            [id, ownerId]
+          );
+          return rows[0] || null;
+        } catch (selectError) {
+          // Archived columns don't exist yet, use old query
+          const { rows } = await client.query(
+            `SELECT id, name, code, term, exam_date, created_at, updated_at
+             FROM courses
+             WHERE id = $1 AND owner_id = $2`,
+            [id, ownerId]
+          );
+          const course = rows[0] || null;
+          return course ? { ...course, archived: false, archived_at: null } : null;
+        }
       });
 
       if (!course) {
@@ -114,6 +146,7 @@ export default function createCoursesRouter(options = {}) {
     const updates = [];
     const values = [];
     let valueIndex = 1;
+    let hasArchivedUpdate = false;
 
     if (name !== undefined) {
       updates.push(`name = $${valueIndex++}`);
@@ -132,6 +165,7 @@ export default function createCoursesRouter(options = {}) {
       values.push(exam_date);
     }
     if (archived !== undefined) {
+      hasArchivedUpdate = true;
       updates.push(`archived = $${valueIndex++}`);
       values.push(archived);
       // Set archived_at when archiving, clear when unarchiving
@@ -151,14 +185,34 @@ export default function createCoursesRouter(options = {}) {
 
     try {
       const course = await tenantHelpers.withTenant(ownerId, async (client) => {
-        const { rows } = await client.query(
-          `UPDATE courses
-           SET ${updates.join(', ')}
-           WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
-           RETURNING id, name, code, term, exam_date, archived, archived_at, created_at, updated_at`,
-          values
-        );
-        return rows[0] || null;
+        // Try with archived columns first, fall back if they don't exist
+        try {
+          const { rows } = await client.query(
+            `UPDATE courses
+             SET ${updates.join(', ')}
+             WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
+             RETURNING id, name, code, term, exam_date, archived, archived_at, created_at, updated_at`,
+            values
+          );
+          return rows[0] || null;
+        } catch (updateError) {
+          // If archived column was in the update, this operation can't proceed
+          if (hasArchivedUpdate) {
+            console.error('Archived column not available yet:', updateError);
+            throw new Error('Archive feature not yet available. Please try again later.');
+          }
+
+          // Archived columns don't exist yet in RETURNING, use old query
+          const { rows } = await client.query(
+            `UPDATE courses
+             SET ${updates.join(', ')}
+             WHERE id = $${valueIndex} AND owner_id = $${valueIndex + 1}
+             RETURNING id, name, code, term, exam_date, created_at, updated_at`,
+            values
+          );
+          const course = rows[0] || null;
+          return course ? { ...course, archived: false, archived_at: null } : null;
+        }
       });
 
       if (!course) {
@@ -168,7 +222,7 @@ export default function createCoursesRouter(options = {}) {
       res.json(course);
     } catch (error) {
       console.error('Failed to update course', error);
-      res.status(500).json({ error: 'Failed to update course' });
+      res.status(500).json({ error: error.message || 'Failed to update course' });
     }
   });
 
