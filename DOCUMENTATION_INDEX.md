@@ -27,6 +27,7 @@ When you open this repository:
 | **DEPLOYMENT_GUIDE.md** | Complete deployment guide to ultudy.com | Deploying to production |
 | **DEPLOYMENT_CHECKLIST.md** | Step-by-step deployment checklist | During deployment |
 | **LAUNCH_MODE_GUIDE.md** | Switching between landing page and app | Pre-launch setup, launch day |
+| **WAITLIST_GUIDE.md** | Managing pre-launch waitlist and launch emails | Pre-launch, launch day |
 | **PRODUCTION_FIXES.md** | Production deployment troubleshooting | After deployment, fixing issues |
 | **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | After deployment, scaling |
 | **CLERK_SETUP.md** | Authentication setup with Clerk | Setting up auth |
@@ -65,6 +66,7 @@ Files that represent the current state of the system:
 - `DEPLOYMENT_GUIDE.md` - Production deployment guide
 - `DEPLOYMENT_CHECKLIST.md` - Deployment verification checklist
 - `LAUNCH_MODE_GUIDE.md` - Landing page/app switching guide
+- `WAITLIST_GUIDE.md` - Pre-launch waitlist and launch email guide
 - `PRODUCTION_FIXES.md` - Production troubleshooting guide
 - `SCALABILITY_GUIDE.md` - Production scaling guide
 - `CLERK_SETUP.md` - Authentication setup
@@ -278,6 +280,12 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How do I switch between landing page and app?"
 → See `LAUNCH_MODE_GUIDE.md`
+
+### "How do I manage the pre-launch waitlist?"
+→ See `WAITLIST_GUIDE.md`
+
+### "How do I send launch day emails?"
+→ See `WAITLIST_GUIDE.md`
 
 ### "How do I scale to production?"
 → See `SCALABILITY_GUIDE.md`
