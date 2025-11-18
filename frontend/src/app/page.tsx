@@ -11,7 +11,10 @@ import { useRouter } from 'next/navigation';
 function CoursesHomePage() {
   const router = useRouter();
   const [showArchived, setShowArchived] = useState(false);
-  const { courses, loading, refetch } = useFetchCourses(showArchived);
+  // Always fetch all courses (including archived)
+  const { courses: allCourses, loading, refetch } = useFetchCourses(true);
+  // Filter courses based on showArchived state
+  const courses = showArchived ? allCourses.filter(c => c.archived) : allCourses.filter(c => !c.archived);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
@@ -117,8 +120,7 @@ function CoursesHomePage() {
     );
   }
 
-  const activeCourses = courses.filter(c => !c.archived);
-  const archivedCourses = courses.filter(c => c.archived);
+  const archivedCount = allCourses.filter(c => c.archived).length;
 
   return (
     <div className="space-y-8">
@@ -131,13 +133,13 @@ function CoursesHomePage() {
         </div>
 
         {/* Show Archived Toggle */}
-        {archivedCourses.length > 0 && (
+        {archivedCount > 0 && (
           <Button
             variant={showArchived ? 'primary' : 'outline'}
             onClick={() => setShowArchived(!showArchived)}
             size="sm"
           >
-            {showArchived ? 'Show Active' : `Show Archived (${archivedCourses.length})`}
+            {showArchived ? 'Show Active' : `Show Archived (${archivedCount})`}
           </Button>
         )}
       </div>
@@ -204,34 +206,62 @@ function CoursesHomePage() {
                             }}
                           />
                           <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 z-20">
-                            <button
-                              onClick={(e) => openEditDialog(course, e)}
-                              className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                              </svg>
-                              Edit Course
-                            </button>
-                            <button
-                              onClick={(e) => handleArchiveToggle(course, e)}
-                              disabled={isArchiving}
-                              className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                              </svg>
-                              {course.archived ? 'Unarchive' : 'Archive'}
-                            </button>
-                            <button
-                              onClick={(e) => openDeleteDialog(course, e)}
-                              className="w-full px-4 py-2 text-left text-sm text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors flex items-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                              Delete Course
-                            </button>
+                            {course.archived ? (
+                              // Archived courses: Show only Unarchive and Delete
+                              <>
+                                <button
+                                  onClick={(e) => handleArchiveToggle(course, e)}
+                                  disabled={isArchiving}
+                                  className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                  </svg>
+                                  Unarchive
+                                </button>
+                                <button
+                                  onClick={(e) => openDeleteDialog(course, e)}
+                                  className="w-full px-4 py-2 text-left text-sm text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  Delete Course
+                                </button>
+                              </>
+                            ) : (
+                              // Active courses: Show Edit, Archive, and Delete
+                              <>
+                                <button
+                                  onClick={(e) => openEditDialog(course, e)}
+                                  className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                  Edit Course
+                                </button>
+                                <button
+                                  onClick={(e) => handleArchiveToggle(course, e)}
+                                  disabled={isArchiving}
+                                  className="w-full px-4 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                  </svg>
+                                  Archive
+                                </button>
+                                <button
+                                  onClick={(e) => openDeleteDialog(course, e)}
+                                  className="w-full px-4 py-2 text-left text-sm text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                  Delete Course
+                                </button>
+                              </>
+                            )}
                           </div>
                         </>
                       )}

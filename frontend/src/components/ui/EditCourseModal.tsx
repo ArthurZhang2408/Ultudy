@@ -16,7 +16,6 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
   const [code, setCode] = useState('');
   const [term, setTerm] = useState('');
   const [examDate, setExamDate] = useState('');
-  const [archived, setArchived] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -31,14 +30,12 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
       setTerm(course.term || '');
       // Handle both "YYYY-MM-DD" and ISO timestamp formats
       setExamDate(course.exam_date ? course.exam_date.split('T')[0] : '');
-      setArchived(course.archived || false);
     } else if (!isOpen) {
       // Reset form when modal closes
       setName('');
       setCode('');
       setTerm('');
       setExamDate('');
-      setArchived(false);
     }
   }, [isOpen, course]);
 
@@ -60,7 +57,6 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
           code: code.trim() || null,
           term: term.trim() || null,
           exam_date: examDate || null,
-          archived: archived,
         }),
       });
 
@@ -155,33 +151,6 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
               Course will auto-archive after this date
             </p>
-          </div>
-
-          {/* Archive Status */}
-          <div className="pt-4 border-t border-neutral-200 dark:border-neutral-700">
-            <label className="flex items-center justify-between cursor-pointer group">
-              <div>
-                <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Archive Status
-                </div>
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                  {archived ? 'This course is archived' : 'This course is active'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setArchived(!archived)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  archived ? 'bg-neutral-400 dark:bg-neutral-600' : 'bg-primary-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    archived ? 'translate-x-1' : 'translate-x-6'
-                  }`}
-                />
-              </button>
-            </label>
           </div>
 
           {/* Actions */}
