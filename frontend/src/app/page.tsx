@@ -389,9 +389,20 @@ function CoursesHomePage() {
 export default function HomePage() {
   const { isSignedIn, isLoaded } = useAuth();
 
+  // Check launch mode from environment variable
+  // 'landing' = show landing page to everyone (pre-launch)
+  // 'app' = show full application (post-launch)
+  const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
+  const isLandingMode = launchMode === 'landing';
+
   // Show loading state
   if (!isLoaded) {
     return null;
+  }
+
+  // If in landing mode, always show landing page (even for signed-in users)
+  if (isLandingMode) {
+    return <LandingPage />;
   }
 
   // If signed in, show courses page content directly
@@ -400,6 +411,11 @@ export default function HomePage() {
   }
 
   // Landing page for non-authenticated users
+  return <LandingPage />;
+}
+
+// Extracted landing page component for reusability
+function LandingPage() {
   return (
     <div className="space-y-20 pb-16">
       {/* Hero Section */}
@@ -487,3 +503,4 @@ export default function HomePage() {
     </div>
   );
 }
+
