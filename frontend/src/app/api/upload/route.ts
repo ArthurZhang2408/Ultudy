@@ -6,6 +6,8 @@ import { getBackendUrl } from '../../../lib/api';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Increase timeout for larger PDF uploads
+export const maxDuration = 60; // 60 seconds
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,6 +18,15 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
+
+    // Check file size before forwarding (50MB limit)
+    const file = formData.get('file') as File;
+    if (file && file.size > 50 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File too large. Maximum size is 50MB.' },
+        { status: 413 }
+      );
+    }
 
     // Use new LLM-based structured extraction endpoint
     const backendResponse = await fetch(`${getBackendUrl()}/upload/pdf-structured`, {

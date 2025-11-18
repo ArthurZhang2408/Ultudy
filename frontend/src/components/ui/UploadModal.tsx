@@ -231,7 +231,6 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     ref={fileInputRef}
                     type="file"
                     accept="application/pdf"
-                    required
                     onChange={handleFileSelect}
                     className="hidden"
                   />

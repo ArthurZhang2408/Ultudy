@@ -82,8 +82,16 @@ if (DATABASE_REPLICA_URL) {
 
 // Monitor pool health for production
 if (pool && NODE_ENV === 'production') {
-  pool.on('error', (err) => {
+  pool.on('error', (err, client) => {
     console.error('[DB Pool] Unexpected error on idle client:', err);
+    // Remove the errored client from the pool
+    if (client) {
+      try {
+        client.release(true); // true = force remove from pool
+      } catch (releaseErr) {
+        console.error('[DB Pool] Error releasing client:', releaseErr);
+      }
+    }
   });
 
   pool.on('connect', () => {
