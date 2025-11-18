@@ -21,7 +21,10 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   const router = useRouter();
   const pathname = usePathname();
   const [showArchived, setShowArchived] = useState(false);
-  const { courses, loading, refetch } = useFetchCourses(showArchived);
+  // Always fetch all courses (including archived)
+  const { courses: allCourses, loading, refetch } = useFetchCourses(true);
+  // Filter courses based on showArchived state
+  const courses = showArchived ? allCourses : allCourses.filter(c => !c.archived);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -45,11 +48,13 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
 
   // Version check console log
   useEffect(() => {
-    console.log('🎓 Ultudy Sidebar v2.0 - Archive feature enabled!');
-    console.log('📊 Courses loaded:', courses.length);
-    console.log('📦 Archived courses:', courses.filter(c => c.archived).length);
+    console.log('🎓 Ultudy Sidebar v2.1 - Archive toggle fixed!');
+    console.log('📊 Total courses:', allCourses.length);
+    console.log('✅ Active courses:', allCourses.filter(c => !c.archived).length);
+    console.log('📦 Archived courses:', allCourses.filter(c => c.archived).length);
     console.log('👁️ Showing archived:', showArchived);
-  }, [courses, showArchived]);
+    console.log('📋 Displaying:', courses.length, 'courses');
+  }, [allCourses, courses, showArchived]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -224,13 +229,13 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
                 <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
                   Courses
                 </span>
-                {courses.some(c => c.archived) && (
+                {allCourses.some(c => c.archived) && (
                   <button
                     onClick={() => setShowArchived(!showArchived)}
                     className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
                     title={showArchived ? 'Hide archived' : 'Show archived'}
                   >
-                    {showArchived ? 'Hide' : `+${courses.filter(c => c.archived).length}`}
+                    {showArchived ? 'Hide' : `+${allCourses.filter(c => c.archived).length}`}
                   </button>
                 )}
               </div>
