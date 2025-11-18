@@ -31,6 +31,14 @@ function CoursesHomePage() {
     return () => window.removeEventListener('coursesUpdated', handleCoursesUpdated);
   }, [refetch]);
 
+  // Automatically switch to active courses when archived view becomes empty
+  useEffect(() => {
+    const archivedCount = allCourses.filter(c => c.archived).length;
+    if (showArchived && archivedCount === 0) {
+      setShowArchived(false);
+    }
+  }, [showArchived, allCourses]);
+
   const handleArchiveToggle = async (course: any, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();

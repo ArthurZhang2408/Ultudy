@@ -146,6 +146,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       setFile(null);
       setChapter('');
       setTitle('');
+      setIsUploading(false);
       onClose();
 
       // Redirect to course page
@@ -153,6 +154,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     } catch (err) {
       console.error('[UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      // Always reset uploading state
       setIsUploading(false);
     }
   };

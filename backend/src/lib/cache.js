@@ -4,6 +4,9 @@
  * Falls back gracefully if Redis is not configured - just skips caching
  * To enable caching, set REDIS_URL in your .env file
  *
+ * IMPORTANT: Optimized for serverless environments (Vercel, Railway, etc.)
+ * Uses singleton pattern with connection pooling to prevent connection exhaustion.
+ *
  * Usage:
  *   import { getCached, setCached, invalidate } from './lib/cache.js';
  *
@@ -33,13 +36,18 @@ if (REDIS_URL) {
     redisClient = createClient({
       url: REDIS_URL,
       socket: {
+        // Serverless-friendly settings
+        connectTimeout: 5000,
         reconnectStrategy: (retries) => {
-          if (retries > 10) {
+          // Fewer retries in serverless to fail fast
+          if (retries > 3) {
             console.error('[Cache] Max Redis reconnection attempts reached');
-            return new Error('[Cache] Redis connection failed');
+            return false; // Stop reconnecting
           }
-          return Math.min(retries * 100, 3000); // Exponential backoff
-        }
+          return Math.min(retries * 200, 1000); // Faster backoff
+        },
+        // Keep connections alive between requests in serverless
+        keepAlive: 30000 // 30 seconds
       }
     });
 
@@ -49,7 +57,7 @@ if (REDIS_URL) {
     });
 
     redisClient.on('connect', () => {
-      console.log('[Cache] Connected to Redis');
+      console.log('[Cache] Connected to Redis (singleton instance)');
       isRedisEnabled = true;
     });
 
