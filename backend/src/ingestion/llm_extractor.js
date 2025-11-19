@@ -278,36 +278,20 @@ For each section, convert ALL content to clean markdown:
 
 Return structured JSON with chapters array.`;
 
-  const userPrompt = `Extract all chapters and their sections from these ${pdfPaths.length} PDF file(s).
+  const userPrompt = `Extract all chapters and their sections from this PDF file with COMPLETE content fidelity.
 
-**CRITICAL INSTRUCTIONS:**
-
-${pdfPaths.length > 1 ? `
-**HANDLING MULTIPLE FILES:**
-You are analyzing ${pdfPaths.length} files. They may have overlapping content (e.g., a textbook and lecture notes covering the same chapters).
-
-Your job:
-1. **Identify which chapters are covered across ALL files**
-2. **Merge overlapping content**: If Chapter 2 appears in both a textbook and lecture notes, combine them into ONE Chapter 2 with comprehensive sections
-3. **Preserve unique content**: If one file has information the other doesn't, include it
-4. **Use the best explanations**: If one source explains a concept better, use that version
-5. **Maintain coherence**: The final output should read as one unified resource per chapter
-
-Example scenario:
-- File 1 (textbook): Chapters 1-15 with detailed theory
-- Files 2-16 (lecture notes): 15 separate PDFs, each covering one chapter with examples and simplified explanations
-
-Expected output: 15 chapters, each combining the textbook's theory with the lecture notes' examples and explanations
-` : ''}
+**YOUR MISSION:**
+This is a critical step in preserving educational content. You must extract EVERY piece of information from this PDF that students need to learn. This extracted markdown will be the ONLY source we have for generating learning materials later.
 
 **EXCLUSIONS:**
-- **DO NOT create chapters for**: References, Bibliography, Acknowledgments, Table of Contents
-- **DO NOT include**: Page numbers, headers, footers, copyright notices
+- **DO NOT create chapters for**: References, Bibliography, Acknowledgments, Table of Contents, Index
+- **DO NOT include**: Page numbers, headers, footers, copyright notices, publisher information
 - **ONLY include**: Educational content that students need to learn
 
 **CHAPTER ORGANIZATION:**
 - Identify chapter numbers from headings (e.g., "Chapter 2", "Ch. 3", "Unit 2")
 - If no explicit numbers, assign sequential numbers starting from 1
+- If this is a single-chapter file (e.g., "Chapter 5.pdf"), extract that one chapter
 - Order chapters numerically
 
 **FOR EACH CHAPTER PROVIDE:**
@@ -317,25 +301,34 @@ Expected output: 15 chapters, each combining the textbook's theory with the lect
 - **sections**: Array of sections within this chapter
 
 **FOR EACH SECTION PROVIDE:**
-- **name**: Clear, descriptive name for this section
+- **name**: Clear, descriptive name for this section (e.g., "5.1 Introduction to Limits", "Newton's Laws of Motion")
 - **description**: 1-2 sentence overview of concepts covered
-- **markdown**: **CONCISE** summary of key concepts, formulas, and examples
-  - Focus on: Core concepts, important formulas, key definitions, worked examples
-  - Omit: Verbose explanations, redundant examples, auxiliary text
-  - Length: Aim for 200-500 words per section (not the entire textbook section!)
-  - Quality over quantity - capture essential knowledge, not every word
+- **markdown**: **COMPLETE FAITHFUL EXTRACTION** of all content
+  - Extract EVERY explanation, formula, theorem, definition, proof, example
+  - Include ALL worked examples with complete step-by-step solutions
+  - Preserve ALL text, diagrams descriptions, table data
+  - Do NOT summarize or abbreviate - this must be complete
+  - This is the master copy that students will learn from
 
-**CONVERT CONTENT:**
-- Math equations → LaTeX ($inline$, $$display$$)
-- Key formulas → Highlighted with LaTeX
-- Tables → Markdown tables (if essential)
-- Important text → **bold**, *italic*
-- Code → \`\`\`language blocks\`\`\` (if present)
-- Lists → Bullet/numbered for clarity
+**CONVERT ALL CONTENT WITH FULL FIDELITY:**
+- Math equations → LaTeX ($inline$ for inline, $$display$$ for block equations)
+- Tables → Full markdown tables with all data preserved
+- Text formatting → **bold**, *italic*, headers (#, ##, ###)
+- Images/Diagrams → ![detailed description](reference)
+- Code blocks → \`\`\`language with full code\`\`\`
+- Lists → Numbered or bullet lists maintaining hierarchy
+- Proofs → Complete step-by-step derivations
+- Examples → Full worked solutions with all steps
+- Definitions → Complete with context and explanation
+- Theorems → Statement + proof + explanation
 
-**OUTPUT SIZE LIMIT:** Keep total response under 8000 tokens. Prioritize breadth (all chapters/sections) over depth (verbose content).
+**CRITICAL JSON FORMATTING:**
+- Escape all special characters in markdown (quotes, backslashes, newlines)
+- Use \\n for newlines in strings
+- Escape " as \\"
+- Test that output is valid JSON
 
-**CRITICAL:** Ensure markdown is properly escaped for JSON!`;
+**REMEMBER:** Quality AND Quantity - extract EVERYTHING. This is the complete course material.`;
 
   const responseSchema = {
     type: 'object',

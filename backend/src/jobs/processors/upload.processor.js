@@ -12,6 +12,60 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { StorageService } from '../../lib/storage.js';
 
+/**
+ * Merge chapter extractions from multiple files
+ * Combines chapters with the same chapter number, merging their sections
+ *
+ * @param {Array} allExtractions - Array of {fileName, extraction} objects
+ * @returns {Array} Merged chapters array
+ */
+function mergeChapterExtractions(allExtractions) {
+  const chapterMap = new Map();
+
+  for (const { fileName, extraction } of allExtractions) {
+    for (const chapter of extraction.chapters) {
+      const chapterNum = chapter.chapter;
+
+      if (chapterMap.has(chapterNum)) {
+        // Chapter already exists - merge sections
+        const existing = chapterMap.get(chapterNum);
+
+        console.log(`[ChapterMerger] Merging Chapter ${chapterNum} from ${fileName} into existing chapter`);
+
+        // Keep the first title we see (usually from main textbook)
+        // Or if new title is more descriptive, use it
+        if (chapter.title && (!existing.title || chapter.title.length > existing.title.length)) {
+          existing.title = chapter.title;
+        }
+
+        // Merge descriptions
+        if (chapter.description && !existing.description) {
+          existing.description = chapter.description;
+        }
+
+        // Append sections from this file
+        existing.sections.push(...chapter.sections);
+
+        console.log(`[ChapterMerger]   Added ${chapter.sections.length} sections (total now: ${existing.sections.length})`);
+      } else {
+        // New chapter - add it
+        console.log(`[ChapterMerger] Adding new Chapter ${chapterNum}: "${chapter.title}" from ${fileName}`);
+        chapterMap.set(chapterNum, {
+          chapter: chapterNum,
+          title: chapter.title,
+          description: chapter.description || null,
+          sections: [...chapter.sections]
+        });
+      }
+    }
+  }
+
+  // Convert map to sorted array
+  const merged = Array.from(chapterMap.values()).sort((a, b) => a.chapter - b.chapter);
+
+  return merged;
+}
+
 export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService }) {
   // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
   const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
@@ -214,14 +268,41 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
     // Update progress: 15% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 15);
 
-    // Extract chapters with sections using LLM
-    console.log(`[ChapterUploadProcessor] Extracting chapters from ${files.length} PDFs...`);
-    const extraction = await extractChaptersFromMultiplePDFs(processingPaths);
+    // Extract chapters from each PDF individually (to stay within token limits)
+    console.log(`[ChapterUploadProcessor] Extracting chapters from ${files.length} PDFs individually...`);
+    const allExtractions = [];
 
-    console.log(`[ChapterUploadProcessor] Extracted ${extraction.chapters.length} chapters`);
-    extraction.chapters.forEach(ch => {
+    for (let i = 0; i < processingPaths.length; i++) {
+      const pdfPath = processingPaths[i];
+      const fileName = files[i].originalFilename;
+
+      console.log(`[ChapterUploadProcessor] Extracting from file ${i + 1}/${files.length}: ${fileName}`);
+
+      try {
+        const extraction = await extractChaptersFromMultiplePDFs([pdfPath]);
+        allExtractions.push({ fileName, extraction });
+
+        console.log(`[ChapterUploadProcessor]   Extracted ${extraction.chapters.length} chapters from ${fileName}`);
+
+        // Progress: 15-70% for extraction (55% total)
+        const extractProgress = 15 + Math.floor((i + 1) / processingPaths.length * 55);
+        await jobTracker.updateProgress(ownerId, jobId, extractProgress);
+      } catch (error) {
+        console.error(`[ChapterUploadProcessor] Failed to extract from ${fileName}:`, error.message);
+        throw new Error(`Failed to extract chapters from ${fileName}: ${error.message}`);
+      }
+    }
+
+    // Merge chapters from all files (combine overlapping chapter numbers)
+    console.log(`[ChapterUploadProcessor] Merging chapters from ${allExtractions.length} files...`);
+    const mergedChapters = mergeChapterExtractions(allExtractions);
+
+    console.log(`[ChapterUploadProcessor] Final result: ${mergedChapters.length} chapters`);
+    mergedChapters.forEach(ch => {
       console.log(`[ChapterUploadProcessor]   Chapter ${ch.chapter}: "${ch.title}" (${ch.sections.length} sections)`);
     });
+
+    const extraction = { chapters: mergedChapters };
 
     // Update progress: 70% - Extraction complete
     await jobTracker.updateProgress(ownerId, jobId, 70);
