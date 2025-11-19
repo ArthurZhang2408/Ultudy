@@ -4,13 +4,13 @@
 
 @layer base {
   html {
-    @apply bg-neutral-50 text-neutral-900;
-    @apply dark:bg-neutral-950 dark:text-neutral-100;
+    @apply bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 text-neutral-900;
+    @apply dark:bg-gradient-to-br dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 dark:text-neutral-100;
   }
 
   body {
-    @apply bg-neutral-50 text-neutral-900 antialiased;
-    @apply dark:bg-neutral-950 dark:text-neutral-100;
+    @apply bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 text-neutral-900 antialiased;
+    @apply dark:bg-gradient-to-br dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 dark:text-neutral-100;
     @apply min-h-screen;
   }
 
