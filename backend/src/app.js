@@ -9,6 +9,7 @@ import createStudyRouter from './routes/study.js';
 import createCoursesRouter from './routes/courses.js';
 import createJobsRouter from './routes/jobs.js';
 import createAdminRouter from './routes/admin.js';
+import createChaptersRouter from './routes/chapters.js';
 import setupWorkers from './jobs/worker.js';
 import { uploadQueue, lessonQueue } from './jobs/queue.js';
 import { createJobTracker } from './jobs/tracking.js';
@@ -123,6 +124,13 @@ export function createApp(options = {}) {
       '/courses',
       createCoursesRouter({
         pool: activePool,
+        tenantHelpers
+      })
+    );
+
+    app.use(
+      '/chapters',
+      createChaptersRouter({
         tenantHelpers
       })
     );

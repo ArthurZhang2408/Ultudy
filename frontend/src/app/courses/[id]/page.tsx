@@ -73,6 +73,7 @@ export default function CoursePage() {
   const router = useRouter();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [rawChapters, setRawChapters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
@@ -329,6 +330,13 @@ export default function CoursePage() {
 
         // Fetch concepts for all documents
         await fetchConceptsForDocuments(docs);
+      }
+
+      // Fetch raw chapters (Phase 1 results)
+      const chaptersRes = await fetch(`/api/chapters?course_id=${courseId}`);
+      if (chaptersRes.ok) {
+        const chaptersData = await chaptersRes.json();
+        setRawChapters(chaptersData.chapters || []);
       }
     } catch (error) {
       console.error('Failed to fetch course data:', error);
@@ -1132,6 +1140,89 @@ export default function CoursePage() {
         onClose={() => setIsUploadModalOpen(false)}
         preselectedCourseId={courseId}
       />
+
+      {/* Phase 1: Raw Chapter Extraction Results (Debug View) */}
+      {rawChapters.length > 0 && (
+        <div className="mt-12 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
+              Phase 1: Extracted Chapters (Raw)
+            </h2>
+            <Badge variant="neutral" size="md">
+              {rawChapters.length} chapters
+            </Badge>
+          </div>
+
+          <div className="space-y-4">
+            {rawChapters.map((chapter: any) => (
+              <Card key={chapter.id} padding="md">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="primary" size="lg">
+                        Chapter {chapter.chapter_number}
+                      </Badge>
+                      <div>
+                        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                          {chapter.title}
+                        </h3>
+                        {chapter.description && (
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                            {chapter.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={chapter.sections_generated ? "success" : "warning"}
+                        size="sm"
+                      >
+                        {chapter.sections_generated ? 'Sections Generated' : 'Raw Only'}
+                      </Badge>
+                      {chapter.source_count > 1 && (
+                        <Badge variant="neutral" size="sm">
+                          {chapter.source_count} sources
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {chapter.batch_title && (
+                    <div className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400">
+                      <span>From upload:</span>
+                      <span className="font-medium">{chapter.batch_title}</span>
+                      {chapter.material_type && (
+                        <Badge variant="neutral" size="sm">
+                          {chapter.material_type}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+
+                  {chapter.raw_markdown && (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300">
+                        View raw markdown ({Math.round(chapter.raw_markdown.length / 1024)}KB)
+                      </summary>
+                      <div className="mt-3 p-4 bg-neutral-100 dark:bg-neutral-800 rounded-lg overflow-auto max-h-96">
+                        <pre className="text-xs text-neutral-900 dark:text-neutral-100 whitespace-pre-wrap break-words">
+                          {chapter.raw_markdown.substring(0, 2000)}
+                          {chapter.raw_markdown.length > 2000 && (
+                            <span className="text-neutral-500 dark:text-neutral-400">
+                              ... ({Math.round((chapter.raw_markdown.length - 2000) / 1024)}KB more)
+                            </span>
+                          )}
+                        </pre>
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
