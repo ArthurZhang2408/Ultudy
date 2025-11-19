@@ -327,7 +327,7 @@ function CoursesHomePage() {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteDialogOpen(false)}
           />
-          <div className="relative bg-white dark:bg-neutral-900 rounded-xl shadow-2xl p-6 w-full max-w-md">
+          <div className="relative bg-white dark:bg-neutral-900 rounded-xl shadow-large dark:shadow-dark-large p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-danger-100 dark:bg-danger-900/40 rounded-full flex items-center justify-center">
                 <svg className="w-5 h-5 text-danger-600 dark:text-danger-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
