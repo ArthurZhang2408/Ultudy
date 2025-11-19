@@ -58,9 +58,9 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
           </>
         ) : (
           <>
-            {/* App mode: EXTREME gradient for testing */}
+            {/* App mode: Subtle dark gradient with hint of color */}
             <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
-            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-blue-500 to-purple-500 dark:from-blue-600 dark:to-purple-600" />
+            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-transparent via-transparent to-neutral-100/50 dark:via-neutral-900/40 dark:to-primary-900/20" />
           </>
         )}
         {authEnabled ? (
