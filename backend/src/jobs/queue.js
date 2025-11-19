@@ -70,8 +70,26 @@ if (DISABLE_QUEUES) {
 } else {
   console.log(`[Queue] Connecting to Redis at ${REDIS_URL}`);
 
+  // Create a shared Redis connection config to reduce connection overhead
+  // Bull creates 3 connections per queue: client, bclient (blocking), eclient (events)
+  // We optimize these settings to be more efficient with limited Redis connections
+  const redisConfig = {
+    redis: {
+      maxRetriesPerRequest: 1, // Reduce retries to fail faster
+      connectTimeout: 10000,
+      enableReadyCheck: false, // Skip ready check to reduce overhead
+      enableOfflineQueue: false, // Don't queue commands while offline
+      retryStrategy(times) {
+        // Exponential backoff with max delay of 3 seconds
+        const delay = Math.min(times * 50, 3000);
+        return delay;
+      }
+    }
+  };
+
   // Create separate queues for different job types
   uploadQueue = new Queue('upload-processing', REDIS_URL, {
+    ...redisConfig,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -80,16 +98,11 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false, // Keep completed jobs for status checking
       removeOnFail: false // Keep failed jobs for debugging
-    },
-    settings: {
-      // Limit retries to prevent flooding logs
-      maxRetriesPerRequest: 3,
-      // Connection timeout
-      connectTimeout: 10000
     }
   });
 
   lessonQueue = new Queue('lesson-generation', REDIS_URL, {
+    ...redisConfig,
     defaultJobOptions: {
       attempts: 2, // Fewer retries for LLM calls (expensive)
       backoff: {
@@ -98,10 +111,6 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false,
       removeOnFail: false
-    },
-    settings: {
-      maxRetriesPerRequest: 3,
-      connectTimeout: 10000
     }
   });
 }
@@ -171,15 +180,22 @@ if (!DISABLE_QUEUES) {
     }
   }, CLEANUP_INTERVAL);
 
-  // Graceful shutdown
-  process.on('SIGTERM', async () => {
-    console.log('[Queue] SIGTERM received, closing queues...');
-    await Promise.all([
-      uploadQueue.close(),
-      lessonQueue.close()
-    ]);
-    console.log('[Queue] Queues closed');
-  });
+  // Graceful shutdown handlers
+  const cleanupQueues = async () => {
+    console.log('[Queue] Closing queues...');
+    try {
+      await Promise.all([
+        uploadQueue.close(),
+        lessonQueue.close()
+      ]);
+      console.log('[Queue] Queues closed successfully');
+    } catch (error) {
+      console.error('[Queue] Error closing queues:', error);
+    }
+  };
+
+  process.on('SIGTERM', cleanupQueues);
+  process.on('SIGINT', cleanupQueues);
 }
 
 export default {
