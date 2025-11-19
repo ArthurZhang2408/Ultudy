@@ -414,7 +414,7 @@ This is a critical step in preserving educational content. You must extract EVER
 export async function extractChaptersWithRawMarkdown(pdfPath) {
   console.log('[llm_extractor] Starting raw chapter extraction from PDF');
 
-  const provider = getProvider();
+  const provider = await createGeminiVisionProvider();
 
   const systemPrompt = `You are an expert educational content extractor specializing in converting textbook PDFs to structured markdown.
 
@@ -540,7 +540,7 @@ export async function generateSectionsFromRawMarkdown(chapterNumber, chapterTitl
   console.log(`[llm_extractor] Starting section generation for Chapter ${chapterNumber}: ${chapterTitle}`);
   console.log(`[llm_extractor] Processing ${rawMarkdownSources.length} source(s)`);
 
-  const provider = getProvider();
+  const provider = await createGeminiVisionProvider();
 
   // Combine all sources with separators
   const combinedMarkdown = rawMarkdownSources.map((md, idx) => {
