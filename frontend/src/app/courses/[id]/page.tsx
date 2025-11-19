@@ -37,6 +37,7 @@ type ProcessingJob = {
   progress: number;
   status: string;
   chapter?: string;
+  error?: string; // Error message if job failed
 };
 
 type ConceptWithMastery = {
@@ -143,7 +144,11 @@ export default function CoursePage() {
       onError: (error: string) => {
         console.error('[courses] Upload job error:', error);
         pollingJobsRef.current.delete(uploadJobId);
-        removeProcessingJob(uploadJobId);
+        // Keep job visible with error state instead of removing it
+        updateJobProgress(uploadJobId, 0, 'failed');
+        setProcessingJobs(prev => prev.map(job =>
+          job.job_id === uploadJobId ? { ...job, error, status: 'failed' } : job
+        ));
       }
     });
 
@@ -267,7 +272,11 @@ export default function CoursePage() {
           onError: (error: string) => {
             console.error('Job error:', error);
             pollingJobsRef.current.delete(job.job_id);
-            removeProcessingJob(job.job_id);
+            // Keep job visible with error state instead of removing it
+            updateJobProgress(job.job_id, 0, 'failed');
+            setProcessingJobs(prev => prev.map(j =>
+              j.job_id === job.job_id ? { ...j, error, status: 'failed' } : j
+            ));
           }
         });
       });
@@ -941,48 +950,101 @@ export default function CoursePage() {
                         return false;
                       }
                       return true;
-                    }).map((job) => (
-                      <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-500 dark:bg-primary-600 rounded-lg flex items-center justify-center animate-pulse">
-                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              </div>
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-primary-900 dark:text-primary-300">
-                                  {job.title}
-                                </h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <Badge variant="primary" size="sm">
-                                    {job.type === 'chapter_upload' ? 'Processing Chapters...' : 'Uploading...'}
-                                  </Badge>
-                                  {job.type === 'chapter_upload' && job.file_count && (
-                                    <span className="text-xs text-primary-700 dark:text-primary-400">
-                                      {job.file_count} files
-                                    </span>
+                    }).map((job) => {
+                      const isFailed = job.status === 'failed';
+                      return (
+                        <Card
+                          key={job.job_id}
+                          padding="md"
+                          className={
+                            isFailed
+                              ? "bg-danger-50 dark:bg-danger-900/20 border-danger-200 dark:border-danger-800"
+                              : "bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800"
+                          }
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-3">
+                                <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+                                  isFailed
+                                    ? 'bg-danger-500 dark:bg-danger-600'
+                                    : 'bg-primary-500 dark:bg-primary-600 animate-pulse'
+                                }`}>
+                                  {isFailed ? (
+                                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
                                   )}
-                                  <span className="text-xs text-primary-700 dark:text-primary-400">
-                                    {job.status === 'processing' ? `${job.progress}%` : job.status}
-                                  </span>
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className={`font-semibold ${
+                                    isFailed
+                                      ? 'text-danger-900 dark:text-danger-300'
+                                      : 'text-primary-900 dark:text-primary-300'
+                                  }`}>
+                                    {job.title}
+                                  </h4>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    <Badge variant={isFailed ? "danger" : "primary"} size="sm">
+                                      {isFailed
+                                        ? 'Failed'
+                                        : job.type === 'chapter_upload'
+                                          ? 'Processing Chapters...'
+                                          : 'Uploading...'}
+                                    </Badge>
+                                    {job.type === 'chapter_upload' && job.file_count && (
+                                      <span className={`text-xs ${
+                                        isFailed
+                                          ? 'text-danger-700 dark:text-danger-400'
+                                          : 'text-primary-700 dark:text-primary-400'
+                                      }`}>
+                                        {job.file_count} files
+                                      </span>
+                                    )}
+                                    {!isFailed && (
+                                      <span className="text-xs text-primary-700 dark:text-primary-400">
+                                        {job.status === 'processing' ? `${job.progress}%` : job.status}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* Error message */}
+                                  {isFailed && job.error && (
+                                    <p className="mt-2 text-sm text-danger-700 dark:text-danger-400">
+                                      {job.error}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
+                              {/* Progress bar */}
+                              {job.status === 'processing' && (
+                                <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
+                                  <div
+                                    className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${job.progress}%` }}
+                                  />
+                                </div>
+                              )}
                             </div>
-                            {/* Progress bar */}
-                            {job.status === 'processing' && (
-                              <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
-                                <div
-                                  className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${job.progress}%` }}
-                                />
-                              </div>
+                            {/* Dismiss button for failed jobs */}
+                            {isFailed && (
+                              <button
+                                onClick={() => removeProcessingJob(job.job_id)}
+                                className="text-danger-500 dark:text-danger-400 hover:text-danger-700 dark:hover:text-danger-300 transition-colors ml-4"
+                                aria-label="Dismiss"
+                              >
+                                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
                             )}
                           </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
 
                     {documentsByChapter[chapter].map((doc) => (
                       <Card key={doc.id} padding="md" hover className="group">
