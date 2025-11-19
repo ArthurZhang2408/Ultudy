@@ -60,7 +60,7 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
           <>
             {/* App mode: Subtle gradient with color tint */}
             <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
-            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-transparent via-transparent to-neutral-100/50 dark:to-primary-900/10" />
+            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-transparent to-neutral-100/50 dark:from-primary-950/30 dark:to-primary-900/30" />
           </>
         )}
         {authEnabled ? (
