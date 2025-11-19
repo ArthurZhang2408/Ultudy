@@ -45,16 +45,16 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
             {/* Animated blurred circles - scrolling with content for parallax */}
             <div className="absolute top-0 left-0 right-0 -z-10 min-h-screen">
               {/* Large circles */}
-              <div className="absolute -top-20 -left-20 w-[600px] h-[600px] bg-primary-100/30 dark:bg-primary-900/15 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '8s' }} />
-              <div className="absolute top-40 -right-40 w-[700px] h-[700px] bg-primary-200/25 dark:bg-primary-800/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '10s' }} />
+              <div className="absolute -top-20 -left-20 w-[600px] h-[600px] bg-primary-100/30 dark:bg-primary-900/15 rounded-full blur-3xl animate-float" />
+              <div className="absolute top-40 -right-40 w-[700px] h-[700px] bg-primary-200/25 dark:bg-primary-800/10 rounded-full blur-3xl animate-float-reverse" />
 
               {/* Mid-page circles */}
-              <div className="absolute top-[600px] left-1/4 w-[500px] h-[500px] bg-primary-300/20 dark:bg-primary-700/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '12s' }} />
-              <div className="absolute top-[900px] right-1/3 w-[600px] h-[600px] bg-primary-100/25 dark:bg-primary-900/12 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '9s' }} />
+              <div className="absolute top-[600px] left-1/4 w-[500px] h-[500px] bg-primary-300/20 dark:bg-primary-700/10 rounded-full blur-3xl animate-float-slow" />
+              <div className="absolute top-[900px] right-1/3 w-[600px] h-[600px] bg-primary-100/25 dark:bg-primary-900/12 rounded-full blur-3xl animate-float" />
 
               {/* Bottom circles */}
-              <div className="absolute bottom-20 left-10 w-[550px] h-[550px] bg-primary-200/30 dark:bg-primary-800/15 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '11s' }} />
-              <div className="absolute bottom-0 right-0 w-[650px] h-[650px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '13s' }} />
+              <div className="absolute bottom-20 left-10 w-[550px] h-[550px] bg-primary-200/30 dark:bg-primary-800/15 rounded-full blur-3xl animate-float-reverse" />
+              <div className="absolute bottom-0 right-0 w-[650px] h-[650px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl animate-float-slow" />
             </div>
           </>
         )}
