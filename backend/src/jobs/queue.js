@@ -75,14 +75,29 @@ if (DISABLE_QUEUES) {
   // We optimize these settings to be more efficient with limited Redis connections
   const redisConfig = {
     redis: {
-      maxRetriesPerRequest: 1, // Reduce retries to fail faster
+      maxRetriesPerRequest: 3,
       connectTimeout: 10000,
       enableReadyCheck: false, // Skip ready check to reduce overhead
-      enableOfflineQueue: false, // Don't queue commands while offline
+      // Keep offline queue enabled but limit size to prevent memory issues
+      enableOfflineQueue: true,
+      maxOfflineQueueSize: 100, // Limit queued commands to prevent memory bloat
       retryStrategy(times) {
-        // Exponential backoff with max delay of 3 seconds
-        const delay = Math.min(times * 50, 3000);
+        // Stop retrying after 10 attempts
+        if (times > 10) {
+          console.error('[Queue] Redis connection failed after 10 retries, giving up');
+          return null;
+        }
+        // Exponential backoff with max delay of 5 seconds
+        const delay = Math.min(times * 100, 5000);
         return delay;
+      },
+      reconnectOnError(err) {
+        // Reconnect on specific errors
+        const targetErrors = ['READONLY', 'ECONNREFUSED', 'ETIMEDOUT'];
+        if (targetErrors.some(targetError => err.message.includes(targetError))) {
+          return true;
+        }
+        return false;
       }
     }
   };
@@ -128,6 +143,15 @@ if (!DISABLE_QUEUES) {
     uploadErrorCount++;
     if (uploadErrorCount <= MAX_ERROR_LOGS) {
       console.error('[uploadQueue] Queue error:', error);
+
+      // Check for specific Redis errors
+      if (error.message?.includes('max number of clients reached')) {
+        console.error('[uploadQueue] ⚠️  REDIS MAX CLIENTS REACHED');
+        console.error('[uploadQueue] Your Redis instance has hit the connection limit.');
+        console.error('[uploadQueue] Fix: In Railway, go to Redis service → Variables → Add REDIS_MAXCLIENTS=50');
+        console.error('[uploadQueue] Then redeploy the Redis service.');
+      }
+
       if (uploadErrorCount === MAX_ERROR_LOGS) {
         console.error('[uploadQueue] Redis connection errors detected. Further errors will be suppressed.');
         console.error('[uploadQueue] Please check your REDIS_URL or remove it from .env if Redis is not available.');
@@ -148,6 +172,15 @@ if (!DISABLE_QUEUES) {
     lessonErrorCount++;
     if (lessonErrorCount <= MAX_ERROR_LOGS) {
       console.error('[lessonQueue] Queue error:', error);
+
+      // Check for specific Redis errors
+      if (error.message?.includes('max number of clients reached')) {
+        console.error('[lessonQueue] ⚠️  REDIS MAX CLIENTS REACHED');
+        console.error('[lessonQueue] Your Redis instance has hit the connection limit.');
+        console.error('[lessonQueue] Fix: In Railway, go to Redis service → Variables → Add REDIS_MAXCLIENTS=50');
+        console.error('[lessonQueue] Then redeploy the Redis service.');
+      }
+
       if (lessonErrorCount === MAX_ERROR_LOGS) {
         console.error('[lessonQueue] Redis connection errors detected. Further errors will be suppressed.');
         console.error('[lessonQueue] Please check your REDIS_URL or remove it from .env if Redis is not available.');
