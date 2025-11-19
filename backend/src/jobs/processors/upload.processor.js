@@ -326,8 +326,8 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
     // Update progress: 15% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 15);
 
-    // Extract chapters from each PDF individually (to stay within token limits)
-    console.log(`[ChapterUploadProcessor] Extracting chapters from ${files.length} PDFs individually...`);
+    // PHASE 1: Extract raw markdown from each PDF individually (no sections yet)
+    console.log(`[ChapterUploadProcessor] Phase 1: Extracting raw markdown from ${files.length} PDFs...`);
     const allExtractions = [];
 
     for (let i = 0; i < processingPaths.length; i++) {
@@ -337,7 +337,7 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
       console.log(`[ChapterUploadProcessor] Extracting from file ${i + 1}/${files.length}: ${fileName}`);
 
       try {
-        const extraction = await extractChaptersFromMultiplePDFs([pdfPath]);
+        const extraction = await extractChaptersWithRawMarkdown(pdfPath);
         allExtractions.push({ fileName, extraction });
 
         console.log(`[ChapterUploadProcessor]   Extracted ${extraction.chapters.length} chapters from ${fileName}`);
@@ -351,16 +351,15 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
       }
     }
 
-    // Merge chapters from all files (combine overlapping chapter numbers)
-    console.log(`[ChapterUploadProcessor] Merging chapters from ${allExtractions.length} files...`);
-    const mergedChapters = mergeChapterExtractions(allExtractions);
+    // Merge raw markdown from all files (combine overlapping chapter numbers)
+    console.log(`[ChapterUploadProcessor] Merging raw markdown from ${allExtractions.length} files...`);
+    const mergedChapters = mergeRawChapterExtractions(allExtractions);
 
-    console.log(`[ChapterUploadProcessor] Final result: ${mergedChapters.length} chapters`);
+    console.log(`[ChapterUploadProcessor] Phase 1 complete: ${mergedChapters.length} chapters`);
     mergedChapters.forEach(ch => {
-      console.log(`[ChapterUploadProcessor]   Chapter ${ch.chapter}: "${ch.title}" (${ch.sections.length} sections)`);
+      const markdownKB = (ch.raw_markdown.length / 1024).toFixed(1);
+      console.log(`[ChapterUploadProcessor]   Chapter ${ch.chapter}: "${ch.title}" (${markdownKB}KB from ${ch.source_count} source(s))`);
     });
-
-    const extraction = { chapters: mergedChapters };
 
     // Update progress: 70% - Extraction complete
     await jobTracker.updateProgress(ownerId, jobId, 70);
@@ -397,50 +396,41 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
       // Progress: 80% - Documents created
       await jobTracker.updateProgress(ownerId, jobId, 80);
 
-      // Create chapters and sections
-      let processedSections = 0;
-      const totalSections = extraction.chapters.reduce((sum, ch) => sum + ch.sections.length, 0);
+      // Phase 1: Store chapters with raw markdown (NO sections yet)
+      console.log(`[ChapterUploadProcessor] Storing ${mergedChapters.length} chapters with raw markdown...`);
 
-      for (const chapter of extraction.chapters) {
-        // Create chapter record
+      for (let i = 0; i < mergedChapters.length; i++) {
+        const chapter = mergedChapters[i];
+
+        // Create chapter record with raw markdown
         const { rows: chapterRows } = await client.query(
-          `INSERT INTO chapters (owner_id, upload_batch_id, course_id, chapter_number, title, description)
-           VALUES ($1, $2, $3, $4, $5, $6)
+          `INSERT INTO chapters
+           (owner_id, upload_batch_id, course_id, chapter_number, title, description, raw_markdown, sections_generated, source_count)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8)
            RETURNING id`,
-          [ownerId, uploadBatchId, courseId, chapter.chapter, chapter.title, chapter.description || null]
+          [
+            ownerId,
+            uploadBatchId,
+            courseId,
+            chapter.chapter,
+            chapter.title,
+            chapter.description || null,
+            chapter.raw_markdown,
+            chapter.source_count
+          ]
         );
 
         const chapterId = chapterRows[0].id;
-        console.log(`[ChapterUploadProcessor] Chapter ${chapter.chapter} created: ${chapterId}`);
+        const markdownKB = (chapter.raw_markdown.length / 1024).toFixed(1);
+        console.log(`[ChapterUploadProcessor] Chapter ${chapter.chapter} created: ${chapterId} (${markdownKB}KB raw markdown, ${chapter.source_count} sources, sections_generated=false)`);
 
-        // Create sections for this chapter
-        for (let i = 0; i < chapter.sections.length; i++) {
-          const section = chapter.sections[i];
-
-          await client.query(
-            `INSERT INTO sections
-             (owner_id, chapter_id, course_id, section_number, name, description, markdown_text, concepts_generated)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, false)`,
-            [
-              ownerId,
-              chapterId,
-              courseId,
-              i + 1,
-              section.name,
-              section.description,
-              section.markdown
-            ]
-          );
-
-          console.log(`[ChapterUploadProcessor] Chapter ${chapter.chapter}, Section ${i + 1} "${section.name}": ${section.markdown.length} chars`);
-
-          processedSections++;
-
-          // Update progress: 80-100% based on sections processed
-          const sectionProgress = 80 + Math.floor((processedSections / totalSections) * 20);
-          await jobTracker.updateProgress(ownerId, jobId, sectionProgress);
-        }
+        // Progress: 80-100% for creating chapter records
+        const chapterProgress = 80 + Math.floor(((i + 1) / mergedChapters.length) * 20);
+        await jobTracker.updateProgress(ownerId, jobId, chapterProgress);
       }
+
+      console.log(`[ChapterUploadProcessor] Phase 1 complete! Created ${mergedChapters.length} chapters with raw markdown.`);
+      console.log(`[ChapterUploadProcessor] User can now generate sections for each chapter on-demand (Phase 2).`);
     });
 
     console.log(`[ChapterUploadProcessor] ✅ Job ${jobId} complete`);
@@ -449,14 +439,16 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
     const result = {
       upload_batch_id: uploadBatchId,
       title: batchTitle,
-      chapter_count: extraction.chapters.length,
-      section_count: extraction.chapters.reduce((sum, ch) => sum + ch.sections.length, 0),
+      chapter_count: mergedChapters.length,
+      phase: 'Phase 1 - Raw markdown extracted',
+      sections_generated: false,
       course_id: courseId,
       material_type: materialType,
-      chapters: extraction.chapters.map(ch => ({
+      chapters: mergedChapters.map(ch => ({
         chapter_number: ch.chapter,
         title: ch.title,
-        section_count: ch.sections.length
+        source_count: ch.source_count,
+        markdown_size_kb: (ch.raw_markdown.length / 1024).toFixed(1)
       }))
     };
 
