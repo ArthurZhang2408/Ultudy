@@ -286,43 +286,22 @@ export async function createGeminiVisionProvider() {
         throw new Error('LLM returned no chapters');
       }
 
-      // Validate each chapter
-      parsed.chapters.forEach((chapter, chapterIndex) => {
-        if (typeof chapter.chapter !== 'number') {
-          throw new Error(`Chapter ${chapterIndex + 1} missing chapter number`);
-        }
-
-        if (!chapter.title) {
-          throw new Error(`Chapter ${chapterIndex + 1} missing title`);
-        }
-
-        if (!Array.isArray(chapter.sections)) {
-          throw new Error(`Chapter ${chapterIndex + 1} missing sections array`);
-        }
-
-        if (chapter.sections.length === 0) {
-          throw new Error(`Chapter ${chapterIndex + 1} has no sections`);
-        }
-
-        // Validate each section within the chapter
-        chapter.sections.forEach((section, sectionIndex) => {
-          if (!section.name || !section.description || !section.markdown) {
-            throw new Error(`Chapter ${chapter.chapter}, Section ${sectionIndex + 1} missing required fields`);
-          }
-
-          // Check markdown is substantial
-          if (section.markdown.length < 100) {
-            console.warn(`[gemini_vision] ⚠️  Chapter ${chapter.chapter}, Section "${section.name}" has very short markdown (${section.markdown.length} chars)`);
-          }
-        });
-      });
-
-      console.log(`[gemini_vision] ✅ Extracted ${parsed.chapters.length} chapters:`);
+      // Log what we extracted (structure depends on the schema used)
+      console.log(`[gemini_vision] ✅ Extracted ${parsed.chapters.length} chapters`);
       parsed.chapters.forEach((chapter) => {
-        console.log(`[gemini_vision]   Chapter ${chapter.chapter}: "${chapter.title}" - ${chapter.sections.length} sections`);
-        chapter.sections.forEach((section, index) => {
-          console.log(`[gemini_vision]     ${index + 1}. "${section.name}" - ${section.markdown.length} chars`);
-        });
+        if (chapter.sections) {
+          // Old schema with sections
+          console.log(`[gemini_vision]   Chapter ${chapter.chapter}: "${chapter.title}" - ${chapter.sections.length} sections`);
+          chapter.sections.forEach((section, index) => {
+            console.log(`[gemini_vision]     ${index + 1}. "${section.name}" - ${section.markdown.length} chars`);
+          });
+        } else if (chapter.raw_markdown) {
+          // New schema with raw markdown (Phase 1)
+          const markdownKB = (chapter.raw_markdown.length / 1024).toFixed(1);
+          console.log(`[gemini_vision]   Chapter ${chapter.chapter}: "${chapter.title}" - ${markdownKB}KB raw markdown`);
+        } else {
+          console.log(`[gemini_vision]   Chapter ${chapter.chapter}: "${chapter.title}"`);
+        }
       });
 
       return parsed;
