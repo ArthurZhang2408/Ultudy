@@ -1001,6 +1001,63 @@ export default async function createGeminiLLMProvider() {
 
       const rawText = extractResponseText(response);
       return rawText; // Return raw text, caller will parse JSON
+    },
+    /**
+     * Generate structured text with JSON schema validation
+     * Used for Phase 2 section generation from raw markdown
+     * @param {string} systemPrompt - System instruction
+     * @param {string} userPrompt - User prompt
+     * @param {object} responseSchema - JSON schema for response structure
+     * @returns {Promise<object>} Parsed JSON response
+     */
+    async generateText(systemPrompt, userPrompt, responseSchema) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY environment variable is required');
+      }
+
+      const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
+      const temperature = parseFloat(process.env.GEMINI_GEN_TEMPERATURE || '0.4');
+
+      const GoogleGenerativeAI = await loadGoogleGenerativeAI();
+      const genAI = new GoogleGenerativeAI(apiKey);
+
+      // Use schema-based generation if provided
+      const modelConfig = responseSchema ? {
+        model: modelName,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: responseSchema,
+          temperature: temperature,
+          maxOutputTokens: 65536
+        }
+      } : {
+        model: modelName,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          temperature: temperature
+        }
+      };
+
+      const model = genAI.getGenerativeModel(modelConfig);
+
+      const response = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ]
+      });
+
+      const responseText = extractResponseText(response);
+
+      // Parse and return JSON
+      try {
+        return JSON.parse(responseText);
+      } catch (error) {
+        console.error('[gemini] Failed to parse JSON response:', error.message);
+        console.error('[gemini] Response length:', responseText.length);
+        throw new Error(`Failed to parse LLM JSON response: ${error.message}`);
+      }
     }
   };
 }
