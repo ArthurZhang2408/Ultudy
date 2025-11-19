@@ -21,6 +21,10 @@ type LayoutShellProps = {
 };
 
 function LayoutShell({ children, authEnabled }: LayoutShellProps) {
+  // Check if we're in landing mode to adjust layout
+  const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
+  const isLandingMode = launchMode === 'landing';
+
   return (
     <html lang="en">
       <head>
@@ -36,15 +40,27 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
               <LayoutClient>{children}</LayoutClient>
             </SignedIn>
             <SignedOut>
-              <div className="flex min-h-screen flex-col">
-                <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 py-8">{children}</main>
-              </div>
+              {isLandingMode ? (
+                // Landing mode: full-width, no padding/constraints
+                children
+              ) : (
+                // App mode: constrained layout
+                <div className="flex min-h-screen flex-col">
+                  <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+                </div>
+              )}
             </SignedOut>
           </>
         ) : (
-          <div className="flex min-h-screen flex-col">
-            <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 py-8">{children}</main>
-          </div>
+          isLandingMode ? (
+            // Landing mode: full-width, no padding/constraints
+            children
+          ) : (
+            // App mode: constrained layout
+            <div className="flex min-h-screen flex-col">
+              <main className="mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+            </div>
+          )
         )}
       </body>
     </html>
