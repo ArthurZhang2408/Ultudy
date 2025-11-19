@@ -217,7 +217,8 @@ export async function createGeminiVisionProvider() {
         generationConfig: {
           responseMimeType: 'application/json',
           responseSchema: responseSchema,
-          temperature: temperature
+          temperature: temperature,
+          maxOutputTokens: 32768 // Increase token limit for large multi-chapter responses
         }
       });
 
@@ -236,10 +237,27 @@ export async function createGeminiVisionProvider() {
         console.log('[gemini_vision] ✅ Valid JSON response');
       } catch (error) {
         console.error('[gemini_vision] ❌ Invalid JSON response');
-        console.error('[gemini_vision] First 500 chars:', text.substring(0, 500));
-        console.error('[gemini_vision] Last 500 chars:', text.substring(Math.max(0, text.length - 500)));
+        console.error('[gemini_vision] Response length:', text.length);
         console.error('[gemini_vision] Parse error:', error.message);
-        throw new Error('LLM returned invalid JSON');
+
+        // Try to find where the JSON broke
+        const errorPos = error.message.match(/position (\d+)/);
+        if (errorPos) {
+          const pos = parseInt(errorPos[1]);
+          console.error('[gemini_vision] Error near position', pos);
+          console.error('[gemini_vision] Context:', text.substring(Math.max(0, pos - 200), Math.min(text.length, pos + 200)));
+        }
+
+        // Save failed response to temp file for debugging
+        try {
+          const debugPath = `/tmp/failed-gemini-response-${Date.now()}.json`;
+          await fs.writeFile(debugPath, text);
+          console.error('[gemini_vision] Failed response saved to:', debugPath);
+        } catch (writeErr) {
+          console.error('[gemini_vision] Could not save debug file:', writeErr.message);
+        }
+
+        throw new Error(`LLM returned invalid JSON at position ${errorPos ? errorPos[1] : 'unknown'}: ${error.message}`);
       }
 
       // Validate structure for chapter-based response
