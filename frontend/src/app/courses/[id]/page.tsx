@@ -685,9 +685,17 @@ export default function CoursePage() {
     }
   });
 
+  // If there are chapter_upload jobs but no documents/chapters yet, create a placeholder
+  const hasChapterUploadJobs = processingJobs.some(job => job.type === 'chapter_upload');
+  if (hasChapterUploadJobs && Object.keys(documentsByChapter).length === 0) {
+    documentsByChapter['Processing'] = [];
+  }
+
   const chapters = Object.keys(documentsByChapter).sort((a, b) => {
     if (a === 'Uncategorized') return 1;
     if (b === 'Uncategorized') return -1;
+    if (a === 'Processing') return -1; // Show Processing first
+    if (b === 'Processing') return 1;
     return a.localeCompare(b, undefined, { numeric: true });
   });
 
@@ -910,7 +918,7 @@ export default function CoursePage() {
               <div key={chapter} className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-                    {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
+                    {chapter === 'Uncategorized' ? chapter : chapter === 'Processing' ? 'Processing Upload' : `Chapter ${chapter}`}
                   </h2>
                 </div>
 
@@ -931,9 +939,10 @@ export default function CoursePage() {
                   <div className="grid gap-4">
                     {/* Processing Jobs - Filter by chapter, exclude completed jobs, and hide if document already exists */}
                     {processingJobs.filter(job => {
-                      // For chapter uploads, only show in first chapter (they create multiple chapters)
+                      // For chapter uploads, show in "Processing" chapter or first chapter if Processing doesn't exist
                       if (job.type === 'chapter_upload') {
-                        return chapter === chapters[0] && job.status !== 'completed';
+                        const targetChapter = chapters.includes('Processing') ? 'Processing' : chapters[0];
+                        return chapter === targetChapter && job.status !== 'completed';
                       }
 
                       // For regular uploads, filter by chapter
