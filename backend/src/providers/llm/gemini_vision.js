@@ -160,6 +160,16 @@ export async function createGeminiVisionProvider() {
      * @returns {Promise<object>} Parsed JSON response with chapters array
      */
     async extractChaptersFromMultiplePDFs(pdfPaths, systemPrompt, userPrompt, responseSchema) {
+      console.log(`[gemini_vision] ==== START extractChaptersFromMultiplePDFs ====`);
+      console.log(`[gemini_vision] pdfPaths argument:`, pdfPaths);
+      console.log(`[gemini_vision] pdfPaths type:`, typeof pdfPaths);
+      console.log(`[gemini_vision] pdfPaths is array:`, Array.isArray(pdfPaths));
+      console.log(`[gemini_vision] pdfPaths length:`, pdfPaths?.length);
+
+      if (!pdfPaths || !Array.isArray(pdfPaths) || pdfPaths.length === 0) {
+        throw new Error(`Invalid pdfPaths argument: ${JSON.stringify(pdfPaths)}`);
+      }
+
       console.log(`[gemini_vision] Reading ${pdfPaths.length} PDF files for chapter extraction`);
 
       // Read all PDFs as binary and convert to base64
@@ -168,8 +178,14 @@ export async function createGeminiVisionProvider() {
 
       for (let i = 0; i < pdfPaths.length; i++) {
         const pdfPath = pdfPaths[i];
-        console.log(`[gemini_vision] Reading PDF ${i + 1}/${pdfPaths.length}: ${pdfPath}`);
+        console.log(`[gemini_vision] Reading PDF ${i + 1}/${pdfPaths.length}`);
+        console.log(`[gemini_vision]   pdfPath = "${pdfPath}" (type: ${typeof pdfPath})`);
 
+        if (!pdfPath || typeof pdfPath !== 'string') {
+          throw new Error(`pdfPath at index ${i} is invalid: ${pdfPath} (type: ${typeof pdfPath}). Full array: ${JSON.stringify(pdfPaths)}`);
+        }
+
+        console.log(`[gemini_vision]   Calling fs.readFile("${pdfPath}")`);
         const pdfData = await fs.readFile(pdfPath);
         const pdfBase64 = pdfData.toString('base64');
         const pdfSizeMB = pdfData.length / 1024 / 1024;

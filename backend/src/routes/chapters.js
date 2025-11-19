@@ -13,14 +13,15 @@ export default function createChaptersRouter({ tenantHelpers }) {
    * Fetch all chapters for a course (Phase 1 results)
    */
   router.get('/', async (req, res) => {
-  const { course_id } = req.query;
+    const ownerId = req.userId;
+    const { course_id } = req.query;
 
-  if (!course_id) {
-    return res.status(400).json({ error: 'course_id is required' });
-  }
+    if (!course_id) {
+      return res.status(400).json({ error: 'course_id is required' });
+    }
 
     try {
-      const chapters = await tenantHelpers.withTenant(req.ownerId, async (client) => {
+      const chapters = await tenantHelpers.withTenant(ownerId, async (client) => {
         const { rows } = await client.query(
           `SELECT
             c.id,
@@ -56,10 +57,11 @@ export default function createChaptersRouter({ tenantHelpers }) {
    * Fetch a single chapter with full details
    */
   router.get('/:id', async (req, res) => {
+    const ownerId = req.userId;
     const { id } = req.params;
 
     try {
-      const chapter = await tenantHelpers.withTenant(req.ownerId, async (client) => {
+      const chapter = await tenantHelpers.withTenant(ownerId, async (client) => {
         const { rows } = await client.query(
           `SELECT
             c.id,
