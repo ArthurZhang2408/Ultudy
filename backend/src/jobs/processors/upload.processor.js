@@ -5,7 +5,7 @@
  * Works with both S3 and local filesystem storage
  */
 
-import { extractStructuredSections, extractChaptersFromMultiplePDFs } from '../../ingestion/llm_extractor.js';
+import { extractStructuredSections, extractChaptersFromMultiplePDFs, extractChaptersWithRawMarkdown } from '../../ingestion/llm_extractor.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -55,6 +55,64 @@ function mergeChapterExtractions(allExtractions) {
           title: chapter.title,
           description: chapter.description || null,
           sections: [...chapter.sections]
+        });
+      }
+    }
+  }
+
+  // Convert map to sorted array
+  const merged = Array.from(chapterMap.values()).sort((a, b) => a.chapter - b.chapter);
+
+  return merged;
+}
+
+/**
+ * Merge raw chapter extractions from multiple files (Phase 1 - two-phase processing)
+ * Combines chapters with the same chapter number, concatenating their raw markdown
+ *
+ * @param {Array} allExtractions - Array of {fileName, extraction} objects
+ * @returns {Array} Merged chapters array with raw_markdown field
+ */
+function mergeRawChapterExtractions(allExtractions) {
+  const chapterMap = new Map();
+
+  for (const { fileName, extraction } of allExtractions) {
+    for (const chapter of extraction.chapters) {
+      const chapterNum = chapter.chapter;
+
+      if (chapterMap.has(chapterNum)) {
+        // Chapter already exists - combine raw markdown
+        const existing = chapterMap.get(chapterNum);
+
+        console.log(`[ChapterMerger] Merging Chapter ${chapterNum} from ${fileName} into existing chapter`);
+
+        // Keep the longer/more descriptive title
+        if (chapter.title && (!existing.title || chapter.title.length > existing.title.length)) {
+          existing.title = chapter.title;
+        }
+
+        // Combine descriptions
+        if (chapter.description && !existing.description) {
+          existing.description = chapter.description;
+        }
+
+        // Concatenate raw markdown with source separator
+        existing.raw_markdown += `\n\n<!-- SOURCE: ${fileName} -->\n\n${chapter.raw_markdown}`;
+        existing.source_count++;
+        existing.sourceFiles.push(fileName);
+
+        const totalKB = (existing.raw_markdown.length / 1024).toFixed(1);
+        console.log(`[ChapterMerger]   Combined markdown (now ${totalKB}KB from ${existing.source_count} sources)`);
+      } else {
+        // New chapter - add it
+        console.log(`[ChapterMerger] Adding new Chapter ${chapterNum}: "${chapter.title}" from ${fileName}`);
+        chapterMap.set(chapterNum, {
+          chapter: chapterNum,
+          title: chapter.title,
+          description: chapter.description || null,
+          raw_markdown: `<!-- SOURCE: ${fileName} -->\n\n${chapter.raw_markdown}`,
+          source_count: 1,
+          sourceFiles: [fileName]
         });
       }
     }

@@ -35,27 +35,42 @@ migrate1.on('close', (code) => {
       process.exit(1);
     }
 
-    console.log('\nStep 3: Starting server...\n');
+    console.log('\nStep 3: Running two-phase processing migration...\n');
 
-  // Start the server
-  const server = spawn('node', ['src/server.js'], {
-    stdio: 'inherit',
-    env: process.env,
-  });
+    // Run third migration
+    const migrate3 = spawn('node', ['scripts/add-two-phase-processing.js'], {
+      stdio: 'inherit',
+      env: process.env,
+    });
 
-  server.on('close', (serverCode) => {
-    process.exit(serverCode);
-  });
+    migrate3.on('close', (code3) => {
+      if (code3 !== 0) {
+        console.error(`Third migration failed with code ${code3}`);
+        process.exit(1);
+      }
 
-  // Handle shutdown signals
-  process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down gracefully');
-    server.kill('SIGTERM');
-  });
+      console.log('\nStep 4: Starting server...\n');
 
-  process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down gracefully');
-    server.kill('SIGINT');
-  });
+      // Start the server
+      const server = spawn('node', ['src/server.js'], {
+        stdio: 'inherit',
+        env: process.env,
+      });
+
+      server.on('close', (serverCode) => {
+        process.exit(serverCode);
+      });
+
+      // Handle shutdown signals
+      process.on('SIGTERM', () => {
+        console.log('Received SIGTERM, shutting down gracefully');
+        server.kill('SIGTERM');
+      });
+
+      process.on('SIGINT', () => {
+        console.log('Received SIGINT, shutting down gracefully');
+        server.kill('SIGINT');
+      });
+    }); // Close migrate3.on('close')
   }); // Close migrate2.on('close')
 }); // Close migrate1.on('close')

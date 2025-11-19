@@ -404,4 +404,254 @@ This is a critical step in preserving educational content. You must extract EVER
   }
 }
 
+/**
+ * Extract chapters with raw unsectionalized markdown (Phase 1)
+ * This is for the two-phase processing approach where sections are generated later
+ *
+ * @param {string} pdfPath - Path to PDF file
+ * @returns {Promise<object>} - {chapters: [{chapter, title, description, raw_markdown}]}
+ */
+export async function extractChaptersWithRawMarkdown(pdfPath) {
+  console.log('[llm_extractor] Starting raw chapter extraction from PDF');
+
+  const provider = getProvider();
+
+  const systemPrompt = `You are an expert educational content extractor specializing in converting textbook PDFs to structured markdown.
+
+Your task: Extract chapters from this PDF, preserving ALL educational content as raw markdown (no section splitting yet).
+
+Focus on:
+- Identifying chapter boundaries
+- Extracting complete chapter content
+- Converting to high-fidelity markdown
+- Preserving formulas, tables, code, images`;
+
+  const userPrompt = `Extract all chapters from this PDF file with COMPLETE content preservation.
+
+**MISSION:**
+Extract the FULL content of each chapter as unsectionalized markdown. Do NOT split into sections yet - that will be done later. Just identify chapter boundaries and extract everything within each chapter.
+
+**EXCLUSIONS:**
+- **DO NOT create chapters for**: References, Bibliography, Acknowledgments, Table of Contents, Index, Appendix
+- **DO NOT include**: Page numbers, headers, footers, copyright notices
+- **ONLY include**: Educational content students need to learn
+
+**CHAPTER IDENTIFICATION:**
+- Identify chapter numbers from headings (e.g., "Chapter 2", "Ch. 3", "Unit 2", "Lecture 5")
+- If no explicit numbers, assign sequential numbers starting from 1
+- If this is a single-chapter file (e.g., "chapter_5.pdf"), extract that one chapter
+- Order chapters numerically
+
+**FOR EACH CHAPTER PROVIDE:**
+- **chapter**: The chapter number (integer)
+- **title**: Chapter title (e.g., "Introduction to Calculus", "Newton's Laws")
+- **description**: Brief 1-2 sentence overview of the chapter (optional)
+- **raw_markdown**: **COMPLETE** chapter content as one markdown blob
+  - Extract ALL text, explanations, examples, proofs, definitions
+  - Include ALL formulas, equations, derivations
+  - Preserve ALL tables, diagrams (with descriptions), code blocks
+  - Do NOT organize into sections - keep as continuous content
+  - This is the master copy - nothing should be lost
+
+**CONVERT CONTENT WITH FULL FIDELITY:**
+- Math equations → LaTeX ($inline$, $$display$$)
+- Tables → Full markdown tables
+- Text formatting → **bold**, *italic*, headers (# ## ###)
+- Images/Diagrams → ![detailed description](ref)
+- Code → \`\`\`language blocks\`\`\`
+- Lists → Numbered/bullet lists
+- Proofs → Complete step-by-step
+- Examples → Full worked solutions
+
+**CRITICAL JSON FORMATTING:**
+- Escape all special characters (quotes, backslashes, newlines)
+- Use \\n for newlines in markdown strings
+- Escape " as \\"
+- Ensure valid JSON output
+
+**REMEMBER:** Extract EVERYTHING from each chapter. This raw markdown will be split into sections later.`;
+
+  const responseSchema = {
+    type: 'object',
+    properties: {
+      chapters: {
+        type: 'array',
+        description: 'Array of chapters with raw unsectionalized markdown',
+        minItems: 1,
+        items: {
+          type: 'object',
+          properties: {
+            chapter: {
+              type: 'integer',
+              description: 'Chapter number'
+            },
+            title: {
+              type: 'string',
+              description: 'Chapter title'
+            },
+            description: {
+              type: 'string',
+              description: 'Optional brief chapter overview (1-2 sentences)'
+            },
+            raw_markdown: {
+              type: 'string',
+              description: 'Complete unsectionalized markdown content for entire chapter'
+            }
+          },
+          required: ['chapter', 'title', 'raw_markdown']
+        }
+      }
+    },
+    required: ['chapters']
+  };
+
+  try {
+    const result = await provider.extractChaptersFromMultiplePDFs(
+      [pdfPath], // Single PDF at a time
+      systemPrompt,
+      userPrompt,
+      responseSchema
+    );
+
+    console.log('[llm_extractor] ✅ Raw chapter extraction successful');
+    console.log(`[llm_extractor] Chapters: ${result.chapters.length}`);
+    result.chapters.forEach(chapter => {
+      const markdownLength = chapter.raw_markdown?.length || 0;
+      console.log(`[llm_extractor]   Chapter ${chapter.chapter}: "${chapter.title}" (${(markdownLength / 1024).toFixed(1)}KB markdown)`);
+    });
+
+    return result;
+  } catch (error) {
+    console.error('[llm_extractor] ❌ Raw chapter extraction failed:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Generate sections from raw chapter markdown (Phase 2)
+ * Takes unsectionalized markdown and intelligently splits into logical sections
+ *
+ * @param {number} chapterNumber - Chapter number
+ * @param {string} chapterTitle - Chapter title
+ * @param {string[]} rawMarkdownSources - Array of raw markdown from different sources
+ * @returns {Promise<object>} - {sections: [{name, description, markdown}]}
+ */
+export async function generateSectionsFromRawMarkdown(chapterNumber, chapterTitle, rawMarkdownSources) {
+  console.log(`[llm_extractor] Starting section generation for Chapter ${chapterNumber}: ${chapterTitle}`);
+  console.log(`[llm_extractor] Processing ${rawMarkdownSources.length} source(s)`);
+
+  const provider = getProvider();
+
+  // Combine all sources with separators
+  const combinedMarkdown = rawMarkdownSources.map((md, idx) => {
+    return `<!-- SOURCE ${idx + 1} -->\n\n${md}`;
+  }).join('\n\n<!-- END SOURCE -->\n\n');
+
+  const totalLength = combinedMarkdown.length;
+  console.log(`[llm_extractor] Total content: ${(totalLength / 1024).toFixed(1)}KB`);
+
+  const systemPrompt = `You are an expert educational content organizer specializing in creating logical section breakdowns for textbook chapters.
+
+Your task: Take raw chapter markdown and split it into well-organized sections that students can learn from incrementally.`;
+
+  const userPrompt = `You have the COMPLETE content for **Chapter ${chapterNumber}: ${chapterTitle}**.
+
+${rawMarkdownSources.length > 1 ? `This chapter combines content from ${rawMarkdownSources.length} different sources (marked with <!-- SOURCE N --> tags). Your job is to intelligently merge and organize ALL this content into logical sections.` : 'This chapter comes from a single source. Your job is to organize it into logical sections.'}
+
+**YOUR TASK:**
+Split this chapter into logical sections that make sense for learning. Each section should cover a coherent topic or concept.
+
+**SECTION ORGANIZATION:**
+- Create 3-10 sections per chapter (depending on content)
+- Each section should be substantial (not too granular)
+- Sections should follow natural learning progression
+- Use clear, descriptive names (e.g., "5.1 Introduction to Limits", "Newton's First Law")
+
+${rawMarkdownSources.length > 1 ? `
+**MULTI-SOURCE MERGING:**
+- If multiple sources cover the same topic, MERGE them intelligently
+- Use the best explanation, but include additional examples/perspectives from other sources
+- Eliminate redundancy - don't repeat the same explanation twice
+- If one source has a better derivation/proof, use that one
+- Combine worked examples from all sources
+- Create ONE unified section per topic, not separate sections per source
+` : ''}
+
+**FOR EACH SECTION PROVIDE:**
+- **name**: Clear section name (e.g., "5.2 Limit Laws and Properties")
+- **description**: 1-2 sentence overview of concepts covered
+- **markdown**: Complete markdown content for this section
+  - Include ALL relevant content from the raw chapter
+  - Preserve ALL formulas, examples, proofs, tables
+  - Maintain high fidelity to original content
+  - This will be used for concept generation later
+
+**CONTENT PRESERVATION:**
+- Do NOT summarize or abbreviate - keep full content
+- Do NOT lose any formulas, examples, or key information
+- ALL content from raw markdown must appear in some section
+- Quality AND quantity - preserve everything
+
+**CRITICAL JSON FORMATTING:**
+- Escape special characters properly
+- Use \\n for newlines
+- Escape quotes as \\"
+- Ensure valid JSON
+
+Here is the raw chapter content:
+
+\`\`\`markdown
+${combinedMarkdown}
+\`\`\`
+
+Generate a well-organized section breakdown that preserves ALL content.`;
+
+  const responseSchema = {
+    type: 'object',
+    properties: {
+      sections: {
+        type: 'array',
+        description: 'Array of sections created from raw chapter markdown',
+        minItems: 1,
+        items: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Clear, descriptive section name'
+            },
+            description: {
+              type: 'string',
+              description: 'Brief 1-2 sentence overview of concepts covered in this section'
+            },
+            markdown: {
+              type: 'string',
+              description: 'Complete markdown content for this section (properly escaped for JSON)'
+            }
+          },
+          required: ['name', 'description', 'markdown']
+        }
+      }
+    },
+    required: ['sections']
+  };
+
+  try {
+    // For text-only generation (no PDF input), use the text generation method
+    const result = await provider.generateText(systemPrompt, userPrompt, responseSchema);
+
+    console.log('[llm_extractor] ✅ Section generation successful');
+    console.log(`[llm_extractor] Sections: ${result.sections.length}`);
+    result.sections.forEach((section, idx) => {
+      const markdownLength = section.markdown?.length || 0;
+      console.log(`[llm_extractor]   ${idx + 1}. ${section.name} (${(markdownLength / 1024).toFixed(1)}KB)`);
+    });
+
+    return result;
+  } catch (error) {
+    console.error('[llm_extractor] ❌ Section generation failed:', error.message);
+    throw error;
+  }
+}
+
 export default extractStructuredSections;
