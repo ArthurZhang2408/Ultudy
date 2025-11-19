@@ -19,10 +19,9 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
   const router = useRouter();
   const { getToken } = useAuth();
   const { courses } = useFetchCourses();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
-  const [chapter, setChapter] = useState('');
-  const [materialType, setMaterialType] = useState('textbook');
+  const [materialType, setMaterialType] = useState<string>('textbook');
   const [title, setTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,11 +61,15 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     }
   }, [isOpen, onClose]);
 
+  // Determine if this material type uses chapter-based processing
+  const usesChapterProcessing = ['textbook', 'lecture'].includes(materialType);
+  const supportsMultipleFiles = usesChapterProcessing;
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!file) {
-      setError('Please select a PDF file to upload.');
+    if (files.length === 0) {
+      setError('Please select at least one PDF file to upload.');
       return;
     }
 
@@ -80,77 +83,139 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('course_id', courseId);
-      formData.append('chapter', chapter || '');
-      formData.append('material_type', materialType);
-      formData.append('title', title || file.name.replace('.pdf', ''));
 
-      // For files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
-      const FILE_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB
-      const useDirectUpload = file.size > FILE_SIZE_LIMIT;
+      if (usesChapterProcessing) {
+        // Multiple file upload for chapter-based processing
+        files.forEach(file => {
+          formData.append('files', file);
+        });
+        formData.append('course_id', courseId);
+        formData.append('material_type', materialType);
+        formData.append('title', title || `${materialType} materials`);
 
-      let uploadRes;
-      if (useDirectUpload) {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
+        console.log(`[UploadModal] Uploading ${files.length} files for chapter processing`);
 
-        // Get auth token for direct backend upload
+        // Get auth token for backend upload
         const token = await getToken();
         if (!token) {
           throw new Error('Authentication required');
         }
 
-        // Upload directly to backend
-        uploadRes = await fetch(`${getBackendUrl()}/upload/pdf-structured`, {
+        // Upload to chapter-based endpoint
+        const uploadRes = await fetch(`${getBackendUrl()}/upload/pdf-chapters`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`
           },
           body: formData
         });
-      } else {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
 
-        // Use Vercel API route as proxy (for files <= 4MB)
-        uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json().catch(() => ({}));
+          console.error('[UploadModal] Upload failed:', uploadRes.status, errorData);
+          throw new Error(errorData.error || 'Upload failed');
+        }
+
+        const uploadData = await uploadRes.json();
+        const { job_id, upload_batch_id, file_count } = uploadData;
+
+        console.log('[UploadModal] Chapter upload successful:', { job_id, upload_batch_id, file_count });
+
+        // Store job in session storage
+        const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
+        processingJobs.push({
+          job_id,
+          upload_batch_id,
+          course_id: courseId,
+          title: title || `${materialType} materials`,
+          type: 'chapter_upload',
+          file_count,
+          started_at: new Date().toISOString()
         });
+        sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
+
+        // Reset form and close modal
+        setFiles([]);
+        setTitle('');
+        setIsUploading(false);
+        onClose();
+
+        // Redirect to course page
+        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+      } else {
+        // Single file upload for legacy processing (tutorial, exam)
+        const file = files[0];
+        formData.append('file', file);
+        formData.append('course_id', courseId);
+        formData.append('chapter', ''); // No chapter for non-textbook/lecture
+        formData.append('material_type', materialType);
+        formData.append('title', title || file.name.replace('.pdf', ''));
+
+        // For files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
+        const FILE_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB
+        const useDirectUpload = file.size > FILE_SIZE_LIMIT;
+
+        let uploadRes;
+        if (useDirectUpload) {
+          console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
+
+          // Get auth token for direct backend upload
+          const token = await getToken();
+          if (!token) {
+            throw new Error('Authentication required');
+          }
+
+          // Upload directly to backend
+          uploadRes = await fetch(`${getBackendUrl()}/upload/pdf-structured`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`
+            },
+            body: formData
+          });
+        } else {
+          console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
+
+          // Use Vercel API route as proxy (for files <= 4MB)
+          uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          });
+        }
+
+        if (!uploadRes.ok) {
+          const errorData = await uploadRes.json().catch(() => ({}));
+          console.error('[UploadModal] Upload failed:', uploadRes.status, errorData);
+          throw new Error(errorData.error || 'Upload failed');
+        }
+
+        const uploadData = await uploadRes.json();
+        const { job_id, document_id } = uploadData;
+
+        console.log('[UploadModal] Upload successful:', { job_id, document_id });
+
+        // Store job in session storage
+        const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
+        processingJobs.push({
+          job_id,
+          document_id,
+          course_id: courseId,
+          chapter: null,
+          title: title || file.name.replace('.pdf', ''),
+          type: 'upload',
+          started_at: new Date().toISOString()
+        });
+        sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
+
+        // Reset form and close modal
+        setFiles([]);
+        setTitle('');
+        setIsUploading(false);
+        onClose();
+
+        // Redirect to course page
+        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
       }
-
-      if (!uploadRes.ok) {
-        const errorData = await uploadRes.json().catch(() => ({}));
-        console.error('[UploadModal] Upload failed:', uploadRes.status, errorData);
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const uploadData = await uploadRes.json();
-      const { job_id, document_id } = uploadData;
-
-      console.log('[UploadModal] Upload successful:', { job_id, document_id });
-
-      // Store job in session storage
-      const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
-      processingJobs.push({
-        job_id,
-        document_id,
-        course_id: courseId,
-        chapter: chapter || null,
-        title: title || file.name.replace('.pdf', ''),
-        type: 'upload',
-        started_at: new Date().toISOString()
-      });
-      sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
-
-      // Reset form and close modal
-      setFile(null);
-      setChapter('');
-      setTitle('');
-      setIsUploading(false);
-      onClose();
-
-      // Redirect to course page
-      router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
     } catch (err) {
       console.error('[UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -174,28 +239,52 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     e.preventDefault();
     setIsDragging(false);
 
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === 'application/pdf') {
-      setFile(droppedFile);
-      if (!title) {
-        setTitle(droppedFile.name.replace('.pdf', ''));
-      }
-    } else {
-      setError('Please drop a PDF file');
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const pdfFiles = droppedFiles.filter(f => f.type === 'application/pdf');
+
+    if (pdfFiles.length === 0) {
+      setError('Please drop PDF files only');
+      return;
+    }
+
+    if (!supportsMultipleFiles && pdfFiles.length > 1) {
+      setError('This material type only supports single file upload');
+      return;
+    }
+
+    setFiles(supportsMultipleFiles ? pdfFiles : [pdfFiles[0]]);
+    if (!title && pdfFiles.length === 1) {
+      setTitle(pdfFiles[0].name.replace('.pdf', ''));
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      if (!title) {
-        setTitle(selectedFile.name.replace('.pdf', ''));
-      }
+    const selectedFiles = Array.from(e.target.files || []);
+    const pdfFiles = selectedFiles.filter(f => f.type === 'application/pdf');
+
+    if (pdfFiles.length === 0) {
+      setError('Please select PDF files only');
+      return;
+    }
+
+    if (!supportsMultipleFiles && pdfFiles.length > 1) {
+      setError('This material type only supports single file upload');
+      return;
+    }
+
+    setFiles(supportsMultipleFiles ? pdfFiles : [pdfFiles[0]]);
+    if (!title && pdfFiles.length === 1) {
+      setTitle(pdfFiles[0].name.replace('.pdf', ''));
     }
   };
 
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
+  };
+
   if (!isOpen || !mounted) return null;
+
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
 
   const modalContent = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
@@ -242,11 +331,50 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Material Type Selection - First */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Material Type</h3>
+                <CustomSelect
+                  label="Select Material Type"
+                  value={materialType}
+                  onChange={(value) => {
+                    setMaterialType(value);
+                    // Reset files when changing type
+                    setFiles([]);
+                  }}
+                  fullWidth
+                  dropdownDirection="down"
+                  options={[
+                    { value: 'textbook', label: 'Textbook / Lecture Notes (Multiple Files)' },
+                    { value: 'lecture', label: 'Lecture Notes (Multiple Files)' },
+                    { value: 'tutorial', label: 'Tutorial Notes' },
+                    { value: 'exam', label: 'Practice Problems & Solutions / Past Exams' }
+                  ]}
+                />
+                {usesChapterProcessing && (
+                  <div className="flex items-start gap-2 rounded-lg border border-primary-200 dark:border-primary-800/50 bg-primary-50 dark:bg-primary-900/20 p-3">
+                    <svg className="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="text-sm text-primary-800 dark:text-primary-300">
+                      <p className="font-medium">Chapter-based processing enabled</p>
+                      <p className="mt-1">Upload multiple files (e.g., textbook + lecture notes). Our AI will intelligently merge overlapping content and organize everything by chapters.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* File Upload Section */}
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">Upload PDF Document</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-300">Drag and drop your PDF file or click to browse</p>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                    Upload PDF {supportsMultipleFiles ? 'Documents' : 'Document'}
+                  </h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                    {supportsMultipleFiles
+                      ? 'Drag and drop multiple PDF files or click to browse'
+                      : 'Drag and drop your PDF file or click to browse'}
+                  </p>
                 </div>
 
                 {/* Drag and Drop Area */}
@@ -259,7 +387,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200
                     ${isDragging
                       ? 'border-primary-500 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20'
-                      : file
+                      : files.length > 0
                       ? 'border-success-500 dark:border-success-600 bg-success-50 dark:bg-success-900/20'
                       : 'border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 hover:border-primary-400 dark:hover:border-primary-600'
                     }
@@ -269,21 +397,24 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     ref={fileInputRef}
                     type="file"
                     accept="application/pdf"
+                    multiple={supportsMultipleFiles}
                     onChange={handleFileSelect}
                     className="hidden"
                   />
 
-                  {file ? (
-                    <div className="space-y-2">
+                  {files.length > 0 ? (
+                    <div className="space-y-3">
                       <div className="w-12 h-12 bg-success-500 dark:bg-success-600 rounded-full flex items-center justify-center mx-auto">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="font-semibold text-success-900 dark:text-success-300">{file.name}</p>
+                        <p className="font-semibold text-success-900 dark:text-success-300">
+                          {files.length} file{files.length > 1 ? 's' : ''} selected
+                        </p>
                         <p className="text-sm text-success-700 dark:text-success-400 mt-1">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                          Total size: {(totalSize / 1024 / 1024).toFixed(2)} MB
                         </p>
                       </div>
                       <Button
@@ -292,10 +423,10 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setFile(null);
+                          fileInputRef.current?.click();
                         }}
                       >
-                        Remove file
+                        {supportsMultipleFiles ? 'Add more files' : 'Change file'}
                       </Button>
                     </div>
                   ) : (
@@ -307,7 +438,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                       </div>
                       <div>
                         <p className="font-semibold text-neutral-900 dark:text-neutral-100">
-                          Drop your PDF here
+                          Drop your PDF{supportsMultipleFiles ? 's' : ''} here
                         </p>
                         <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
                           or click to browse files
@@ -317,6 +448,48 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     </div>
                   )}
                 </div>
+
+                {/* File List */}
+                {files.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Selected Files:</h4>
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {files.map((file, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800"
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <svg className="w-5 h-5 text-danger-600 dark:text-danger-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                            </svg>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                {file.name}
+                              </p>
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {(file.size / 1024 / 1024).toFixed(2)} MB
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFile(index);
+                            }}
+                            className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"
+                            aria-label="Remove file"
+                          >
+                            <svg className="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Document Details */}
@@ -341,38 +514,13 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 )}
 
                 <Input
-                  label="Document Title"
+                  label="Title (Optional)"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Auto-filled from filename"
+                  placeholder={files.length === 1 ? "Auto-filled from filename" : "e.g., ECE 358 Course Materials"}
                   fullWidth
                 />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <CustomSelect
-                    label="Material Type"
-                    value={materialType}
-                    onChange={(value) => setMaterialType(value)}
-                    fullWidth
-                    dropdownDirection="up"
-                    options={[
-                      { value: 'textbook', label: 'Textbook' },
-                      { value: 'lecture', label: 'Lecture Notes' },
-                      { value: 'tutorial', label: 'Tutorial' },
-                      { value: 'exam', label: 'Exam / Practice' }
-                    ]}
-                  />
-
-                  <Input
-                    label="Chapter/Section"
-                    type="text"
-                    value={chapter}
-                    onChange={(e) => setChapter(e.target.value)}
-                    placeholder="e.g., Chapter 1"
-                    fullWidth
-                  />
-                </div>
               </div>
 
               {error && (
@@ -397,11 +545,15 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isUploading || !file}
+                  disabled={isUploading || files.length === 0}
                   loading={isUploading}
                   variant="primary"
                 >
-                  {isUploading ? 'Uploading...' : 'Upload PDF'}
+                  {isUploading
+                    ? 'Uploading...'
+                    : files.length > 1
+                      ? `Upload ${files.length} PDFs`
+                      : 'Upload PDF'}
                 </Button>
               </div>
             </form>

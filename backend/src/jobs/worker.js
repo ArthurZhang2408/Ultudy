@@ -6,7 +6,7 @@
  */
 
 import { uploadQueue, lessonQueue } from './queue.js';
-import { processUploadJob } from './processors/upload.processor.js';
+import { processUploadJob, processChapterUploadJob } from './processors/upload.processor.js';
 import { processLessonJob } from './processors/lesson.processor.js';
 import { createJobTracker } from './tracking.js';
 import createStudyService from '../study/service.js';
@@ -50,14 +50,30 @@ export function setupWorkers(options = {}) {
   console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
 
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
+  // Routes to appropriate processor based on job type
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
     console.log(`[Worker:${WORKER_ID}] Processing upload job ${job.id}`);
-    return await processUploadJob(job, {
-      tenantHelpers,
-      jobTracker,
-      storageDir,
-      storageService
-    });
+
+    // Route to appropriate processor based on job data
+    const isChapterUpload = job.data.uploadBatchId && job.data.files && Array.isArray(job.data.files);
+
+    if (isChapterUpload) {
+      console.log(`[Worker:${WORKER_ID}] Routing to chapter upload processor`);
+      return await processChapterUploadJob(job, {
+        tenantHelpers,
+        jobTracker,
+        storageDir,
+        storageService
+      });
+    } else {
+      console.log(`[Worker:${WORKER_ID}] Routing to single file upload processor`);
+      return await processUploadJob(job, {
+        tenantHelpers,
+        jobTracker,
+        storageDir,
+        storageService
+      });
+    }
   });
 
   // Lesson generation job processor - process up to LESSON_CONCURRENCY jobs in parallel

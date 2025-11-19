@@ -9,19 +9,33 @@ import { spawn } from 'child_process';
 console.log('=== Starting Ultudy Backend ===');
 console.log('Step 1: Running database migrations...\n');
 
-// Run migration
-const migrate = spawn('node', ['scripts/add-archived-columns.js'], {
+// Run first migration
+const migrate1 = spawn('node', ['scripts/add-archived-columns.js'], {
   stdio: 'inherit',
   env: process.env,
 });
 
-migrate.on('close', (code) => {
+migrate1.on('close', (code) => {
   if (code !== 0) {
-    console.error(`Migration failed with code ${code}`);
+    console.error(`First migration failed with code ${code}`);
     process.exit(1);
   }
 
-  console.log('\nStep 2: Starting server...\n');
+  console.log('\nStep 2: Running chapters migration...\n');
+
+  // Run second migration
+  const migrate2 = spawn('node', ['scripts/add-chapters-tables.js'], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+
+  migrate2.on('close', (code2) => {
+    if (code2 !== 0) {
+      console.error(`Second migration failed with code ${code2}`);
+      process.exit(1);
+    }
+
+    console.log('\nStep 3: Starting server...\n');
 
   // Start the server
   const server = spawn('node', ['src/server.js'], {
@@ -43,4 +57,5 @@ migrate.on('close', (code) => {
     console.log('Received SIGINT, shutting down gracefully');
     server.kill('SIGINT');
   });
-});
+  }); // Close migrate2.on('close')
+}); // Close migrate1.on('close')
