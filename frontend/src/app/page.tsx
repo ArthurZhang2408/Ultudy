@@ -454,9 +454,7 @@ function PreLaunchPage() {
   const launchDate = process.env.NEXT_PUBLIC_LAUNCH_DATE || '2025-12-31T00:00:00';
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      {/* Subtle background gradient */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950" />
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-neutral-50 dark:bg-neutral-950">
 
       <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
         {/* Success Badge */}
@@ -533,9 +531,7 @@ function PreLaunchPage() {
 // Landing page - design system compliant
 function LandingPage() {
   return (
-    <div className="space-y-20 pb-16">
-      {/* Subtle background gradient */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-br from-neutral-50 via-primary-50/30 to-neutral-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950" />
+    <div className="space-y-20 pb-16 bg-neutral-50 dark:bg-neutral-950">
 
       {/* Hero Section */}
       <section className="relative py-20 text-center animate-fade-in">
