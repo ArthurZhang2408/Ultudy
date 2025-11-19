@@ -454,13 +454,7 @@ function PreLaunchPage() {
   const launchDate = process.env.NEXT_PUBLIC_LAUNCH_DATE || '2025-12-31T00:00:00';
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative">
-      {/* Elegant layered background - full viewport coverage */}
-      <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20" />
-      <div className="fixed bottom-0 right-0 -z-10 w-[800px] h-[800px] bg-primary-200/30 dark:bg-primary-800/10 rounded-full blur-3xl" />
-      <div className="fixed top-0 left-0 -z-10 w-[800px] h-[800px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl" />
-
+    <div className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
         {/* Success Badge */}
         <Badge variant="success" size="lg" className="gap-2">
@@ -536,13 +530,7 @@ function PreLaunchPage() {
 // Landing page - design system compliant
 function LandingPage() {
   return (
-    <div className="space-y-20 pb-16 relative">
-      {/* Elegant layered background - full viewport coverage */}
-      <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
-      <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20" />
-      <div className="fixed bottom-0 right-0 -z-10 w-[800px] h-[800px] bg-primary-200/30 dark:bg-primary-800/10 rounded-full blur-3xl" />
-      <div className="fixed top-0 left-0 -z-10 w-[800px] h-[800px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl" />
-
+    <div className="space-y-20 pb-16">
       {/* Hero Section */}
       <section className="relative py-20 text-center animate-fade-in">
         <div className="max-w-5xl mx-auto space-y-8">

@@ -32,8 +32,17 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
-      <body className="min-h-screen">
+      <body className="min-h-screen relative">
         <ThemeProvider />
+        {isLandingMode && (
+          <>
+            {/* Elegant layered background - full viewport coverage */}
+            <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
+            <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20" />
+            <div className="fixed bottom-0 right-0 -z-10 w-[800px] h-[800px] bg-primary-200/30 dark:bg-primary-800/10 rounded-full blur-3xl" />
+            <div className="fixed top-0 left-0 -z-10 w-[800px] h-[800px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl" />
+          </>
+        )}
         {authEnabled ? (
           <>
             <SignedIn>
