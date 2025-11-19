@@ -26,12 +26,14 @@ type Document = {
 
 type ProcessingJob = {
   job_id: string;
-  document_id: string;
+  document_id?: string; // Optional for chapter uploads
+  upload_batch_id?: string; // For chapter uploads
+  file_count?: number; // For chapter uploads
   title?: string;
   section_name?: string;
   section_id?: string;
   section_number?: number;
-  type: 'upload' | 'lesson';
+  type: 'upload' | 'lesson' | 'chapter_upload';
   progress: number;
   status: string;
   chapter?: string;
@@ -191,9 +193,11 @@ export default function CoursePage() {
           .filter((job: any) => job.course_id === courseId)
           .map((job: any) => ({
             job_id: job.job_id,
-            document_id: job.document_id,
+            document_id: job.document_id, // May be undefined for chapter uploads
+            upload_batch_id: job.upload_batch_id, // For chapter uploads
+            file_count: job.file_count, // For chapter uploads
             title: job.title,
-            type: 'upload' as const,
+            type: job.type || 'upload' as const, // Preserve original type (upload or chapter_upload)
             progress: 0,
             status: 'queued',
             chapter: job.chapter
@@ -661,7 +665,11 @@ export default function CoursePage() {
   }, {} as Record<string, Document[]>);
 
   // Include chapters from processing jobs that don't have documents yet
+  // Skip chapter_upload jobs since they create chapters dynamically
   processingJobs.forEach(job => {
+    if (job.type === 'chapter_upload') {
+      return; // Don't create placeholder chapters for batch uploads
+    }
     const chapter = job.chapter || 'Uncategorized';
     if (!documentsByChapter[chapter]) {
       documentsByChapter[chapter] = [];
@@ -914,7 +922,12 @@ export default function CoursePage() {
                   <div className="grid gap-4">
                     {/* Processing Jobs - Filter by chapter, exclude completed jobs, and hide if document already exists */}
                     {processingJobs.filter(job => {
-                      // Filter by chapter and type
+                      // For chapter uploads, only show in first chapter (they create multiple chapters)
+                      if (job.type === 'chapter_upload') {
+                        return chapter === chapters[0] && job.status !== 'completed';
+                      }
+
+                      // For regular uploads, filter by chapter
                       if ((job.chapter || 'Uncategorized') !== chapter || job.type !== 'upload') {
                         return false;
                       }
@@ -944,8 +957,13 @@ export default function CoursePage() {
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                   <Badge variant="primary" size="sm">
-                                    Uploading...
+                                    {job.type === 'chapter_upload' ? 'Processing Chapters...' : 'Uploading...'}
                                   </Badge>
+                                  {job.type === 'chapter_upload' && job.file_count && (
+                                    <span className="text-xs text-primary-700 dark:text-primary-400">
+                                      {job.file_count} files
+                                    </span>
+                                  )}
                                   <span className="text-xs text-primary-700 dark:text-primary-400">
                                     {job.status === 'processing' ? `${job.progress}%` : job.status}
                                   </span>
