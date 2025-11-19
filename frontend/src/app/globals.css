@@ -5,7 +5,13 @@
 @layer base {
   html {
     @apply bg-neutral-50 text-neutral-900;
-    @apply dark:bg-neutral-950 dark:text-neutral-100;
+    @apply dark:text-neutral-100;
+  }
+
+  /* Dark mode gradient background */
+  html.dark {
+    background: linear-gradient(135deg, #0a0a0f 0%, #0f1419 25%, #121820 50%, #0d1117 75%, #0a0a0f 100%);
+    background-attachment: fixed;
   }
 
   body {
