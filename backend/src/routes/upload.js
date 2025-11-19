@@ -14,50 +14,63 @@ export default function createUploadRouter(options = {}) {
   // LLM-based structured extraction (ASYNC)
   // This endpoint is used when PDF_UPLOAD_STRATEGY=vision in .env
   // Returns immediately with a job ID, processing happens in background
-  router.post('/pdf-structured', upload.single('file'), async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: 'Missing PDF file' });
+  // Now supports multiple files
+  router.post('/pdf-structured', upload.array('files', 50), async (req, res) => {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'Missing PDF files' });
     }
 
     try {
       const ownerId = req.userId || 'dev-user-001';
       const documentId = randomUUID();
-      const storageKey = StorageService.generatePdfKey(ownerId, documentId);
 
       // Extract metadata from form data
       const courseId = req.body.course_id || null;
-      const chapter = req.body.chapter || null;
       const materialType = req.body.material_type || null;
       const title = req.body.title || null;
 
-      console.log('[upload/pdf-structured] Saving PDF to storage...');
+      console.log('[upload/pdf-structured] Saving PDFs to storage...');
       console.log('[upload/pdf-structured] Storage type:', storageService.getType());
-      console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });
+      console.log('[upload/pdf-structured] File count:', req.files.length);
+      console.log('[upload/pdf-structured] Metadata:', { courseId, materialType, title });
 
-      // Save PDF to storage (S3 or local filesystem)
-      const uploadResult = await storageService.upload(storageKey, req.file.buffer, {
-        contentType: 'application/pdf',
-        metadata: {
-          originalFilename: req.file.originalname,
-          courseId: courseId || '',
-          documentId
-        }
-      });
+      // Save all PDFs to storage
+      const uploadedFiles = [];
+      for (const file of req.files) {
+        const fileId = randomUUID();
+        const storageKey = StorageService.generatePdfKey(ownerId, fileId);
 
-      console.log(`[upload/pdf-structured] PDF saved:`, {
-        storageKey,
-        location: uploadResult.location,
-        backend: uploadResult.backend
-      });
+        const uploadResult = await storageService.upload(storageKey, file.buffer, {
+          contentType: 'application/pdf',
+          metadata: {
+            originalFilename: file.originalname,
+            courseId: courseId || '',
+            documentId,
+            fileId
+          }
+        });
+
+        uploadedFiles.push({
+          fileId,
+          originalFilename: file.originalname,
+          storageKey,
+          storageLocation: uploadResult.location,
+          size: file.size
+        });
+
+        console.log(`[upload/pdf-structured] File saved:`, {
+          filename: file.originalname,
+          storageKey,
+          location: uploadResult.location
+        });
+      }
 
       // Create job in database with metadata
       const jobId = await options.jobTracker.createJob(ownerId, 'upload_pdf', {
         document_id: documentId,
-        original_filename: req.file.originalname,
-        storage_key: storageKey,
-        storage_location: uploadResult.location,
+        file_count: req.files.length,
+        files: uploadedFiles,
         course_id: courseId,
-        chapter: chapter,
         material_type: materialType,
         title: title
       });
@@ -67,23 +80,20 @@ export default function createUploadRouter(options = {}) {
         jobId,
         ownerId,
         documentId,
-        storageKey,
-        storageLocation: uploadResult.location,
-        originalFilename: req.file.originalname,
+        files: uploadedFiles,
         courseId,
-        chapter,
         materialType,
         title
       });
 
-      console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId}`);
+      console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId} with ${uploadedFiles.length} files`);
 
       // Return immediately with job ID
       res.json({
         job_id: jobId,
         document_id: documentId,
         status: 'queued',
-        message: 'Upload queued for processing'
+        message: `Upload queued for processing (${uploadedFiles.length} files)`
       });
     } catch (error) {
       console.error('[upload/pdf-structured] ❌ Error:', error);

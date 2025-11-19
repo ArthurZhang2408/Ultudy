@@ -19,11 +19,13 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
 
-    // Check file size before forwarding (50MB limit)
-    const file = formData.get('file') as File;
-    if (file && file.size > 50 * 1024 * 1024) {
+    // Check total file size before forwarding (50MB limit)
+    const files = formData.getAll('files') as File[];
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+
+    if (totalSize > 50 * 1024 * 1024) {
       return NextResponse.json(
-        { error: 'File too large. Maximum size is 50MB.' },
+        { error: 'Total file size too large. Maximum total size is 50MB.' },
         { status: 413 }
       );
     }

@@ -19,9 +19,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
   const router = useRouter();
   const { getToken } = useAuth();
   const { courses } = useFetchCourses();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
-  const [chapter, setChapter] = useState('');
   const [materialType, setMaterialType] = useState('textbook');
   const [title, setTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
@@ -65,8 +64,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!file) {
-      setError('Please select a PDF file to upload.');
+    if (files.length === 0) {
+      setError('Please select at least one PDF file to upload.');
       return;
     }
 
@@ -80,19 +79,21 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
       formData.append('course_id', courseId);
-      formData.append('chapter', chapter || '');
       formData.append('material_type', materialType);
-      formData.append('title', title || file.name.replace('.pdf', ''));
+      formData.append('title', title || `${materialType} materials`);
 
-      // For files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
+      // For total files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
       const FILE_SIZE_LIMIT = 4 * 1024 * 1024; // 4MB
-      const useDirectUpload = file.size > FILE_SIZE_LIMIT;
+      const totalSize = files.reduce((sum, f) => sum + f.size, 0);
+      const useDirectUpload = totalSize > FILE_SIZE_LIMIT;
 
       let uploadRes;
       if (useDirectUpload) {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
+        console.log(`[UploadModal] Total size ${(totalSize / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
 
         // Get auth token for direct backend upload
         const token = await getToken();
@@ -109,7 +110,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
           body: formData
         });
       } else {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
+        console.log(`[UploadModal] Total size ${(totalSize / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
 
         // Use Vercel API route as proxy (for files <= 4MB)
         uploadRes = await fetch('/api/upload', {
@@ -135,16 +136,16 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
         job_id,
         document_id,
         course_id: courseId,
-        chapter: chapter || null,
-        title: title || file.name.replace('.pdf', ''),
+        title: title || `${materialType} materials`,
         type: 'upload',
+        material_type: materialType,
+        file_count: files.length,
         started_at: new Date().toISOString()
       });
       sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
 
       // Reset form and close modal
-      setFile(null);
-      setChapter('');
+      setFiles([]);
       setTitle('');
       setIsUploading(false);
       onClose();
@@ -174,25 +175,25 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     e.preventDefault();
     setIsDragging(false);
 
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type === 'application/pdf') {
-      setFile(droppedFile);
-      if (!title) {
-        setTitle(droppedFile.name.replace('.pdf', ''));
-      }
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const pdfFiles = droppedFiles.filter(file => file.type === 'application/pdf');
+
+    if (pdfFiles.length > 0) {
+      setFiles(pdfFiles);
     } else {
-      setError('Please drop a PDF file');
+      setError('Please drop PDF files only');
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      if (!title) {
-        setTitle(selectedFile.name.replace('.pdf', ''));
-      }
+    const selectedFiles = e.target.files;
+    if (selectedFiles && selectedFiles.length > 0) {
+      setFiles(Array.from(selectedFiles));
     }
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
   };
 
   if (!isOpen || !mounted) return null;
@@ -245,8 +246,8 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
               {/* File Upload Section */}
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">Upload PDF Document</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-300">Drag and drop your PDF file or click to browse</p>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">Upload PDF Documents</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-300">Drag and drop your PDF files or click to browse (multiple files supported)</p>
                 </div>
 
                 {/* Drag and Drop Area */}
@@ -259,7 +260,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200
                     ${isDragging
                       ? 'border-primary-500 dark:border-primary-600 bg-primary-50 dark:bg-primary-900/20'
-                      : file
+                      : files.length > 0
                       ? 'border-success-500 dark:border-success-600 bg-success-50 dark:bg-success-900/20'
                       : 'border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 hover:border-primary-400 dark:hover:border-primary-600'
                     }
@@ -269,22 +270,42 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                     ref={fileInputRef}
                     type="file"
                     accept="application/pdf"
+                    multiple
                     onChange={handleFileSelect}
                     className="hidden"
                   />
 
-                  {file ? (
-                    <div className="space-y-2">
+                  {files.length > 0 ? (
+                    <div className="space-y-3">
                       <div className="w-12 h-12 bg-success-500 dark:bg-success-600 rounded-full flex items-center justify-center mx-auto">
                         <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="font-semibold text-success-900 dark:text-success-300">{file.name}</p>
+                        <p className="font-semibold text-success-900 dark:text-success-300">{files.length} file{files.length > 1 ? 's' : ''} selected</p>
                         <p className="text-sm text-success-700 dark:text-success-400 mt-1">
-                          {(file.size / 1024 / 1024).toFixed(2)} MB
+                          Total: {(files.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(2)} MB
                         </p>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1 text-sm">
+                        {files.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between gap-2 p-2 bg-white dark:bg-neutral-800 rounded border border-success-200 dark:border-success-800">
+                            <span className="truncate text-success-900 dark:text-success-300">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFile(index);
+                              }}
+                              className="flex-shrink-0 p-1 hover:bg-danger-100 dark:hover:bg-danger-900/20 rounded text-danger-600 dark:text-danger-400"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
                       </div>
                       <Button
                         type="button"
@@ -292,10 +313,10 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setFile(null);
+                          setFiles([]);
                         }}
                       >
-                        Remove file
+                        Remove all files
                       </Button>
                     </div>
                   ) : (
@@ -307,13 +328,13 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                       </div>
                       <div>
                         <p className="font-semibold text-neutral-900 dark:text-neutral-100">
-                          Drop your PDF here
+                          Drop your PDFs here
                         </p>
                         <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
-                          or click to browse files
+                          or click to browse files (multiple files supported)
                         </p>
                       </div>
-                      <Badge variant="neutral">PDF files only</Badge>
+                      <Badge variant="neutral">PDF files only • Multiple files supported</Badge>
                     </div>
                   )}
                 </div>
@@ -340,39 +361,28 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                   />
                 )}
 
+                <CustomSelect
+                  label="Material Type"
+                  value={materialType}
+                  onChange={(value) => setMaterialType(value)}
+                  fullWidth
+                  dropdownDirection="up"
+                  options={[
+                    { value: 'textbook', label: 'Textbook / Lecture Notes' },
+                    { value: 'tutorial', label: 'Tutorial Notes' },
+                    { value: 'practice', label: 'Practice Problems & Solutions' },
+                    { value: 'exam', label: 'Past Exams & Solutions' }
+                  ]}
+                />
+
                 <Input
-                  label="Document Title"
+                  label="Title (Optional)"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Auto-filled from filename"
+                  placeholder={`e.g., ${materialType} materials`}
                   fullWidth
                 />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <CustomSelect
-                    label="Material Type"
-                    value={materialType}
-                    onChange={(value) => setMaterialType(value)}
-                    fullWidth
-                    dropdownDirection="up"
-                    options={[
-                      { value: 'textbook', label: 'Textbook' },
-                      { value: 'lecture', label: 'Lecture Notes' },
-                      { value: 'tutorial', label: 'Tutorial' },
-                      { value: 'exam', label: 'Exam / Practice' }
-                    ]}
-                  />
-
-                  <Input
-                    label="Chapter/Section"
-                    type="text"
-                    value={chapter}
-                    onChange={(e) => setChapter(e.target.value)}
-                    placeholder="e.g., Chapter 1"
-                    fullWidth
-                  />
-                </div>
               </div>
 
               {error && (
@@ -397,11 +407,11 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isUploading || !file}
+                  disabled={isUploading || files.length === 0}
                   loading={isUploading}
                   variant="primary"
                 >
-                  {isUploading ? 'Uploading...' : 'Upload PDF'}
+                  {isUploading ? 'Uploading...' : `Upload ${files.length} file${files.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>
             </form>
