@@ -188,9 +188,10 @@ export async function createGeminiVisionProvider() {
       console.log(`[gemini_vision] Total PDF size: ${totalSizeMB.toFixed(2)} MB`);
       console.log('[gemini_vision] Creating vision model with schema-based generation...');
 
-      // Create model with response schema for guaranteed valid JSON
-      const visionModel = process.env.GEMINI_VISION_MODEL || 'gemini-2.0-flash-exp';
-      const temperature = parseFloat(process.env.GEMINI_VISION_TEMPERATURE || '0.4');
+      // Use gemini-1.5-pro for multi-file extraction (better for complex tasks)
+      // gemini-1.5-flash would be too limited for 5+ files
+      const visionModel = process.env.GEMINI_VISION_MODEL || 'gemini-1.5-pro';
+      const temperature = parseFloat(process.env.GEMINI_VISION_TEMPERATURE || '0.2');
 
       console.log(`[gemini_vision] Using model: ${visionModel}, temperature: ${temperature}`);
 
@@ -218,7 +219,7 @@ export async function createGeminiVisionProvider() {
           responseMimeType: 'application/json',
           responseSchema: responseSchema,
           temperature: temperature,
-          maxOutputTokens: 32768 // Increase token limit for large multi-chapter responses
+          maxOutputTokens: 8192 // Gemini's actual output limit
         }
       });
 

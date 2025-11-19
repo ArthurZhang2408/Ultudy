@@ -319,15 +319,21 @@ Expected output: 15 chapters, each combining the textbook's theory with the lect
 **FOR EACH SECTION PROVIDE:**
 - **name**: Clear, descriptive name for this section
 - **description**: 1-2 sentence overview of concepts covered
-- **markdown**: Complete markdown content for this section (educational content only)
+- **markdown**: **CONCISE** summary of key concepts, formulas, and examples
+  - Focus on: Core concepts, important formulas, key definitions, worked examples
+  - Omit: Verbose explanations, redundant examples, auxiliary text
+  - Length: Aim for 200-500 words per section (not the entire textbook section!)
+  - Quality over quantity - capture essential knowledge, not every word
 
-**CONVERT ALL CONTENT FAITHFULLY:**
+**CONVERT CONTENT:**
 - Math equations → LaTeX ($inline$, $$display$$)
-- Tables → Markdown tables
-- Text formatting → **bold**, *italic*, # headers
-- Images → ![alt text](reference)
-- Code → \`\`\`language blocks\`\`\`
-- Lists → Numbered or bullet lists
+- Key formulas → Highlighted with LaTeX
+- Tables → Markdown tables (if essential)
+- Important text → **bold**, *italic*
+- Code → \`\`\`language blocks\`\`\` (if present)
+- Lists → Bullet/numbered for clarity
+
+**OUTPUT SIZE LIMIT:** Keep total response under 8000 tokens. Prioritize breadth (all chapters/sections) over depth (verbose content).
 
 **CRITICAL:** Ensure markdown is properly escaped for JSON!`;
 
