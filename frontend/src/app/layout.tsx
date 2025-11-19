@@ -59,7 +59,7 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
         ) : (
           <>
             {/* App mode: Simple gradient background, no animations */}
-            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900" />
+            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-800" />
           </>
         )}
         {authEnabled ? (
