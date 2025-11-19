@@ -207,11 +207,14 @@
   0%, 100% {
     transform: translate(0, 0) scale(1);
   }
-  33% {
-    transform: translate(30px, -30px) scale(1.05);
+  25% {
+    transform: translate(80px, -60px) scale(1.15);
   }
-  66% {
-    transform: translate(-20px, 20px) scale(0.95);
+  50% {
+    transform: translate(-40px, 40px) scale(0.85);
+  }
+  75% {
+    transform: translate(60px, 80px) scale(1.1);
   }
 }
 
@@ -219,31 +222,37 @@
   0%, 100% {
     transform: translate(0, 0) scale(1);
   }
-  33% {
-    transform: translate(-30px, 30px) scale(1.05);
+  25% {
+    transform: translate(-70px, 70px) scale(1.2);
   }
-  66% {
-    transform: translate(20px, -20px) scale(0.95);
+  50% {
+    transform: translate(50px, -50px) scale(0.9);
+  }
+  75% {
+    transform: translate(-60px, -40px) scale(1.05);
   }
 }
 
 @keyframes float-slow {
   0%, 100% {
-    transform: translate(0, 0) rotate(0deg);
+    transform: translate(0, 0) rotate(0deg) scale(1);
   }
-  50% {
-    transform: translate(20px, -40px) rotate(5deg);
+  33% {
+    transform: translate(100px, -80px) rotate(8deg) scale(1.15);
+  }
+  66% {
+    transform: translate(-50px, 60px) rotate(-8deg) scale(0.9);
   }
 }
 
 .animate-float {
-  animation: float 20s ease-in-out infinite;
+  animation: float 8s ease-in-out infinite;
 }
 
 .animate-float-reverse {
-  animation: float-reverse 25s ease-in-out infinite;
+  animation: float-reverse 10s ease-in-out infinite;
 }
 
 .animate-float-slow {
-  animation: float-slow 30s ease-in-out infinite;
+  animation: float-slow 12s ease-in-out infinite;
 }
