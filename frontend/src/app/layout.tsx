@@ -35,21 +35,14 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
       <body className="min-h-screen relative overflow-x-hidden bg-neutral-50 dark:bg-neutral-950">
         <ThemeProvider />
 
-        {/* Base background layer */}
-        <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
+        {isLandingMode ? (
+          <>
+            {/* Landing mode: Dynamic layered background with parallax effect */}
+            <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
+            <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20" />
 
-        {/* Gradient overlay - more prominent in landing, subtle in app mode */}
-        <div className={`fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] ${
-          isLandingMode
-            ? 'from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20'
-            : 'from-primary-100/20 via-transparent to-transparent dark:from-primary-900/10'
-        }`} />
-
-        {/* Animated background elements */}
-        <div className="fixed inset-0 -z-10 overflow-hidden">
-          {isLandingMode ? (
-            // Landing mode: full animated circles for parallax
-            <div className="absolute top-0 left-0 right-0 min-h-screen">
+            {/* Animated blurred circles - scrolling with content for parallax */}
+            <div className="absolute top-0 left-0 right-0 -z-10 min-h-screen">
               {/* Large circles */}
               <div className="absolute -top-20 -left-20 w-[600px] h-[600px] bg-primary-100/30 dark:bg-primary-900/15 rounded-full blur-3xl animate-float" />
               <div className="absolute top-40 -right-40 w-[700px] h-[700px] bg-primary-200/25 dark:bg-primary-800/10 rounded-full blur-3xl animate-float-reverse" />
@@ -62,15 +55,13 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
               <div className="absolute bottom-20 left-10 w-[550px] h-[550px] bg-primary-200/30 dark:bg-primary-800/15 rounded-full blur-3xl animate-float-reverse" />
               <div className="absolute bottom-0 right-0 w-[650px] h-[650px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl animate-float-slow" />
             </div>
-          ) : (
-            // App mode: subtle fixed background elements
-            <>
-              <div className="absolute -top-40 -left-40 w-[500px] h-[500px] bg-primary-100/20 dark:bg-primary-900/8 rounded-full blur-3xl animate-float-slow" />
-              <div className="absolute top-20 -right-60 w-[600px] h-[600px] bg-primary-200/15 dark:bg-primary-800/6 rounded-full blur-3xl animate-float-reverse" />
-              <div className="absolute bottom-0 left-1/3 w-[550px] h-[550px] bg-primary-100/15 dark:bg-primary-900/7 rounded-full blur-3xl animate-float" />
-            </>
-          )}
-        </div>
+          </>
+        ) : (
+          <>
+            {/* App mode: Simple gradient background, no animations */}
+            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-neutral-50 via-neutral-50 to-neutral-100 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900" />
+          </>
+        )}
         {authEnabled ? (
           <>
             <SignedIn>
