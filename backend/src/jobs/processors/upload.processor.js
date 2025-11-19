@@ -291,6 +291,8 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
   console.log(`[ChapterUploadProcessor] Starting job ${jobId} for batch ${uploadBatchId}`);
   console.log(`[ChapterUploadProcessor] Processing ${files.length} files`);
   console.log(`[ChapterUploadProcessor] Metadata: course=${courseId}, type=${materialType}`);
+  console.log(`[ChapterUploadProcessor] Job data:`, JSON.stringify(job.data, null, 2));
+  console.log(`[ChapterUploadProcessor] Files array:`, files);
 
   const tempFiles = [];
 
@@ -309,16 +311,28 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
       const file = files[i];
       console.log(`[ChapterUploadProcessor] Downloading ${i + 1}/${files.length}: ${file.storageKey}`);
 
-      const pdfBuffer = await storage.download(file.storageKey);
-      const tempPath = path.join(os.tmpdir(), `${randomUUID()}.pdf`);
-      await fs.writeFile(tempPath, pdfBuffer);
+      try {
+        const pdfBuffer = await storage.download(file.storageKey);
+        console.log(`[ChapterUploadProcessor]   Downloaded ${pdfBuffer?.length || 0} bytes`);
 
-      processingPaths.push(tempPath);
-      tempFiles.push(tempPath);
+        if (!pdfBuffer || pdfBuffer.length === 0) {
+          throw new Error(`Downloaded empty or null buffer for ${file.storageKey}`);
+        }
 
-      // Progress: 5-15% for downloading
-      const downloadProgress = 5 + Math.floor((i + 1) / files.length * 10);
-      await jobTracker.updateProgress(ownerId, jobId, downloadProgress);
+        const tempPath = path.join(os.tmpdir(), `${randomUUID()}.pdf`);
+        await fs.writeFile(tempPath, pdfBuffer);
+        console.log(`[ChapterUploadProcessor]   Written to temp file: ${tempPath}`);
+
+        processingPaths.push(tempPath);
+        tempFiles.push(tempPath);
+
+        // Progress: 5-15% for downloading
+        const downloadProgress = 5 + Math.floor((i + 1) / files.length * 10);
+        await jobTracker.updateProgress(ownerId, jobId, downloadProgress);
+      } catch (error) {
+        console.error(`[ChapterUploadProcessor] Failed to download ${file.storageKey}:`, error);
+        throw new Error(`Failed to download file ${file.originalFilename}: ${error.message}`);
+      }
     }
 
     console.log(`[ChapterUploadProcessor] All PDFs downloaded to temp files`);
@@ -328,6 +342,7 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
 
     // PHASE 1: Extract raw markdown from each PDF individually (no sections yet)
     console.log(`[ChapterUploadProcessor] Phase 1: Extracting raw markdown from ${files.length} PDFs...`);
+    console.log(`[ChapterUploadProcessor] processingPaths array:`, processingPaths);
     const allExtractions = [];
 
     for (let i = 0; i < processingPaths.length; i++) {
@@ -335,6 +350,11 @@ export async function processChapterUploadJob(job, { tenantHelpers, jobTracker, 
       const fileName = files[i].originalFilename;
 
       console.log(`[ChapterUploadProcessor] Extracting from file ${i + 1}/${files.length}: ${fileName}`);
+      console.log(`[ChapterUploadProcessor]   pdfPath = ${pdfPath} (type: ${typeof pdfPath})`);
+
+      if (!pdfPath) {
+        throw new Error(`pdfPath is ${pdfPath} for file ${fileName} at index ${i}`);
+      }
 
       try {
         const extraction = await extractChaptersWithRawMarkdown(pdfPath);
