@@ -958,12 +958,14 @@ export default function CoursePage() {
                                       )}
                                     </div>
                                     <div className="text-xs text-neutral-500 dark:text-neutral-500 ml-4">
-                                      {section.markdown_text.length.toLocaleString()} chars
+                                      {section.markdown_text?.length.toLocaleString() ?? 0} chars
                                     </div>
                                   </div>
                                 </div>
                                 <div className="prose prose-neutral dark:prose-invert max-w-none">
-                                  <FormattedText>{section.markdown_text}</FormattedText>
+                                  {section.markdown_text && (
+                                    <FormattedText>{section.markdown_text}</FormattedText>
+                                  )}
                                 </div>
                               </div>
                             </Card>
