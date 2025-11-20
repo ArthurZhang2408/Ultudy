@@ -28,12 +28,15 @@ export default function createCoursesRouter(options = {}) {
         const hasArchivedColumn = columnCheck.length > 0;
 
         if (hasArchivedColumn) {
-          // Auto-archive courses past exam date
+          // Auto-archive courses past exam date (only if never been manually unarchived)
+          // If archived_at is NULL, it means it's never been archived, so safe to auto-archive
+          // If archived_at is NOT NULL and archived is false, user manually unarchived it, so don't auto-archive
           await client.query(
             `UPDATE courses
              SET archived = true, archived_at = NOW()
              WHERE owner_id = $1
                AND archived = false
+               AND archived_at IS NULL
                AND exam_date IS NOT NULL
                AND exam_date < CURRENT_DATE`,
             [ownerId]
@@ -193,16 +196,16 @@ export default function createCoursesRouter(options = {}) {
         if (archived !== undefined && hasArchivedColumn) {
           updates.push(`archived = $${valueIndex++}`);
           values.push(archived);
-          // Set archived_at when archiving, clear when unarchiving
+          // Set archived_at when archiving, but DON'T clear it when unarchiving
+          // This allows auto-archive to detect manual unarchiving (archived=false but archived_at is set)
           if (archived) {
             updates.push(`archived_at = NOW()`);
-          } else {
-            updates.push(`archived_at = NULL`);
           }
+          // When unarchiving, keep archived_at so auto-archive knows user manually unarchived
         }
 
         if (updates.length === 0) {
-          return res.status(400).json({ error: 'No fields to update' });
+          throw new Error('No fields to update');
         }
 
         updates.push(`updated_at = NOW()`);
@@ -237,7 +240,11 @@ export default function createCoursesRouter(options = {}) {
       res.json(course);
     } catch (error) {
       console.error('Failed to update course', error);
-      res.status(500).json({ error: error.message || 'Failed to update course' });
+      // Return 400 for validation errors, 500 for server errors
+      const statusCode = error.message === 'No fields to update' ||
+                        error.message?.includes('Archive feature not yet available')
+                        ? 400 : 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to update course' });
     }
   });
 

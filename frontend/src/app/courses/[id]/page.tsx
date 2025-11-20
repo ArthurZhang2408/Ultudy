@@ -693,11 +693,18 @@ export default function CoursePage() {
               )}
               {course.exam_date && (
                 <Badge variant="warning" size="md" dot>
-                  Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  Exam: {(() => {
+                    // Parse date string as local date to avoid timezone issues
+                    // Handle both "YYYY-MM-DD" and ISO timestamp formats
+                    const dateStr = course.exam_date.split('T')[0]; // Extract date part if ISO timestamp
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    const localDate = new Date(year, month - 1, day);
+                    return localDate.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    });
+                  })()}
                 </Badge>
               )}
             </div>
@@ -732,7 +739,7 @@ export default function CoursePage() {
         </div>
       )}
 
-      {documents.length === 0 ? (
+      {documents.length === 0 && processingJobs.length === 0 ? (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
@@ -819,7 +826,8 @@ export default function CoursePage() {
               const isGenerating = processingJobs.some(job =>
                 job.type === 'lesson' &&
                 job.section_id === section.id &&
-                (job.chapter || 'Uncategorized') === chapter
+                (job.chapter || 'Uncategorized') === chapter &&
+                job.status !== 'completed'
               );
 
               // Add section overview square FIRST
@@ -904,8 +912,23 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
                   <div className="grid gap-4">
-                    {/* Processing Jobs - Filter by chapter */}
-                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter && job.type === 'upload').map((job) => (
+                    {/* Processing Jobs - Filter by chapter, exclude completed jobs, and hide if document already exists */}
+                    {processingJobs.filter(job => {
+                      // Filter by chapter and type
+                      if ((job.chapter || 'Uncategorized') !== chapter || job.type !== 'upload') {
+                        return false;
+                      }
+                      // Exclude completed jobs
+                      if (job.status === 'completed') {
+                        return false;
+                      }
+                      // Hide job if the document already exists in the documents list
+                      const documentExists = documentsByChapter[chapter]?.some(doc => doc.id === job.document_id);
+                      if (documentExists) {
+                        return false;
+                      }
+                      return true;
+                    }).map((job) => (
                       <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">

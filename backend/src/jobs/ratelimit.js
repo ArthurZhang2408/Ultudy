@@ -3,6 +3,9 @@
  *
  * Prevents users from overwhelming the system with too many concurrent jobs.
  * Uses Redis for distributed rate limiting across multiple API servers.
+ *
+ * IMPORTANT: Uses singleton pattern to prevent connection exhaustion
+ * in serverless environments (Vercel, Railway, etc.)
  */
 
 import { createClient } from 'redis';
@@ -17,43 +20,77 @@ const UPLOAD_JOBS_PER_MINUTE = parseInt(process.env.UPLOAD_JOBS_PER_MINUTE || '5
 const WINDOW_SIZE_SECONDS = 60;
 
 let rateLimitClient = null;
+let isConnecting = false;
+let connectionPromise = null;
 
-async function getRateLimitClient() {
+/**
+ * Initialize Redis client as a singleton to prevent connection exhaustion.
+ * In serverless environments, each function instance reuses the same client.
+ */
+async function initializeRateLimitClient() {
   // Disable rate limiting in test/CI mode or if explicitly disabled
   if (!RATE_LIMIT_ENABLED || process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true') {
     return null;
   }
 
+  // If already connected, return existing client
   if (rateLimitClient && rateLimitClient.isOpen) {
     return rateLimitClient;
   }
 
-  try {
-    rateLimitClient = createClient({
-      url: REDIS_URL,
-      socket: {
-        connectTimeout: 3000, // Fail fast if Redis is unavailable
-        reconnectStrategy: (retries) => {
-          if (retries > 10) {
-            return false;
-          }
-          return Math.min(retries * 100, 3000);
-        }
-      }
-    });
-
-    rateLimitClient.on('error', (err) => {
-      console.error('[RateLimit] Redis client error:', err);
-    });
-
-    await rateLimitClient.connect();
-    console.log('[RateLimit] Connected to Redis');
-
-    return rateLimitClient;
-  } catch (error) {
-    console.error('[RateLimit] Failed to connect to Redis, rate limiting disabled:', error.message);
-    return null;
+  // If connection is in progress, wait for it
+  if (isConnecting && connectionPromise) {
+    return connectionPromise;
   }
+
+  // Start new connection
+  isConnecting = true;
+  connectionPromise = (async () => {
+    try {
+      rateLimitClient = createClient({
+        url: REDIS_URL,
+        socket: {
+          connectTimeout: 5000,
+          // Serverless-friendly reconnection strategy
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.error('[RateLimit] Max reconnection attempts reached');
+              return false;
+            }
+            return Math.min(retries * 200, 1000);
+          },
+          // Keep connections alive in serverless environments
+          keepAlive: 30000
+        }
+      });
+
+      rateLimitClient.on('error', (err) => {
+        console.error('[RateLimit] Redis error:', err.message);
+      });
+
+      rateLimitClient.on('reconnecting', () => {
+        console.log('[RateLimit] Reconnecting to Redis...');
+      });
+
+      await rateLimitClient.connect();
+      console.log('[RateLimit] Connected to Redis (singleton instance)');
+
+      return rateLimitClient;
+    } catch (error) {
+      console.error('[RateLimit] Failed to connect to Redis, rate limiting disabled:', error.message);
+      rateLimitClient = null;
+      return null;
+    } finally {
+      isConnecting = false;
+      connectionPromise = null;
+    }
+  })();
+
+  return connectionPromise;
+}
+
+async function getRateLimitClient() {
+  return initializeRateLimitClient();
 }
 
 /**

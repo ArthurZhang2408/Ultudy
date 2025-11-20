@@ -3,6 +3,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Input } from '@/components/ui';
+import { useModal } from '@/contexts/ModalContext';
 
 interface CreateCourseModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  useModal(isOpen, 'create-course-modal');
 
   useEffect(() => {
     setMounted(true);
@@ -84,7 +86,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
+        className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
         onClick={onClose}
       />
 
