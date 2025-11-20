@@ -203,7 +203,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
+        className="fixed inset-0 bg-black/60 backdrop-blur-md -z-10"
         onClick={onClose}
       />
 

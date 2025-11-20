@@ -3,6 +3,10 @@
  *
  * This module creates and manages Bull job queues for async operations.
  * Uses Redis for job persistence and state management.
+ *
+ * IMPORTANT: Uses shared Redis connection to avoid "max clients reached" error.
+ * Bull creates 3 connections per queue (client, subscriber, bclient).
+ * By sharing the connection config, we reduce total connections.
  */
 
 import Queue from 'bull';
@@ -12,6 +16,25 @@ const REDIS_URL = process.env.REDIS_URL;
 
 // Check if we should disable queues (for CI/testing without Redis, or no Redis configured)
 const DISABLE_QUEUES = process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true' || !REDIS_URL;
+
+// Shared Redis connection settings to reduce connection count
+const createRedisOptions = () => {
+  if (!REDIS_URL) return null;
+
+  // Parse Redis URL  
+  const url = new URL(REDIS_URL);
+
+  return {
+    port: parseInt(url.port) || 6379,
+    host: url.hostname,
+    password: url.password,
+    db: 0,
+    maxRetriesPerRequest: 3,
+    connectTimeout: 10000,
+    enableReadyCheck: false, // Reduces connections
+    lazyConnect: false
+  };
+};
 
 let uploadQueue;
 let lessonQueue;
@@ -33,7 +56,7 @@ if (DISABLE_QUEUES) {
       name,
       add: async (data) => {
         const mockJob = {
-          id: `mock-job-${Date.now()}-${Math.random()}`,
+          id: \`mock-job-\${Date.now()}-\${Math.random()}\`,
           data
         };
 
@@ -42,7 +65,7 @@ if (DISABLE_QUEUES) {
           try {
             await processor(mockJob);
           } catch (error) {
-            console.error(`[MockQueue] ${name} job processing failed:`, error);
+            console.error(\`[MockQueue] \${name} job processing failed:\`, error);
             throw error;
           }
         }
@@ -68,10 +91,13 @@ if (DISABLE_QUEUES) {
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
 } else {
-  console.log(`[Queue] Connecting to Redis at ${REDIS_URL}`);
+  console.log(\`[Queue] Connecting to Redis at \${REDIS_URL.replace(/:[^:@]+@/, ':****@')}\`);
 
-  // Create separate queues for different job types
-  uploadQueue = new Queue('upload-processing', REDIS_URL, {
+  const redisOpts = createRedisOptions();
+
+  // Create separate queues for different job types with shared connection config
+  uploadQueue = new Queue('upload-processing', {
+    redis: redisOpts,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -80,16 +106,11 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false, // Keep completed jobs for status checking
       removeOnFail: false // Keep failed jobs for debugging
-    },
-    settings: {
-      // Limit retries to prevent flooding logs
-      maxRetriesPerRequest: 3,
-      // Connection timeout
-      connectTimeout: 10000
     }
   });
 
-  lessonQueue = new Queue('lesson-generation', REDIS_URL, {
+  lessonQueue = new Queue('lesson-generation', {
+    redis: redisOpts,
     defaultJobOptions: {
       attempts: 2, // Fewer retries for LLM calls (expensive)
       backoff: {
@@ -98,10 +119,6 @@ if (DISABLE_QUEUES) {
       },
       removeOnComplete: false,
       removeOnFail: false
-    },
-    settings: {
-      maxRetriesPerRequest: 3,
-      connectTimeout: 10000
     }
   });
 }
@@ -128,11 +145,11 @@ if (!DISABLE_QUEUES) {
   });
 
   uploadQueue.on('failed', (job, error) => {
-    console.error(`[uploadQueue] Job ${job.id} failed:`, error);
+    console.error(\`[uploadQueue] Job \${job.id} failed:\`, error);
   });
 
   uploadQueue.on('completed', (job) => {
-    console.log(`[uploadQueue] Job ${job.id} completed`);
+    console.log(\`[uploadQueue] Job \${job.id} completed\`);
   });
 
   lessonQueue.on('error', (error) => {
@@ -148,11 +165,11 @@ if (!DISABLE_QUEUES) {
   });
 
   lessonQueue.on('failed', (job, error) => {
-    console.error(`[lessonQueue] Job ${job.id} failed:`, error);
+    console.error(\`[lessonQueue] Job \${job.id} failed:\`, error);
   });
 
   lessonQueue.on('completed', (job) => {
-    console.log(`[lessonQueue] Job ${job.id} completed`);
+    console.log(\`[lessonQueue] Job \${job.id} completed\`);
   });
 
   // Cleanup old completed/failed jobs periodically (every hour)

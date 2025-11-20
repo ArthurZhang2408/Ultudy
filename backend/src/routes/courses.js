@@ -28,12 +28,15 @@ export default function createCoursesRouter(options = {}) {
         const hasArchivedColumn = columnCheck.length > 0;
 
         if (hasArchivedColumn) {
-          // Auto-archive courses past exam date
+          // Auto-archive courses past exam date (only if never been manually unarchived)
+          // If archived_at is NULL, it means it's never been archived, so safe to auto-archive
+          // If archived_at is NOT NULL and archived is false, user manually unarchived it, so don't auto-archive
           await client.query(
             `UPDATE courses
              SET archived = true, archived_at = NOW()
              WHERE owner_id = $1
                AND archived = false
+               AND archived_at IS NULL
                AND exam_date IS NOT NULL
                AND exam_date < CURRENT_DATE`,
             [ownerId]
