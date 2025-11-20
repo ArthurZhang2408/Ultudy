@@ -8,6 +8,7 @@ import CustomSelect from './CustomSelect';
 import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 import { getBackendUrl } from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
+import { useModal } from '@/contexts/ModalContext';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
+  useModal(isOpen, 'upload-modal');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -201,7 +203,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
+        className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
         onClick={onClose}
       />
 

@@ -200,6 +200,23 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Safari-compatible backdrop blur with GPU acceleration */
+  .backdrop-blur-safari {
+    -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(12px) !important;
+    /* Force GPU acceleration for Safari */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
+  }
+
+  /* Fallback for browsers that don't support backdrop-filter */
+  @supports not (backdrop-filter: blur(12px)) {
+    .backdrop-blur-safari {
+      background-color: rgba(0, 0, 0, 0.75) !important;
+    }
+  }
 }
 
 /* Background animations */

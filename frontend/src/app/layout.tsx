@@ -9,6 +9,7 @@ import { MainSidebar, UploadModal } from '@/components/ui';
 import ThemeProvider from '@/components/ThemeProvider';
 import Script from 'next/script';
 import LayoutClient from './layout-client';
+import { ModalProvider } from '@/contexts/ModalContext';
 
 export const metadata: Metadata = {
   title: 'Ultudy — AI Study Guide',
@@ -34,12 +35,12 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
       </head>
       <body className="min-h-screen relative overflow-x-hidden">
         <ThemeProvider />
-        {isLandingMode && (
-          <>
-            {/* Dynamic layered background with parallax effect */}
-            <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
+        <ModalProvider>
 
-            {/* Fixed gradient overlay */}
+        {isLandingMode ? (
+          <>
+            {/* Landing mode: Dynamic layered background with parallax effect */}
+            <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
             <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-100/40 via-transparent to-transparent dark:from-primary-900/20" />
 
             {/* Animated blurred circles - scrolling with content for parallax */}
@@ -56,6 +57,12 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
               <div className="absolute bottom-20 left-10 w-[550px] h-[550px] bg-primary-200/30 dark:bg-primary-800/15 rounded-full blur-3xl animate-float-reverse" />
               <div className="absolute bottom-0 right-0 w-[650px] h-[650px] bg-primary-100/20 dark:bg-primary-900/10 rounded-full blur-3xl animate-float-slow" />
             </div>
+          </>
+        ) : (
+          <>
+            {/* App mode: Subtle dark gradient with hint of color */}
+            <div className="fixed inset-0 -z-10 bg-neutral-50 dark:bg-neutral-950" />
+            <div className="fixed inset-0 -z-10 bg-gradient-to-br from-transparent via-transparent to-neutral-100/50 dark:via-neutral-900/40 dark:to-primary-900/20" />
           </>
         )}
         {authEnabled ? (
@@ -86,6 +93,7 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
             </div>
           )
         )}
+        </ModalProvider>
       </body>
     </html>
   );
