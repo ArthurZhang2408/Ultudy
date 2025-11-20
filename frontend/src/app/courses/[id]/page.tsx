@@ -6,6 +6,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import { FormattedText } from '@/components/FormattedText';
 
 type Course = {
   id: string;
@@ -61,6 +62,8 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
+  markdown_text?: string; // 🆕 TESTING: Chapter markdown for debugging
+  chapter?: string; // 🆕 TESTING: Chapter number
 };
 
 export default function CoursePage() {
@@ -896,6 +899,46 @@ export default function CoursePage() {
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
                 </div>
+
+                {/* 🆕 TESTING: Chapter Content Debugging Display */}
+                {orderedSections.some(s => s.markdown_text) && (
+                  <div className="space-y-4">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
+                        🧪 TESTING MODE: Chapter Content Preview
+                      </h3>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        This section displays the raw chapter markdown extracted from your PDF for debugging purposes.
+                      </p>
+                    </div>
+                    {orderedSections.map((section) => {
+                      if (!section.markdown_text) return null;
+
+                      return (
+                        <Card key={section.id} padding="lg" hover={false}>
+                          <div className="space-y-4">
+                            <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3">
+                              <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+                                Chapter {section.chapter || chapter}: {section.name}
+                              </h3>
+                              {section.description && (
+                                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                  {section.description}
+                                </p>
+                              )}
+                              <div className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
+                                {section.markdown_text.length.toLocaleString()} characters
+                              </div>
+                            </div>
+                            <div className="prose prose-neutral dark:prose-invert max-w-none">
+                              <FormattedText content={section.markdown_text} />
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Concept Mastery Grid */}
                 <div ref={gridContainerRef}>

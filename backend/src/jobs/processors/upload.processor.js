@@ -3,9 +3,12 @@
  *
  * Handles PDF upload and extraction in the background
  * Works with both S3 and local filesystem storage
+ *
+ * TESTING: Now using chapter-based extraction instead of section-based
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
+import { extractChapters } from '../../ingestion/llm_extractor_chapters.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -50,30 +53,32 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       console.log(`[UploadProcessor] PDF downloaded to temp file: ${tempPdfPath}`);
     }
 
-    console.log(`[UploadProcessor] Extracting structured sections from ${processingPath}`);
+    console.log(`[UploadProcessor] 🆕 TESTING: Extracting chapters (not sections) from ${processingPath}`);
 
     // Update progress: 20% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
-    // Extract structured sections with LLM vision
-    const extraction = await extractStructuredSections(processingPath);
+    // 🆕 TESTING: Extract chapters with markdown format (no JSON)
+    const extraction = await extractChapters(processingPath);
 
-    console.log(`[UploadProcessor] Extracted ${extraction.sections.length} sections`);
-    console.log(`[UploadProcessor] Title: "${extraction.title}"`);
+    console.log(`[UploadProcessor] 🆕 Extracted ${extraction.total_chapters} chapters`);
+    extraction.chapters.forEach((ch, idx) => {
+      console.log(`[UploadProcessor]   Chapter ${ch.chapter_number}: "${ch.title}" (${ch.char_count} chars)`);
+    });
 
     // Update progress: 70% - Extraction complete
     await jobTracker.updateProgress(ownerId, jobId, 70);
 
-    // Use provided title or fall back to extracted title
-    const documentTitle = title || extraction.title;
+    // Use provided title or use first chapter title
+    const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
 
-    // Store in database
+    // 🆕 TESTING: Store chapters in database (using sections table)
     await tenantHelpers.withTenant(ownerId, async (client) => {
       // Insert document with metadata
       await client.query(
         `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [documentId, documentTitle, extraction.sections.length, ownerId, courseId, chapter, materialType]
+        [documentId, documentTitle, extraction.total_chapters, ownerId, courseId, chapter, materialType]
       );
 
       console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${chapter}`);
@@ -81,31 +86,34 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       // Update progress: 80% - Document created
       await jobTracker.updateProgress(ownerId, jobId, 80);
 
-      // Insert sections with LLM-generated markdown
-      for (let i = 0; i < extraction.sections.length; i++) {
-        const section = extraction.sections[i];
+      // 🆕 TESTING: Insert chapters (stored as "sections" in DB for now)
+      // Each chapter becomes one row in sections table
+      for (let i = 0; i < extraction.chapters.length; i++) {
+        const chapterData = extraction.chapters[i];
 
         const { rows } = await client.query(
           `INSERT INTO sections
-           (owner_id, document_id, section_number, name, description,
+           (owner_id, document_id, course_id, chapter, section_number, name, description,
             markdown_text, concepts_generated)
-           VALUES ($1, $2, $3, $4, $5, $6, false)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false)
            RETURNING id`,
           [
             ownerId,
             documentId,
-            i + 1,
-            section.name,
-            section.description,
-            section.markdown
+            courseId,
+            chapterData.chapter_number, // Store chapter number in 'chapter' field
+            i + 1, // section_number for ordering
+            chapterData.title, // name field
+            `Chapter ${chapterData.chapter_number}: ${chapterData.title}`, // description
+            chapterData.markdown // Full chapter markdown
           ]
         );
 
-        console.log(`[UploadProcessor] Section ${i + 1} "${section.name}": ${section.markdown.length} chars, id=${rows[0].id}`);
+        console.log(`[UploadProcessor] 🆕 Chapter ${chapterData.chapter_number} "${chapterData.title}": ${chapterData.char_count} chars, id=${rows[0].id}`);
 
         // Update progress incrementally
-        const sectionProgress = 80 + Math.floor((i + 1) / extraction.sections.length * 20);
-        await jobTracker.updateProgress(ownerId, jobId, sectionProgress);
+        const chapterProgress = 80 + Math.floor((i + 1) / extraction.chapters.length * 20);
+        await jobTracker.updateProgress(ownerId, jobId, chapterProgress);
       }
     });
 
@@ -115,22 +123,21 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     await jobTracker.completeJob(ownerId, jobId, {
       document_id: documentId,
       title: documentTitle,
-      section_count: extraction.sections.length,
+      chapter_count: extraction.total_chapters, // 🆕 Changed from section_count
       course_id: courseId,
       chapter: chapter,
       material_type: materialType,
-      sections: extraction.sections.map((s, i) => ({
-        section_number: i + 1,
-        name: s.name,
-        description: s.description,
-        markdown_length: s.markdown.length
+      chapters: extraction.chapters.map((ch, i) => ({ // 🆕 Changed from sections
+        chapter_number: ch.chapter_number,
+        title: ch.title,
+        markdown_length: ch.char_count
       }))
     });
 
     return {
       document_id: documentId,
       title: documentTitle,
-      section_count: extraction.sections.length,
+      chapter_count: extraction.total_chapters, // 🆕 Changed from section_count
       course_id: courseId,
       chapter: chapter
     };

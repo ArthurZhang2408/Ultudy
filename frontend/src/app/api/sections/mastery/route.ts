@@ -91,7 +91,9 @@ export async function GET(request: NextRequest) {
         mastery_level: masteryLevel,
         concepts_generated: section.concepts_generated,
         page_start: section.page_start,
-        page_end: section.page_end
+        page_end: section.page_end,
+        markdown_text: section.markdown_text, // 🆕 TESTING: Include markdown for chapter debugging
+        chapter: section.chapter // 🆕 TESTING: Include chapter number
       };
     });
 
