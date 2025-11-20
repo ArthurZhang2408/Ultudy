@@ -30,13 +30,6 @@ export function ModalProvider({ children }: { children: ReactNode }) {
   return (
     <ModalContext.Provider value={{ registerModal, unregisterModal, isAnyModalOpen }}>
       {children}
-      {/* Global backdrop blur overlay - applies when any modal is open */}
-      {isAnyModalOpen && (
-        <div
-          className="fixed inset-0 backdrop-blur-sm transition-all duration-200 pointer-events-none"
-          style={{ zIndex: 45 }}
-        />
-      )}
     </ModalContext.Provider>
   );
 }

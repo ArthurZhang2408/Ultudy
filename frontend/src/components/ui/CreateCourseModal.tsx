@@ -86,7 +86,7 @@ export default function CreateCourseModal({ isOpen, onClose, onSuccess }: Create
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 -z-10"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
         onClick={onClose}
       />
 

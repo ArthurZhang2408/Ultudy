@@ -53,7 +53,7 @@ export default function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-neutral-900/50"
+        className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
         onClick={onClose}
       />
 
