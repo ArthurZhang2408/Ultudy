@@ -139,9 +139,17 @@ Analyze this PDF and determine:
   );
 
   console.log('[analyzePdfStructure] ✅ Analysis complete');
+  console.log(`[analyzePdfStructure] is_single_chapter: ${analysis.is_single_chapter}`);
+  console.log(`[analyzePdfStructure] chapter_count: ${analysis.chapter_count}`);
+  console.log(`[analyzePdfStructure] Chapters array:`);
   analysis.chapters.forEach((ch, idx) => {
     console.log(`[analyzePdfStructure]   ${idx + 1}. Chapter ${ch.chapter_number}: "${ch.title}" (pages ${ch.page_start}-${ch.page_end})`);
   });
+
+  // Validation
+  if (!analysis.chapters || analysis.chapters.length === 0) {
+    throw new Error('Analysis returned no chapters!');
+  }
 
   return analysis;
 }
@@ -177,10 +185,16 @@ Extract all major SECTIONS from this chapter as separate entries for generating 
 - **name**: Clear, descriptive section name
 - **description**: 1-2 sentence overview
 - **markdown**: Complete markdown content with:
-  - Math equations: $inline$ and $$display$$
-  - Tables as markdown tables
+  - Math equations: Use <eqs>LaTeX</eqs> tags (inline and display)
+    Example: <eqs>E = mc^2</eqs> or <eqs>\\int_a^b f(x)dx</eqs>
+  - Tables as markdown tables with proper | delimiters
   - Code blocks with syntax highlighting
   - Proper formatting (headers, bold, italic, lists)
+
+**CRITICAL FOR MATH:**
+- Wrap ALL mathematical expressions in <eqs></eqs> tags
+- Use raw LaTeX inside the tags (no escaping needed)
+- This prevents JSON parsing errors
 
 Return structured JSON with sections array.`;
 
@@ -382,10 +396,14 @@ Extract all SECTIONS from this chapter (Chapter ${chapterInfo.chapter_number}: "
 - **name**: Section name
 - **description**: 1-2 sentence overview
 - **markdown**: Complete content with:
-  - Math: $inline$ and $$display$$
-  - Tables as markdown
+  - Math: <eqs>LaTeX</eqs> tags for ALL equations
+  - Tables as markdown with | delimiters
   - Code blocks with syntax
   - Proper formatting
+
+**CRITICAL FOR MATH:**
+Wrap ALL math in <eqs></eqs> tags to avoid JSON escaping issues.
+Example: The equation <eqs>\\sigma_{\\text{make}}</eqs> is important.
 
 Return JSON with sections array.`;
 
