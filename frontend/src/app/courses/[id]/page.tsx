@@ -900,43 +900,77 @@ export default function CoursePage() {
                   </h2>
                 </div>
 
-                {/* 🆕 TESTING: Chapter Content Debugging Display */}
+                {/* 🎯 TESTING: Section Content Debugging Display (Grouped by Chapter) */}
                 {orderedSections.some(s => s.markdown_text) && (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                       <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
-                        🧪 TESTING MODE: Chapter Content Preview
+                        🧪 TESTING MODE: Section Content Preview
                       </h3>
                       <p className="text-xs text-yellow-700 dark:text-yellow-400">
-                        This section displays the raw chapter markdown extracted from your PDF for debugging purposes.
+                        This displays all sections extracted from the PDF, grouped by chapter. Hybrid extraction splits multi-chapter PDFs automatically.
                       </p>
                     </div>
-                    {orderedSections.map((section) => {
-                      if (!section.markdown_text) return null;
 
-                      return (
-                        <Card key={section.id} padding="lg" hover={false}>
-                          <div className="space-y-4">
-                            <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3">
-                              <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
-                                Chapter {section.chapter || chapter}: {section.name}
-                              </h3>
-                              {section.description && (
-                                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                                  {section.description}
-                                </p>
-                              )}
-                              <div className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
-                                {section.markdown_text.length.toLocaleString()} characters
-                              </div>
-                            </div>
-                            <div className="prose prose-neutral dark:prose-invert max-w-none">
-                              <FormattedText>{section.markdown_text}</FormattedText>
-                            </div>
+                    {/* Group sections by chapter for display */}
+                    {(() => {
+                      // Group sections by their chapter field
+                      const sectionsByChapter = orderedSections.reduce((acc, section) => {
+                        if (!section.markdown_text) return acc;
+                        const chapterNum = section.chapter || chapter || 'Unknown';
+                        if (!acc[chapterNum]) acc[chapterNum] = [];
+                        acc[chapterNum].push(section);
+                        return acc;
+                      }, {} as Record<string, typeof orderedSections>);
+
+                      return Object.entries(sectionsByChapter).map(([chapterNum, sections]) => (
+                        <div key={chapterNum} className="space-y-4">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-600 p-4">
+                            <h3 className="text-lg font-bold text-blue-900 dark:text-blue-200">
+                              Chapter {chapterNum}
+                            </h3>
+                            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                              {sections.length} section{sections.length !== 1 ? 's' : ''} extracted
+                              {sections[0]?.page_start && sections[0]?.page_end &&
+                                ` • Pages ${sections[0].page_start}-${sections[0].page_end}`
+                              }
+                            </p>
                           </div>
-                        </Card>
-                      );
-                    })}
+
+                          {sections.map((section, idx) => (
+                            <Card key={section.id} padding="lg" hover={false}>
+                              <div className="space-y-4">
+                                <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-1 rounded">
+                                          Section {idx + 1}
+                                        </span>
+                                        <h4 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                                          {section.name}
+                                        </h4>
+                                      </div>
+                                      {section.description && (
+                                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
+                                          {section.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-neutral-500 dark:text-neutral-500 ml-4">
+                                      {section.markdown_text.length.toLocaleString()} chars
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="prose prose-neutral dark:prose-invert max-w-none">
+                                  <FormattedText>{section.markdown_text}</FormattedText>
+                                </div>
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                      ));
+                    })()}
                   </div>
                 )}
 
