@@ -200,6 +200,19 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Safari-compatible backdrop blur */
+  .backdrop-blur-safari {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Fallback for browsers that don't support backdrop-filter */
+  @supports not (backdrop-filter: blur(12px)) {
+    .backdrop-blur-safari {
+      background-color: rgba(0, 0, 0, 0.75) !important;
+    }
+  }
 }
 
 /* Background animations */
