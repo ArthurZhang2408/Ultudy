@@ -201,10 +201,14 @@
     display: none;
   }
 
-  /* Safari-compatible backdrop blur */
+  /* Safari-compatible backdrop blur with GPU acceleration */
   .backdrop-blur-safari {
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: blur(12px) !important;
+    /* Force GPU acceleration for Safari */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
   }
 
   /* Fallback for browsers that don't support backdrop-filter */
