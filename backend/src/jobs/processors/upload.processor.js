@@ -53,24 +53,32 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       console.log(`[UploadProcessor] PDF downloaded to temp file: ${tempPdfPath}`);
     }
 
-    console.log(`[UploadProcessor] 🆕 TESTING: Extracting chapters (not sections) from ${processingPath}`);
+    console.log(`[UploadProcessor] ========================================`);
+    console.log(`[UploadProcessor] 🆕 TESTING: CHAPTER-BASED EXTRACTION`);
+    console.log(`[UploadProcessor] ========================================`);
+    console.log(`[UploadProcessor] PDF path: ${processingPath}`);
+    console.log(`[UploadProcessor] Job ID: ${jobId}`);
+    console.log(`[UploadProcessor] Document ID: ${documentId}`);
 
     // Update progress: 20% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
-    // 🆕 TESTING: Extract chapters with markdown format (no JSON)
-    const extraction = await extractChapters(processingPath);
+    try {
+      // 🆕 TESTING: Extract chapters with markdown format (no JSON)
+      console.log(`[UploadProcessor] 📤 Calling extractChapters()...`);
+      const extraction = await extractChapters(processingPath);
+      console.log(`[UploadProcessor] 📥 extractChapters() completed successfully`);
 
-    console.log(`[UploadProcessor] 🆕 Extracted ${extraction.total_chapters} chapters`);
-    extraction.chapters.forEach((ch, idx) => {
-      console.log(`[UploadProcessor]   Chapter ${ch.chapter_number}: "${ch.title}" (${ch.char_count} chars)`);
-    });
+      console.log(`[UploadProcessor] 🆕 Extracted ${extraction.total_chapters} chapters`);
+      extraction.chapters.forEach((ch, idx) => {
+        console.log(`[UploadProcessor]   Chapter ${ch.chapter_number}: "${ch.title}" (${ch.char_count} chars)`);
+      });
 
-    // Update progress: 70% - Extraction complete
-    await jobTracker.updateProgress(ownerId, jobId, 70);
+      // Update progress: 70% - Extraction complete
+      await jobTracker.updateProgress(ownerId, jobId, 70);
 
-    // Use provided title or use first chapter title
-    const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
+      // Use provided title or use first chapter title
+      const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
 
     // 🆕 TESTING: Store chapters in database (using sections table)
     await tenantHelpers.withTenant(ownerId, async (client) => {
@@ -134,15 +142,25 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       }))
     });
 
-    return {
-      document_id: documentId,
-      title: documentTitle,
-      chapter_count: extraction.total_chapters, // 🆕 Changed from section_count
-      course_id: courseId,
-      chapter: chapter
-    };
+      return {
+        document_id: documentId,
+        title: documentTitle,
+        chapter_count: extraction.total_chapters, // 🆕 Changed from section_count
+        course_id: courseId,
+        chapter: chapter
+      };
+    } catch (extractionError) {
+      console.error(`[UploadProcessor] ❌ Chapter extraction failed`);
+      console.error(`[UploadProcessor] Error type: ${extractionError.constructor.name}`);
+      console.error(`[UploadProcessor] Error message: ${extractionError.message}`);
+      console.error(`[UploadProcessor] Error stack:`, extractionError.stack);
+
+      // Re-throw with more context
+      throw new Error(`Chapter extraction failed: ${extractionError.message}`);
+    }
   } catch (error) {
     console.error(`[UploadProcessor] ❌ Job ${jobId} failed:`, error);
+    console.error(`[UploadProcessor] Full error:`, error);
 
     // Mark job as failed
     await jobTracker.failJob(ownerId, jobId, error);

@@ -163,12 +163,23 @@ CHAPTER_TITLE: Electromagnetism
 **NOW EXTRACT ALL CHAPTERS FROM THE PDF:**`;
 
   try {
+    console.log('[llm_extractor_chapters] 📤 Calling Gemini vision provider...');
+
     // Call Gemini with text-only response (no schema)
     const result = await provider.extractChaptersAsMarkdown(
       pdfPath,
       systemPrompt,
       userPrompt
     );
+
+    console.log('[llm_extractor_chapters] 📥 Received response from Gemini');
+    console.log(`[llm_extractor_chapters] Response preview (first 500 chars):`);
+    console.log(result.substring(0, 500));
+    console.log('[llm_extractor_chapters] ...');
+    console.log(`[llm_extractor_chapters] Response preview (last 500 chars):`);
+    console.log(result.substring(Math.max(0, result.length - 500)));
+
+    console.log('[llm_extractor_chapters] 🔍 Parsing chapter markdown...');
 
     // Parse the markdown response to extract chapters
     const chapters = parseChapterMarkdown(result);
@@ -184,7 +195,10 @@ CHAPTER_TITLE: Electromagnetism
       total_chapters: chapters.length
     };
   } catch (error) {
-    console.error('[llm_extractor_chapters] ❌ Extraction failed:', error.message);
+    console.error('[llm_extractor_chapters] ❌ Extraction failed');
+    console.error('[llm_extractor_chapters] Error type:', error.constructor.name);
+    console.error('[llm_extractor_chapters] Error message:', error.message);
+    console.error('[llm_extractor_chapters] Error stack:', error.stack);
     throw error;
   }
 }
@@ -193,20 +207,50 @@ CHAPTER_TITLE: Electromagnetism
  * Parse markdown response with chapter delimiters into structured array
  */
 function parseChapterMarkdown(markdownText) {
+  console.log('[parseChapterMarkdown] Starting to parse markdown');
+  console.log(`[parseChapterMarkdown] Total text length: ${markdownText.length} chars`);
+
   const chapters = [];
+
+  // Check for chapter start delimiters
+  const chapterStartCount = (markdownText.match(/---CHAPTER_START---/g) || []).length;
+  console.log(`[parseChapterMarkdown] Found ${chapterStartCount} CHAPTER_START delimiter(s)`);
+
+  if (chapterStartCount === 0) {
+    console.error('[parseChapterMarkdown] ❌ No CHAPTER_START delimiters found!');
+    console.error('[parseChapterMarkdown] Response preview (first 1000 chars):');
+    console.error(markdownText.substring(0, 1000));
+    throw new Error('No chapter start delimiters found in LLM response. LLM may have returned wrong format.');
+  }
 
   // Split by chapter start delimiter
   const chapterBlocks = markdownText.split('---CHAPTER_START---').filter(block => block.trim());
+  console.log(`[parseChapterMarkdown] Split into ${chapterBlocks.length} blocks`);
 
-  for (const block of chapterBlocks) {
+  for (let i = 0; i < chapterBlocks.length; i++) {
+    const block = chapterBlocks[i];
+    console.log(`[parseChapterMarkdown] Processing block ${i + 1}/${chapterBlocks.length} (${block.length} chars)`);
+
     try {
       // Extract chapter metadata
       const numberMatch = block.match(/CHAPTER_NUMBER:\s*(.+?)(?:\n|---)/);
       const titleMatch = block.match(/CHAPTER_TITLE:\s*(.+?)(?:\n|---)/);
       const contentMatch = block.match(/---CONTENT_START---\s*([\s\S]*?)---CHAPTER_END---/);
 
+      if (!numberMatch) {
+        console.warn(`[parseChapterMarkdown] Block ${i + 1}: Missing CHAPTER_NUMBER`);
+        console.warn(`[parseChapterMarkdown] Block preview: ${block.substring(0, 200)}`);
+      }
+      if (!titleMatch) {
+        console.warn(`[parseChapterMarkdown] Block ${i + 1}: Missing CHAPTER_TITLE`);
+      }
+      if (!contentMatch) {
+        console.warn(`[parseChapterMarkdown] Block ${i + 1}: Missing CONTENT_START or CHAPTER_END`);
+        console.warn(`[parseChapterMarkdown] Block preview: ${block.substring(0, 200)}...${block.substring(Math.max(0, block.length - 200))}`);
+      }
+
       if (!numberMatch || !titleMatch || !contentMatch) {
-        console.warn('[parseChapterMarkdown] Skipping malformed chapter block');
+        console.warn(`[parseChapterMarkdown] Skipping malformed chapter block ${i + 1}`);
         continue;
       }
 
@@ -214,8 +258,10 @@ function parseChapterMarkdown(markdownText) {
       const title = titleMatch[1].trim();
       const markdown = contentMatch[1].trim();
 
+      console.log(`[parseChapterMarkdown] ✅ Block ${i + 1}: Chapter ${chapter_number} "${title}" (${markdown.length} chars)`);
+
       if (markdown.length < 100) {
-        console.warn(`[parseChapterMarkdown] Chapter ${chapter_number} has very short content (${markdown.length} chars)`);
+        console.warn(`[parseChapterMarkdown] ⚠️ Chapter ${chapter_number} has very short content (${markdown.length} chars)`);
       }
 
       chapters.push({
@@ -226,15 +272,17 @@ function parseChapterMarkdown(markdownText) {
       });
 
     } catch (error) {
-      console.error('[parseChapterMarkdown] Error parsing chapter block:', error.message);
+      console.error(`[parseChapterMarkdown] ❌ Error parsing chapter block ${i + 1}:`, error.message);
       continue;
     }
   }
 
   if (chapters.length === 0) {
+    console.error('[parseChapterMarkdown] ❌ No valid chapters parsed!');
     throw new Error('No valid chapters found in response. Check delimiter format.');
   }
 
+  console.log(`[parseChapterMarkdown] ✅ Successfully parsed ${chapters.length} chapter(s)`);
   return chapters;
 }
 

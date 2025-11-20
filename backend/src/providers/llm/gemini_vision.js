@@ -208,18 +208,26 @@ export async function createGeminiVisionProvider() {
       });
 
       const duration = Date.now() - startTime;
-      console.log(`[gemini_vision] Response received in ${duration}ms`);
+      console.log(`[gemini_vision] ⏱️ Response received in ${duration}ms`);
 
       const response = result.response;
       const text = response.text();
 
-      console.log(`[gemini_vision] Response length: ${text.length} characters`);
+      console.log(`[gemini_vision] 📊 Response length: ${text.length} characters`);
+      console.log(`[gemini_vision] Response preview (first 300 chars):`);
+      console.log(text.substring(0, 300));
+      console.log(`[gemini_vision] ...`);
 
       // Basic validation - check for chapter delimiters
       if (!text.includes('---CHAPTER_START---')) {
         console.error('[gemini_vision] ❌ Response missing chapter delimiters');
-        console.error('[gemini_vision] First 1000 chars:', text.substring(0, 1000));
-        throw new Error('LLM response missing chapter delimiters. Expected ---CHAPTER_START--- markers.');
+        console.error('[gemini_vision] This means the LLM did NOT follow the delimiter format!');
+        console.error('[gemini_vision] Full response preview (first 2000 chars):');
+        console.error(text.substring(0, 2000));
+        console.error('[gemini_vision] ...');
+        console.error('[gemini_vision] Full response preview (last 1000 chars):');
+        console.error(text.substring(Math.max(0, text.length - 1000)));
+        throw new Error('LLM response missing chapter delimiters. Expected ---CHAPTER_START--- markers. LLM may have ignored the format instructions.');
       }
 
       const chapterCount = (text.match(/---CHAPTER_START---/g) || []).length;
