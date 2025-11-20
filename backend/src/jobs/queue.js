@@ -56,7 +56,7 @@ if (DISABLE_QUEUES) {
       name,
       add: async (data) => {
         const mockJob = {
-          id: \`mock-job-\${Date.now()}-\${Math.random()}\`,
+          id: `mock-job-${Date.now()}-${Math.random()}`,
           data
         };
 
@@ -65,7 +65,7 @@ if (DISABLE_QUEUES) {
           try {
             await processor(mockJob);
           } catch (error) {
-            console.error(\`[MockQueue] \${name} job processing failed:\`, error);
+            console.error(`[MockQueue] ${name} job processing failed:`, error);
             throw error;
           }
         }
@@ -91,7 +91,7 @@ if (DISABLE_QUEUES) {
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
 } else {
-  console.log(\`[Queue] Connecting to Redis at \${REDIS_URL.replace(/:[^:@]+@/, ':****@')}\`);
+  console.log(`[Queue] Connecting to Redis at ${REDIS_URL.replace(/:[^:@]+@/, ':****@')}`);
 
   const redisOpts = createRedisOptions();
 
@@ -145,11 +145,11 @@ if (!DISABLE_QUEUES) {
   });
 
   uploadQueue.on('failed', (job, error) => {
-    console.error(\`[uploadQueue] Job \${job.id} failed:\`, error);
+    console.error(`[uploadQueue] Job ${job.id} failed:`, error);
   });
 
   uploadQueue.on('completed', (job) => {
-    console.log(\`[uploadQueue] Job \${job.id} completed\`);
+    console.log(`[uploadQueue] Job ${job.id} completed`);
   });
 
   lessonQueue.on('error', (error) => {
@@ -165,11 +165,11 @@ if (!DISABLE_QUEUES) {
   });
 
   lessonQueue.on('failed', (job, error) => {
-    console.error(\`[lessonQueue] Job \${job.id} failed:\`, error);
+    console.error(`[lessonQueue] Job ${job.id} failed:`, error);
   });
 
   lessonQueue.on('completed', (job) => {
-    console.log(\`[lessonQueue] Job \${job.id} completed\`);
+    console.log(`[lessonQueue] Job ${job.id} completed`);
   });
 
   // Cleanup old completed/failed jobs periodically (every hour)
