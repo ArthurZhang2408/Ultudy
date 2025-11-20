@@ -196,12 +196,12 @@ export default function createCoursesRouter(options = {}) {
         if (archived !== undefined && hasArchivedColumn) {
           updates.push(`archived = $${valueIndex++}`);
           values.push(archived);
-          // Set archived_at when archiving, clear when unarchiving
+          // Set archived_at when archiving, but DON'T clear it when unarchiving
+          // This allows auto-archive to detect manual unarchiving (archived=false but archived_at is set)
           if (archived) {
             updates.push(`archived_at = NOW()`);
-          } else {
-            updates.push(`archived_at = NULL`);
           }
+          // When unarchiving, keep archived_at so auto-archive knows user manually unarchived
         }
 
         if (updates.length === 0) {

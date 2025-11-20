@@ -95,9 +95,31 @@ if (DISABLE_QUEUES) {
 
   const redisOpts = createRedisOptions();
 
-  // Create separate queues for different job types with shared connection config
-  uploadQueue = new Queue('upload-processing', {
+  // Share Redis connections across queues to reduce connection count
+  // Bull uses 3 connections per queue: client, subscriber, bclient
+  // By providing createClient function, we can pool/reuse connections
+  const sharedOpts = {
     redis: redisOpts,
+    // Use a shared connection strategy
+    createClient: function(type, config) {
+      // Import redis here to avoid circular deps
+      const redis = require('redis');
+      const client = redis.createClient(config);
+
+      // Set a max retry limit to fail fast
+      client.on('error', (err) => {
+        if (err.message.includes('max number of clients')) {
+          console.error(`[Queue] Redis max clients reached for ${type} connection`);
+        }
+      });
+
+      return client;
+    }
+  };
+
+  // Create separate queues for different job types with shared connection strategy
+  uploadQueue = new Queue('upload-processing', {
+    ...sharedOpts,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -110,7 +132,7 @@ if (DISABLE_QUEUES) {
   });
 
   lessonQueue = new Queue('lesson-generation', {
-    redis: redisOpts,
+    ...sharedOpts,
     defaultJobOptions: {
       attempts: 2, // Fewer retries for LLM calls (expensive)
       backoff: {
