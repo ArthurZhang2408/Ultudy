@@ -931,7 +931,7 @@ export default function CoursePage() {
                               </div>
                             </div>
                             <div className="prose prose-neutral dark:prose-invert max-w-none">
-                              <FormattedText content={section.markdown_text} />
+                              <FormattedText>{section.markdown_text}</FormattedText>
                             </div>
                           </div>
                         </Card>
