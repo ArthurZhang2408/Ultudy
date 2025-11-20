@@ -502,7 +502,8 @@ export default function createStudyRouter(options = {}) {
     try {
       const sections = await tenantHelpers.withTenant(ownerId, async (client) => {
         const { rows } = await client.query(
-          `SELECT id, section_number, name, description, page_start, page_end, concepts_generated, created_at
+          `SELECT id, section_number, name, description, page_start, page_end, concepts_generated,
+                  chapter, markdown_text, created_at
            FROM sections
            WHERE document_id = $1 AND owner_id = $2
            ORDER BY section_number ASC`,
