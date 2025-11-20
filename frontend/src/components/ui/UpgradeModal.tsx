@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useModal } from '@/contexts/ModalContext';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface UpgradeModalProps {
 
 export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
   const [mounted, setMounted] = useState(false);
+  useModal(isOpen, 'upgrade-modal');
 
   useEffect(() => {
     setMounted(true);

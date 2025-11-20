@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useModal } from '@/contexts/ModalContext';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export default function Modal({
   showCloseButton = true,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  useModal(isOpen);
 
   const sizeStyles = {
     sm: 'max-w-md',

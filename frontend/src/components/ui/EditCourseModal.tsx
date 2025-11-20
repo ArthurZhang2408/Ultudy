@@ -3,6 +3,7 @@
 import { FormEvent, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Input } from '@/components/ui';
+import { useModal } from '@/contexts/ModalContext';
 
 interface EditCourseModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export default function EditCourseModal({ isOpen, onClose, course, onSuccess }: 
   const [examDate, setExamDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  useModal(isOpen, 'edit-course-modal');
 
   useEffect(() => {
     setMounted(true);
