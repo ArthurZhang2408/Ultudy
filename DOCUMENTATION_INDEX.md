@@ -37,6 +37,7 @@ When you open this repository:
 | Document | Purpose | Location |
 |----------|---------|----------|
 | **PDF_EXTRACTION_GUIDE.md** | PDF processing modes and configuration | `backend/` |
+| **CHAPTER_EXTRACTION_TESTING.md** | Chapter-based extraction testing guide | Root |
 | **ENV_CONFIGURATION.md** | Environment variables reference | `backend/` |
 | **scripts/README.md** | Database and PDF extraction utilities | `backend/scripts/` |
 | **migrations/README.md** | Database migration guide | `backend/src/db/migrations/` |
@@ -71,6 +72,7 @@ Files that represent the current state of the system:
 - `SCALABILITY_GUIDE.md` - Production scaling guide
 - `CLERK_SETUP.md` - Authentication setup
 - `backend/PDF_EXTRACTION_GUIDE.md` - PDF processing
+- `CHAPTER_EXTRACTION_TESTING.md` - Chapter-based extraction (testing)
 - `backend/ENV_CONFIGURATION.md` - Environment configuration
 - `backend/scripts/README.md` - Utility scripts documentation
 - `backend/src/db/migrations/README.md` - Database migrations
@@ -271,6 +273,7 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How does PDF extraction work?"
 → See `backend/PDF_EXTRACTION_GUIDE.md`
+→ For chapter-based testing: `CHAPTER_EXTRACTION_TESTING.md`
 
 ### "How do I set up the development pipeline?"
 → See `DEVELOPMENT_PIPELINE.md`

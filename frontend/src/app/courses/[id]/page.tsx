@@ -6,6 +6,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import { FormattedText } from '@/components/FormattedText';
 
 type Course = {
   id: string;
@@ -61,6 +62,8 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
+  markdown_text?: string; // 🆕 TESTING: Chapter markdown for debugging
+  chapter?: string; // 🆕 TESTING: Chapter number
 };
 
 export default function CoursePage() {
@@ -81,6 +84,7 @@ export default function CoursePage() {
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
+  const [showRawMarkdown, setShowRawMarkdown] = useState<Record<string, boolean>>({}); // Track raw/rendered per section
 
   useEffect(() => {
     if (courseId) {
@@ -896,6 +900,120 @@ export default function CoursePage() {
                     {chapter === 'Uncategorized' ? chapter : `Chapter ${chapter}`}
                   </h2>
                 </div>
+
+                {/* 🎯 TESTING: Section Content Debugging Display (Grouped by Chapter) */}
+                {orderedSections.some(s => s.markdown_text) && (
+                  <div className="space-y-6">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
+                        🧪 TESTING MODE: Section Content Preview
+                      </h3>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        This displays all sections extracted from the PDF, grouped by chapter. Hybrid extraction splits multi-chapter PDFs automatically.
+                      </p>
+                    </div>
+
+                    {/* Group sections by chapter for display */}
+                    {(() => {
+                      // Group sections by their chapter field
+                      const sectionsByChapter = orderedSections.reduce((acc, section) => {
+                        if (!section.markdown_text) return acc;
+                        const chapterNum = section.chapter || chapter || 'Unknown';
+
+                        // Debug logging
+                        console.log('[Course Page] Section:', section.name, 'chapter field:', section.chapter, 'using:', chapterNum);
+
+                        if (!acc[chapterNum]) acc[chapterNum] = [];
+                        acc[chapterNum].push(section);
+                        return acc;
+                      }, {} as Record<string, typeof orderedSections>);
+
+                      return Object.entries(sectionsByChapter).map(([chapterNum, sections]) => (
+                        <div key={chapterNum} className="space-y-4">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-600 p-4">
+                            <h3 className="text-lg font-bold text-blue-900 dark:text-blue-200">
+                              Chapter {chapterNum}
+                            </h3>
+                            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                              {sections.length} section{sections.length !== 1 ? 's' : ''} extracted
+                              {sections[0]?.page_start && sections[0]?.page_end &&
+                                ` • Pages ${sections[0].page_start}-${sections[0].page_end}`
+                              }
+                            </p>
+                          </div>
+
+                          {sections.map((section, idx) => {
+                            const isRaw = showRawMarkdown[section.id] || false;
+                            return (
+                              <Card key={section.id} padding="lg" hover={false}>
+                                <div className="space-y-4">
+                                  <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-1 rounded">
+                                            Section {idx + 1}
+                                          </span>
+                                          <h4 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                                            {section.name}
+                                          </h4>
+                                        </div>
+                                        {section.description && (
+                                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
+                                            {section.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <Button
+                                          onClick={() => setShowRawMarkdown(prev => ({
+                                            ...prev,
+                                            [section.id]: !isRaw
+                                          }))}
+                                          variant="secondary"
+                                          size="sm"
+                                        >
+                                          {isRaw ? (
+                                            <>
+                                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                              </svg>
+                                              Rendered
+                                            </>
+                                          ) : (
+                                            <>
+                                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                              </svg>
+                                              Raw
+                                            </>
+                                          )}
+                                        </Button>
+                                        <div className="text-xs text-neutral-500 dark:text-neutral-500">
+                                          {section.markdown_text?.length.toLocaleString() ?? 0} chars
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className={isRaw ? "font-mono text-sm bg-neutral-50 dark:bg-neutral-900 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap" : "prose prose-neutral dark:prose-invert max-w-none"}>
+                                    {section.markdown_text && (
+                                      isRaw ? (
+                                        <>{section.markdown_text}</>
+                                      ) : (
+                                        <FormattedText>{section.markdown_text}</FormattedText>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
 
                 {/* Concept Mastery Grid */}
                 <div ref={gridContainerRef}>
