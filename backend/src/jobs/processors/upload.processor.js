@@ -86,16 +86,20 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       // Use provided title or use first chapter title
       const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
 
+      // Use extracted chapter number from PDF (prefer LLM extraction over user input)
+      // If multiple chapters, use the first one; if single chapter PDF, use that chapter
+      const extractedChapter = extraction.chapters[0]?.chapter_number || chapter || null;
+
     // 📝 TESTING: Store chapters in database (each chapter as one section row)
     await tenantHelpers.withTenant(ownerId, async (client) => {
       // Insert document with metadata
       await client.query(
         `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [documentId, documentTitle, extraction.total_chapters, ownerId, courseId, chapter, materialType]
+        [documentId, documentTitle, extraction.total_chapters, ownerId, courseId, extractedChapter, materialType]
       );
 
-      console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${chapter}`);
+      console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${extractedChapter}`);
 
       // Update progress: 80% - Document created
       await jobTracker.updateProgress(ownerId, jobId, 80);
@@ -143,7 +147,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       title: documentTitle,
       chapter_count: extraction.total_chapters,
       course_id: courseId,
-      chapter: chapter,
+      chapter: extractedChapter,
       material_type: materialType,
       chapters: extraction.chapters.map(ch => ({
         chapter_number: ch.chapter_number,
@@ -158,7 +162,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
         title: documentTitle,
         chapter_count: extraction.total_chapters,
         course_id: courseId,
-        chapter: chapter
+        chapter: extractedChapter
       };
     } catch (extractionError) {
       console.error(`[UploadProcessor] ❌ Markdown extraction failed`);

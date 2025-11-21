@@ -39,10 +39,17 @@ PAGE_END: 25
 [Complete chapter content with math as $x^2$ and $$display$$, tables as markdown, all formatting preserved]
 ===CHAPTER_END===
 
-**IMPORTANT:**
+**CONTENT FILTERING - EXCLUDE these elements:**
+1. **Header/footer metadata**: Course codes (e.g., "ECE356"), lecture numbers, instructor names, dates
+2. **Page numbers**: Do NOT include page numbers that appear at top/bottom of pages
+3. **Footnotes**: Skip footnote markers and footnote text at bottom of pages
+4. **References/Bibliography sections**: Skip "References", "Bibliography", or citation lists at the end
+5. **Navigation elements**: Skip "Table of Contents", page headers/footers
+
+**FORMATTING RULES:**
 - Use $...$ for inline math, $$...$$ for display math
 - Tables use standard | markdown | format |
-- Include ALL chapter content (headings, text, equations, tables, examples)
+- Include ALL educational content (headings, explanations, equations, tables, examples, diagrams descriptions)
 - Do NOT wrap in JSON or code blocks
 - Do NOT subdivide into sections - keep full chapter content together
 - Start immediately with ===CHAPTER_START===`;
@@ -54,15 +61,29 @@ For each chapter:
 1. Start with ===CHAPTER_START===
 2. Add metadata: CHAPTER_NUMBER, CHAPTER_TITLE, PAGE_START, PAGE_END
 3. Add ===CHAPTER_CONTENT===
-4. Include complete chapter markdown with ALL content
+4. Include complete chapter markdown with ALL educational content
 5. End with ===CHAPTER_END===
 
-**CONTENT RULES:**
-- Math: $inline$ and $$display$$
-- Tables: | Col 1 | Col 2 |
-- Include ALL educational content from the chapter
-- Keep chapter content together (do NOT subdivide)
+**WHAT TO INCLUDE:**
+- Main educational content: concepts, explanations, definitions
+- Examples and problem-solving demonstrations
+- Mathematical equations: $inline$ and $$display$$
+- Tables with data: | Col 1 | Col 2 |
+- Diagrams descriptions (describe what the diagram shows)
+- Important notes, theorems, proofs
+
+**WHAT TO EXCLUDE:**
+- Course codes, lecture numbers at top of pages (e.g., "ECE356: Database Systems Fall 2025")
+- Instructor names and dates (e.g., "Jeff Zarnett 2023-09-12")
+- Page numbers (e.g., "Page 3", "3 of 15")
+- Footnotes at bottom of pages
+- References/Bibliography sections
+- Headers/footers that repeat on every page
+
+**IMPORTANT:**
+- Keep chapter content together (do NOT subdivide into sections)
 - DO NOT use JSON
+- Extract ONLY the core educational material
 
 Start now with ===CHAPTER_START===`;
 
