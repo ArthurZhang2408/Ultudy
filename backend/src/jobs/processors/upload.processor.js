@@ -4,11 +4,20 @@
  * Handles PDF upload and extraction in the background
  * Works with both S3 and local filesystem storage
  *
- * TESTING: Now using pure markdown extraction:
- *   - LLM returns chapters in plain markdown (no JSON)
- *   - Each chapter is stored as one row in sections table
+ * TWO-PHASE EXTRACTION APPROACH:
+ *   Phase 1: Analyze PDF structure (JSON metadata)
+ *     - Determine if single or multi-chapter
+ *     - Extract chapter count and page ranges
+ *   Phase 2: Extract chapter content (plain markdown)
+ *     - Single chapter: Extract full PDF directly
+ *     - Multi-chapter: Split PDF by page ranges, extract each separately
+ *
+ * Benefits:
+ *   - Handles both single and multi-chapter PDFs intelligently
+ *   - Avoids token limits by splitting large PDFs
  *   - Native $ and $$ math support, standard markdown tables
- *   - No section subdivision - each chapter is one complete unit
+ *   - No JSON escaping issues for LaTeX/special chars
+ *   - Each chapter stored as one row in sections table
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
@@ -60,7 +69,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     }
 
     console.log(`[UploadProcessor] ========================================`);
-    console.log(`[UploadProcessor] 📚 TESTING: CHAPTER-ONLY MARKDOWN EXTRACTION`);
+    console.log(`[UploadProcessor] 📚 TWO-PHASE EXTRACTION: ANALYZE → EXTRACT`);
     console.log(`[UploadProcessor] ========================================`);
     console.log(`[UploadProcessor] PDF path: ${processingPath}`);
     console.log(`[UploadProcessor] Job ID: ${jobId}`);
@@ -70,10 +79,14 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
     try {
-      // 📝 TESTING: Plain markdown extraction - no JSON, no escaping, chapters only
-      console.log(`[UploadProcessor] 📤 Calling extractPdfAsMarkdown()...`);
+      // Two-phase extraction:
+      // Phase 1: Analyze structure (JSON metadata - chapter count, page ranges)
+      // Phase 2: Extract content (plain markdown)
+      //   - Single chapter: extract full PDF directly
+      //   - Multi-chapter: split PDF by page ranges, extract each separately
+      console.log(`[UploadProcessor] 📤 Starting two-phase extraction...`);
       const extraction = await extractPdfAsMarkdown(processingPath);
-      console.log(`[UploadProcessor] 📥 extractPdfAsMarkdown() completed successfully`);
+      console.log(`[UploadProcessor] 📥 Extraction completed successfully`);
 
       console.log(`[UploadProcessor] 📝 Extracted ${extraction.total_chapters} chapter(s)`);
       extraction.chapters.forEach((ch, idx) => {
