@@ -58,6 +58,7 @@ Return JSON with chapter count and page ranges only (no content).`;
 
 Respond in this JSON format:
 {
+  "title": "Document Title",
   "is_single_chapter": true/false,
   "chapter_count": number,
   "chapters": [
@@ -73,6 +74,10 @@ Respond in this JSON format:
   const responseSchema = {
     type: 'object',
     properties: {
+      title: {
+        type: 'string',
+        description: 'Document title (optional, can be generic)'
+      },
       is_single_chapter: { type: 'boolean' },
       chapter_count: { type: 'integer' },
       chapters: {
@@ -89,7 +94,7 @@ Respond in this JSON format:
         }
       }
     },
-    required: ['is_single_chapter', 'chapter_count', 'chapters']
+    required: ['title', 'is_single_chapter', 'chapter_count', 'chapters']
   };
 
   const analysis = await provider.extractStructuredSections(
