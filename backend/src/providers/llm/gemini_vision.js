@@ -234,6 +234,71 @@ export async function createGeminiVisionProvider() {
       console.log(`[gemini_vision] ✅ Found ${chapterCount} chapter delimiter(s)`);
 
       return text;
+    },
+
+    /**
+     * Extract as plain text (no JSON, no schema)
+     * Perfect for markdown extraction without escaping issues
+     *
+     * @param {string} pdfPath - Path to PDF file
+     * @param {string} systemPrompt - System instruction
+     * @param {string} userPrompt - User prompt
+     * @returns {Promise<string>} Raw text response
+     */
+    async extractAsPlainText(pdfPath, systemPrompt, userPrompt) {
+      console.log('[gemini_vision] 📝 Extracting as plain text (no JSON)');
+
+      // Read PDF as binary
+      const pdfData = await fs.readFile(pdfPath);
+      const pdfBase64 = pdfData.toString('base64');
+      const pdfSizeMB = (pdfData.length / 1024 / 1024).toFixed(2);
+
+      console.log(`[gemini_vision] PDF size: ${pdfSizeMB} MB`);
+
+      const visionModel = process.env.GEMINI_VISION_MODEL || 'gemini-2.0-flash-exp';
+      const temperature = parseFloat(process.env.GEMINI_VISION_TEMPERATURE || '0.4');
+
+      const model = genAI.getGenerativeModel({
+        model: visionModel,
+        systemInstruction: systemPrompt
+      });
+
+      console.log('[gemini_vision] 📤 Sending PDF for plain text extraction...');
+
+      const startTime = Date.now();
+
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: pdfBase64
+                }
+              },
+              { text: userPrompt }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: temperature
+          // NO responseMimeType or responseSchema - pure text output
+        }
+      });
+
+      const duration = Date.now() - startTime;
+      console.log(`[gemini_vision] ⏱️ Response received in ${duration}ms`);
+
+      const response = result.response;
+      const text = response.text();
+
+      console.log(`[gemini_vision] 📊 Response length: ${text.length} characters`);
+      console.log(`[gemini_vision] Preview (first 500 chars):`);
+      console.log(text.substring(0, 500));
+
+      return text;
     }
   };
 }

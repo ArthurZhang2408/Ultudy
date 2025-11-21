@@ -12,6 +12,7 @@
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
 import { extractChapters } from '../../ingestion/llm_extractor_chapters.js';
 import { extractPdfWithHybridApproach } from '../../ingestion/llm_extractor_hybrid.js';
+import { extractPdfAsMarkdown } from '../../ingestion/llm_extractor_markdown.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -57,7 +58,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     }
 
     console.log(`[UploadProcessor] ========================================`);
-    console.log(`[UploadProcessor] 🎯 TESTING: HYBRID TWO-PHASE EXTRACTION`);
+    console.log(`[UploadProcessor] 📝 TESTING: PLAIN MARKDOWN EXTRACTION`);
     console.log(`[UploadProcessor] ========================================`);
     console.log(`[UploadProcessor] PDF path: ${processingPath}`);
     console.log(`[UploadProcessor] Job ID: ${jobId}`);
@@ -67,12 +68,12 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
     try {
-      // 🎯 TESTING: Hybrid extraction - analyzes structure, then extracts sections
-      console.log(`[UploadProcessor] 📤 Calling extractPdfWithHybridApproach()...`);
-      const extraction = await extractPdfWithHybridApproach(processingPath);
-      console.log(`[UploadProcessor] 📥 extractPdfWithHybridApproach() completed successfully`);
+      // 📝 TESTING: Plain markdown extraction - no JSON, no escaping
+      console.log(`[UploadProcessor] 📤 Calling extractPdfAsMarkdown()...`);
+      const extraction = await extractPdfAsMarkdown(processingPath);
+      console.log(`[UploadProcessor] 📥 extractPdfAsMarkdown() completed successfully`);
 
-      console.log(`[UploadProcessor] 🎯 Extracted ${extraction.total_chapters} chapter(s) with ${extraction.total_sections} total sections`);
+      console.log(`[UploadProcessor] 📝 Extracted ${extraction.total_chapters} chapter(s) with ${extraction.total_sections} total sections`);
       extraction.chapters.forEach((ch, idx) => {
         console.log(`[UploadProcessor]   Chapter ${ch.chapter_number}: "${ch.title}" (${ch.sections.length} sections)`);
       });
@@ -83,7 +84,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       // Use provided title or use first chapter title
       const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
 
-    // 🎯 TESTING: Store chapters and sections in database
+    // 📝 TESTING: Store chapters and sections in database
     await tenantHelpers.withTenant(ownerId, async (client) => {
       // Insert document with metadata
       await client.query(
@@ -97,7 +98,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       // Update progress: 80% - Document created
       await jobTracker.updateProgress(ownerId, jobId, 80);
 
-      // 🎯 TESTING: Insert all sections from all chapters
+      // 📝 TESTING: Insert all sections from all chapters
       let sectionCounter = 0;
       const totalToInsert = extraction.total_sections;
 
@@ -127,7 +128,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
             ]
           );
 
-          console.log(`[UploadProcessor] 🎯 Chapter ${chapterData.chapter_number}, Section ${i + 1}: "${section.name}" (${section.markdown.length} chars), id=${rows[0].id}`);
+          console.log(`[UploadProcessor] 📝 Chapter ${chapterData.chapter_number}, Section ${i + 1}: "${section.name}" (${section.markdown.length} chars), id=${rows[0].id}`);
 
           sectionCounter++;
 
@@ -166,13 +167,13 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
         chapter: chapter
       };
     } catch (extractionError) {
-      console.error(`[UploadProcessor] ❌ Hybrid extraction failed`);
+      console.error(`[UploadProcessor] ❌ Markdown extraction failed`);
       console.error(`[UploadProcessor] Error type: ${extractionError.constructor.name}`);
       console.error(`[UploadProcessor] Error message: ${extractionError.message}`);
       console.error(`[UploadProcessor] Error stack:`, extractionError.stack);
 
       // Re-throw with more context
-      throw new Error(`Hybrid extraction failed: ${extractionError.message}`);
+      throw new Error(`Markdown extraction failed: ${extractionError.message}`);
     }
   } catch (error) {
     console.error(`[UploadProcessor] ❌ Job ${jobId} failed:`, error);
