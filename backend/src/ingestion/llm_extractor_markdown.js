@@ -66,14 +66,10 @@ You are ONLY analyzing structure - do NOT extract content yet.
 
 Return JSON with chapter count and page ranges.`;
 
-  const userPrompt = `Analyze this PDF and tell me:
-1. How many chapters does it contain?
-2. What are the page ranges for each chapter?
+  const userPrompt = `Analyze this PDF and identify all chapters with their page ranges.
 
 Respond in this JSON format:
 {
-  "is_single_chapter": true/false,
-  "chapter_count": number,
   "chapters": [
     {
       "chapter_number": "3",
@@ -82,13 +78,13 @@ Respond in this JSON format:
       "page_end": 6
     }
   ]
-}`;
+}
+
+Return one chapter if single-chapter PDF, multiple if multi-chapter PDF.`;
 
   const responseSchema = {
     type: 'object',
     properties: {
-      is_single_chapter: { type: 'boolean' },
-      chapter_count: { type: 'integer' },
       chapters: {
         type: 'array',
         items: {
@@ -103,7 +99,7 @@ Respond in this JSON format:
         }
       }
     },
-    required: ['is_single_chapter', 'chapter_count', 'chapters']
+    required: ['chapters']
   };
 
   const analysis = await provider.extractStructuredSections(
@@ -113,12 +109,20 @@ Respond in this JSON format:
     responseSchema
   );
 
-  console.log(`[analyzePdfStructure] ✅ Analysis complete: ${analysis.chapter_count} chapter(s)`);
+  // Derive metadata from chapters array
+  const is_single_chapter = analysis.chapters.length === 1;
+  const chapter_count = analysis.chapters.length;
+
+  console.log(`[analyzePdfStructure] ✅ Analysis complete: ${chapter_count} chapter(s)`);
   analysis.chapters.forEach((ch, idx) => {
     console.log(`[analyzePdfStructure]   ${idx + 1}. Chapter ${ch.chapter_number}: "${ch.title}" (pages ${ch.page_start}-${ch.page_end})`);
   });
 
-  return analysis;
+  return {
+    is_single_chapter,
+    chapter_count,
+    chapters: analysis.chapters
+  };
 }
 
 /**
