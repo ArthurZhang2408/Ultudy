@@ -238,29 +238,59 @@ async function extractMultiChapterPdf(pdfPath, chaptersInfo) {
     const chapterInfo = chaptersInfo[i];
     console.log(`[extractMultiChapterPdf] Processing ${i + 1}/${chaptersInfo.length}: Chapter ${chapterInfo.chapter_number}`);
 
-    // Split PDF to extract just this chapter's pages (pass loaded PDF doc)
-    const chapterPdfPath = await createChapterPdf(
-      sourcePdfDoc,
-      chapterInfo.page_start,
-      chapterInfo.page_end,
-      chapterInfo.chapter_number
-    );
+    let chapterPdfPath = null;
 
-    // Extract markdown from this chapter
-    const markdown = await extractChapterContent(chapterPdfPath);
+    try {
+      // Split PDF to extract just this chapter's pages (pass loaded PDF doc)
+      chapterPdfPath = await createChapterPdf(
+        sourcePdfDoc,
+        chapterInfo.page_start,
+        chapterInfo.page_end,
+        chapterInfo.chapter_number
+      );
 
-    // Cleanup temp file
-    await fs.rm(chapterPdfPath, { force: true });
+      // Extract markdown from this chapter
+      const markdown = await extractChapterContent(chapterPdfPath);
 
-    allChapters.push({
-      chapter_number: chapterInfo.chapter_number,
-      title: chapterInfo.title,
-      page_start: chapterInfo.page_start,
-      page_end: chapterInfo.page_end,
-      markdown: markdown.trim()
-    });
+      // Validate markdown length
+      if (markdown.length < 100) {
+        console.warn(`[extractMultiChapterPdf] ⚠️ Chapter ${chapterInfo.chapter_number} has very short content (${markdown.length} chars) - may be extraction error`);
+      }
 
-    console.log(`[extractMultiChapterPdf] ✅ Chapter ${chapterInfo.chapter_number}: ${markdown.length} chars`);
+      if (markdown.length > 200000) {
+        console.warn(`[extractMultiChapterPdf] ⚠️ Chapter ${chapterInfo.chapter_number} has very long content (${markdown.length} chars) - may contain hallucination`);
+      }
+
+      allChapters.push({
+        chapter_number: chapterInfo.chapter_number,
+        title: chapterInfo.title,
+        page_start: chapterInfo.page_start,
+        page_end: chapterInfo.page_end,
+        markdown: markdown.trim()
+      });
+
+      console.log(`[extractMultiChapterPdf] ✅ Chapter ${chapterInfo.chapter_number}: ${markdown.length} chars`);
+    } catch (error) {
+      console.error(`[extractMultiChapterPdf] ❌ Failed to extract Chapter ${chapterInfo.chapter_number}:`);
+      console.error(`[extractMultiChapterPdf] Error: ${error.message}`);
+
+      // Add chapter with error message instead of failing entire extraction
+      allChapters.push({
+        chapter_number: chapterInfo.chapter_number,
+        title: chapterInfo.title,
+        page_start: chapterInfo.page_start,
+        page_end: chapterInfo.page_end,
+        markdown: `# Extraction Failed\n\nChapter ${chapterInfo.chapter_number}: ${chapterInfo.title}\n\nError: ${error.message}\n\nPlease try re-uploading this chapter separately.`,
+        extraction_error: true
+      });
+
+      console.log(`[extractMultiChapterPdf] ⚠️ Added error placeholder for Chapter ${chapterInfo.chapter_number}`);
+    } finally {
+      // Cleanup temp file
+      if (chapterPdfPath) {
+        await fs.rm(chapterPdfPath, { force: true });
+      }
+    }
   }
 
   console.log(`[extractMultiChapterPdf] ✅ Extracted ${allChapters.length} chapters`);

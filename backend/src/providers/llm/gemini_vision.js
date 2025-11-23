@@ -26,6 +26,53 @@ async function loadGoogleGenerativeAI() {
   return module.GoogleGenerativeAI ?? module.default;
 }
 
+/**
+ * Detect excessive repetition in text (hallucination detection)
+ * Checks if a short phrase (3-50 chars) repeats many times
+ */
+function detectRepetition(text) {
+  // Sample the last 10000 characters (where repetition usually occurs)
+  const sampleText = text.length > 10000 ? text.substring(text.length - 10000) : text;
+
+  // Try different pattern lengths (3-50 chars)
+  for (let patternLength = 3; patternLength <= 50; patternLength++) {
+    // Check multiple positions in the text for patterns
+    const samples = Math.min(10, Math.floor(sampleText.length / patternLength));
+
+    for (let i = 0; i < samples; i++) {
+      const startPos = Math.floor(i * sampleText.length / samples);
+      const pattern = sampleText.substring(startPos, startPos + patternLength);
+
+      // Count occurrences of this pattern
+      const regex = new RegExp(escapeRegex(pattern), 'g');
+      const matches = sampleText.match(regex);
+      const count = matches ? matches.length : 0;
+
+      // If pattern repeats > 50 times, it's likely a hallucination
+      // Also check if it takes up > 30% of the sample
+      const patternPercentage = (count * patternLength) / sampleText.length;
+
+      if (count > 50 && patternPercentage > 0.3) {
+        return {
+          isRepetitive: true,
+          pattern: pattern,
+          count: count,
+          percentage: (patternPercentage * 100).toFixed(1)
+        };
+      }
+    }
+  }
+
+  return { isRepetitive: false };
+}
+
+/**
+ * Escape special regex characters
+ */
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export async function createGeminiVisionProvider() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -283,7 +330,8 @@ export async function createGeminiVisionProvider() {
           }
         ],
         generationConfig: {
-          temperature: temperature
+          temperature: temperature,
+          maxOutputTokens: 32768 // Limit output to prevent runaway generation (~65K chars)
           // NO responseMimeType or responseSchema - pure text output
         }
       });
@@ -297,6 +345,17 @@ export async function createGeminiVisionProvider() {
       console.log(`[gemini_vision] 📊 Response length: ${text.length} characters`);
       console.log(`[gemini_vision] Preview (first 500 chars):`);
       console.log(text.substring(0, 500));
+
+      // Detect excessive repetition (hallucination)
+      const repetitionCheck = detectRepetition(text);
+      if (repetitionCheck.isRepetitive) {
+        console.error('[gemini_vision] ❌ REPETITION DETECTED - LLM hallucination');
+        console.error(`[gemini_vision] Repeated pattern: "${repetitionCheck.pattern}"`);
+        console.error(`[gemini_vision] Occurrences: ${repetitionCheck.count}`);
+        console.error(`[gemini_vision] Last 1000 chars:`);
+        console.error(text.substring(Math.max(0, text.length - 1000)));
+        throw new Error(`LLM hallucination detected: phrase "${repetitionCheck.pattern}" repeated ${repetitionCheck.count} times. This indicates the model got stuck in a loop.`);
+      }
 
       return text;
     }
