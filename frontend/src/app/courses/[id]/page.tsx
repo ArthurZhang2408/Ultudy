@@ -108,24 +108,6 @@ export default function CoursePage() {
     }
   }, [courseId]);
 
-  // Auto-refresh when chapters complete to show content immediately
-  useEffect(() => {
-    const hasCompletedChapters = processingJobs.some(job =>
-      job.type === 'upload' &&
-      job.chapters_list?.some(ch => ch.status === 'completed' && ch.section_id)
-    );
-
-    if (hasCompletedChapters) {
-      // Debounce: only refresh once per second to avoid excessive refreshes
-      const timeoutId = setTimeout(() => {
-        console.log('[courses] Chapter completed, refreshing course data');
-        fetchCourseData();
-      }, 1000);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [processingJobs]);
-
   // Poll for upload job completion when redirected from upload page
   useEffect(() => {
     const uploadJobId = searchParams.get('upload_job_id');
@@ -171,6 +153,12 @@ export default function CoursePage() {
       onComplete: async (job: Job) => {
         console.log('[courses] Upload completed:', job);
         pollingJobsRef.current.delete(uploadJobId);
+
+        // Remove all chapter jobs for this upload (if multi-chapter PDF)
+        setProcessingJobs(prev => prev.filter(j =>
+          j.job_id !== uploadJobId && !j.job_id.startsWith(`${uploadJobId}-ch-`)
+        ));
+
         // Refresh course data FIRST to show the new document
         await fetchCourseData();
         // Then remove processing job to avoid "No material uploaded yet" flash
@@ -238,6 +226,37 @@ export default function CoursePage() {
           }));
         allJobs.push(...courseUploadJobs);
         console.log('[courses] Loaded', courseUploadJobs.length, 'upload jobs from sessionStorage');
+
+        // Also load chapter jobs for multi-chapter PDFs
+        courseUploadJobs.forEach((parentJob: any) => {
+          const chapterJobsKey = `chapter-jobs-${parentJob.job_id}`;
+          const chapterJobsStored = sessionStorage.getItem(chapterJobsKey);
+          if (chapterJobsStored) {
+            try {
+              const chapterJobsData = JSON.parse(chapterJobsStored);
+              const chapterJobs = chapterJobsData.map((chJob: any) => ({
+                job_id: chJob.job_id,
+                document_id: chJob.document_id,
+                title: chJob.title,
+                type: 'upload' as const,
+                progress: 0,
+                status: 'queued',
+                chapter: chJob.chapter,
+                phase: 'extracting_chapters'
+              }));
+              allJobs.push(...chapterJobs);
+              console.log('[courses] Loaded', chapterJobs.length, 'chapter jobs for parent job', parentJob.job_id);
+
+              // Remove the parent job since we have chapter jobs
+              const parentIndex = allJobs.findIndex(j => j.job_id === parentJob.job_id);
+              if (parentIndex >= 0) {
+                allJobs.splice(parentIndex, 1);
+              }
+            } catch (e) {
+              console.error('[courses] Failed to parse chapter jobs:', e);
+            }
+          }
+        });
       }
 
       // Load lesson generation jobs from 'lesson-job-*' sessionStorage entries
@@ -311,60 +330,93 @@ export default function CoursePage() {
   }
 
   function updateJobProgress(jobId: string, progress: number, status: string, metadata?: any) {
-    setProcessingJobs(prev => prev.map(job => {
-      if (job.job_id === jobId) {
-        const updated = { ...job, progress, status };
+    setProcessingJobs(prev => {
+      let updated = [...prev];
 
-        // Extract chapter metadata from job.data if available
-        if (metadata) {
-          if (metadata.phase) {
-            updated.phase = metadata.phase;
-          }
-          if (metadata.chapters_list) {
-            updated.chapters_list = metadata.chapters_list;
-          }
-          if (metadata.total_chapters) {
-            updated.total_chapters = metadata.total_chapters;
-          }
-          if (metadata.current_chapter) {
-            updated.current_chapter = metadata.current_chapter;
-          }
-          if (metadata.current_chapter_info) {
-            updated.current_chapter_info = metadata.current_chapter_info;
+      // Handle chapters_detected: create separate job for each chapter
+      if (metadata?.phase === 'chapters_detected' && metadata.chapters_list) {
+        console.log('[courses] Chapters detected, creating individual chapter jobs');
 
-            // Update the corresponding chapter in chapters_list to 'processing'
-            if (updated.chapters_list) {
-              updated.chapters_list = updated.chapters_list.map(ch =>
-                ch.chapter_number === metadata.current_chapter_info.chapter_number
-                  ? { ...ch, status: 'processing' as const }
-                  : ch
-              );
-            }
-          }
-          if (metadata.completed_chapter) {
-            // Mark chapter as completed in chapters_list
-            if (updated.chapters_list) {
-              updated.chapters_list = updated.chapters_list.map(ch =>
-                ch.chapter_number === metadata.completed_chapter.chapter_number
-                  ? {
-                      ...ch,
-                      status: 'completed' as const,
-                      section_id: metadata.completed_chapter.section_id
-                    }
-                  : ch
-              );
-            }
-          }
+        // Find the parent job
+        const parentJob = updated.find(j => j.job_id === jobId);
+        if (!parentJob) return prev;
+
+        // Remove the parent job (we'll show individual chapter jobs instead)
+        updated = updated.filter(j => j.job_id !== jobId);
+
+        // Create individual jobs for each chapter
+        const chapterJobs: ProcessingJob[] = metadata.chapters_list.map((ch: ChapterInfo) => ({
+          job_id: `${jobId}-ch-${ch.chapter_number}`,
+          document_id: parentJob.document_id,
+          title: ch.title,
+          type: 'upload' as const,
+          progress: 0,
+          status: 'queued',
+          chapter: ch.chapter_number,
+          phase: 'extracting_chapters',
+          current_chapter_info: ch
+        }));
+
+        updated.push(...chapterJobs);
+
+        // Persist chapter jobs to sessionStorage
+        try {
+          const chapterJobsData = chapterJobs.map(job => ({
+            job_id: job.job_id,
+            parent_job_id: jobId,
+            document_id: job.document_id,
+            title: job.title,
+            chapter: job.chapter,
+            course_id: courseId
+          }));
+          sessionStorage.setItem(`chapter-jobs-${jobId}`, JSON.stringify(chapterJobsData));
+        } catch (e) {
+          console.error('[courses] Failed to persist chapter jobs:', e);
         }
 
         return updated;
       }
-      return job;
-    }));
+
+      // Handle chapter progress updates
+      if (metadata?.current_chapter_info) {
+        const chapterJobId = `${jobId}-ch-${metadata.current_chapter_info.chapter_number}`;
+        updated = updated.map(job => {
+          if (job.job_id === chapterJobId) {
+            return {
+              ...job,
+              progress: progress,
+              status: 'processing',
+              phase: 'extracting_chapters'
+            };
+          }
+          return job;
+        });
+        return updated;
+      }
+
+      // Handle chapter completion
+      if (metadata?.completed_chapter) {
+        const chapterJobId = `${jobId}-ch-${metadata.completed_chapter.chapter_number}`;
+
+        // Trigger refresh to show the new section
+        console.log('[courses] Chapter completed, refreshing course data');
+        fetchCourseData();
+
+        // Remove the completed chapter job immediately
+        updated = updated.filter(job => job.job_id !== chapterJobId);
+
+        return updated;
+      }
+
+      // Default: update the job normally (for single-chapter uploads)
+      return updated.map(job =>
+        job.job_id === jobId ? { ...job, progress, status } : job
+      );
+    });
   }
 
   function removeProcessingJob(jobId: string) {
-    setProcessingJobs(prev => prev.filter(job => job.job_id !== jobId));
+    setProcessingJobs(prev => prev.filter(job => job.job_id !== jobId && !job.job_id.startsWith(`${jobId}-ch-`)));
 
     // Also remove from session storage
     try {
@@ -375,6 +427,9 @@ export default function CoursePage() {
         const updated = allJobs.filter((job: any) => job.job_id !== jobId);
         sessionStorage.setItem('processingJobs', JSON.stringify(updated));
       }
+
+      // Remove chapter jobs
+      sessionStorage.removeItem(`chapter-jobs-${jobId}`);
 
       // Remove from lesson jobs
       sessionStorage.removeItem(`lesson-job-${jobId}`);
@@ -1142,97 +1197,22 @@ export default function CoursePage() {
                                   {job.title}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  {job.phase === 'chapters_detected' && job.total_chapters && (
-                                    <Badge variant="primary" size="sm">
-                                      {job.total_chapters} chapters detected
-                                    </Badge>
-                                  )}
-                                  {job.phase === 'extracting_chapters' && job.current_chapter && job.total_chapters && (
-                                    <Badge variant="primary" size="sm">
-                                      Chapter {job.current_chapter}/{job.total_chapters}
-                                    </Badge>
-                                  )}
-                                  {!job.phase && (
-                                    <Badge variant="primary" size="sm">
-                                      Processing...
-                                    </Badge>
-                                  )}
+                                  <Badge variant="primary" size="sm">
+                                    {job.status === 'processing' ? 'Processing...' : 'Queued'}
+                                  </Badge>
                                   <span className="text-xs text-primary-700 dark:text-primary-400">
                                     {job.status === 'processing' ? `${job.progress}%` : job.status}
                                   </span>
                                 </div>
                               </div>
                             </div>
-
-                            {/* Overall Progress bar */}
+                            {/* Progress bar */}
                             {job.status === 'processing' && (
                               <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
                                 <div
                                   className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
                                   style={{ width: `${job.progress}%` }}
                                 />
-                              </div>
-                            )}
-
-                            {/* Chapter List - Show when chapters are detected */}
-                            {job.chapters_list && job.chapters_list.length > 0 && (
-                              <div className="space-y-2 pt-2 border-t border-primary-200 dark:border-primary-800">
-                                <h5 className="text-sm font-semibold text-primary-900 dark:text-primary-300">
-                                  Chapters:
-                                </h5>
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                  {job.chapters_list.map((chapterInfo) => (
-                                    <div
-                                      key={chapterInfo.chapter_number}
-                                      className={`flex items-center justify-between p-2 rounded ${
-                                        chapterInfo.status === 'completed'
-                                          ? 'bg-success-100 dark:bg-success-900/30'
-                                          : chapterInfo.status === 'processing'
-                                          ? 'bg-warning-100 dark:bg-warning-900/30'
-                                          : 'bg-neutral-100 dark:bg-neutral-800'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2 flex-1">
-                                        {chapterInfo.status === 'completed' && (
-                                          <svg className="w-4 h-4 text-success-600 dark:text-success-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                          </svg>
-                                        )}
-                                        {chapterInfo.status === 'processing' && (
-                                          <svg className="w-4 h-4 text-warning-600 dark:text-warning-400 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                          </svg>
-                                        )}
-                                        {chapterInfo.status === 'queued' && (
-                                          <svg className="w-4 h-4 text-neutral-400 dark:text-neutral-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                          </svg>
-                                        )}
-                                        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                                          Chapter {chapterInfo.chapter_number}: {chapterInfo.title}
-                                        </span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {chapterInfo.status === 'completed' && (
-                                          <Badge variant="success" size="sm">
-                                            Completed
-                                          </Badge>
-                                        )}
-                                        {chapterInfo.status === 'processing' && (
-                                          <Badge variant="warning" size="sm">
-                                            Processing
-                                          </Badge>
-                                        )}
-                                        {chapterInfo.status === 'queued' && (
-                                          <Badge variant="neutral" size="sm">
-                                            Queued
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
                               </div>
                             )}
                           </div>
