@@ -198,8 +198,8 @@ export class JobTracker {
    */
   async updateProgress(ownerId, jobId, progress, metadata = null) {
     await this.tenantHelpers.withTenant(ownerId, async (client) => {
-      if (metadata) {
-        // Update progress and merge metadata into data field
+      if (metadata && progress !== null) {
+        // Update both progress and metadata
         await client.query(
           `UPDATE jobs
            SET progress = $3,
@@ -207,8 +207,16 @@ export class JobTracker {
            WHERE id = $1 AND owner_id = $2`,
           [jobId, ownerId, Math.min(100, Math.max(0, progress)), JSON.stringify(metadata)]
         );
-      } else {
-        // Just update progress
+      } else if (metadata) {
+        // Update only metadata (keep progress unchanged)
+        await client.query(
+          `UPDATE jobs
+           SET data = COALESCE(data, '{}'::jsonb) || $3::jsonb
+           WHERE id = $1 AND owner_id = $2`,
+          [jobId, ownerId, JSON.stringify(metadata)]
+        );
+      } else if (progress !== null) {
+        // Update only progress
         await client.query(
           `UPDATE jobs SET progress = $3
            WHERE id = $1 AND owner_id = $2`,
