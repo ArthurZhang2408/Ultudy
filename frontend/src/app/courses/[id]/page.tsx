@@ -444,18 +444,66 @@ export default function CoursePage() {
         const chapterJobId = `${jobId}-ch-${metadata.current_chapter_info.chapter_number}`;
         console.log('[courses] 📊 Chapter progress update for:', chapterJobId, 'progress:', progress);
 
-        updated = updated.map(job => {
-          if (job.job_id === chapterJobId) {
-            console.log('[courses] ✅ Found matching chapter job, updating progress');
-            return {
-              ...job,
-              progress: progress,
-              status: 'processing',
-              phase: 'extracting_chapters'
-            };
+        // Check if chapter job exists
+        const chapterJobExists = updated.some(j => j.job_id === chapterJobId);
+
+        if (!chapterJobExists && metadata.chapters_list) {
+          // Chapter jobs don't exist yet (probably missed chapters_detected after refresh)
+          // Create them now using chapters_list from metadata
+          console.log('[courses] 🔄 Chapter job missing! Creating all chapter jobs from chapters_list');
+
+          const parentJob = updated.find(j => j.job_id === jobId);
+          if (parentJob) {
+            // Remove parent job
+            updated = updated.filter(j => j.job_id !== jobId);
+
+            // Create all chapter jobs
+            const chapterJobs: ProcessingJob[] = metadata.chapters_list.map((ch: ChapterInfo) => ({
+              job_id: `${jobId}-ch-${ch.chapter_number}`,
+              document_id: parentJob.document_id,
+              title: ch.title,
+              type: 'upload' as const,
+              progress: ch.chapter_number === metadata.current_chapter_info.chapter_number ? progress : 0,
+              status: ch.chapter_number === metadata.current_chapter_info.chapter_number ? 'processing' : 'queued',
+              chapter: ch.chapter_number,
+              phase: 'extracting_chapters',
+              current_chapter_info: ch
+            }));
+
+            updated.push(...chapterJobs);
+            console.log('[courses] ✅ Created', chapterJobs.length, 'chapter jobs retroactively');
+
+            // Persist to sessionStorage
+            try {
+              const chapterJobsData = chapterJobs.map(job => ({
+                job_id: job.job_id,
+                parent_job_id: jobId,
+                document_id: job.document_id,
+                title: job.title,
+                chapter: job.chapter,
+                course_id: courseId
+              }));
+              sessionStorage.setItem(`chapter-jobs-${jobId}`, JSON.stringify(chapterJobsData));
+            } catch (e) {
+              console.error('[courses] Failed to persist chapter jobs:', e);
+            }
           }
-          return job;
-        });
+        } else {
+          // Update existing chapter job
+          updated = updated.map(job => {
+            if (job.job_id === chapterJobId) {
+              console.log('[courses] ✅ Found matching chapter job, updating progress');
+              return {
+                ...job,
+                progress: progress,
+                status: 'processing',
+                phase: 'extracting_chapters'
+              };
+            }
+            return job;
+          });
+        }
+
         return updated;
       }
 
