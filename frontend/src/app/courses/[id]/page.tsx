@@ -227,7 +227,9 @@ export default function CoursePage() {
         allJobs.push(...courseUploadJobs);
         console.log('[courses] Loaded', courseUploadJobs.length, 'upload jobs from sessionStorage');
 
-        // Also load chapter jobs for multi-chapter PDFs
+        // Also check for chapter jobs (multi-chapter PDFs)
+        // If chapter jobs exist, we need to keep polling the parent job
+        const parentJobsWithChapters: string[] = [];
         courseUploadJobs.forEach((parentJob: any) => {
           const chapterJobsKey = `chapter-jobs-${parentJob.job_id}`;
           const chapterJobsStored = sessionStorage.getItem(chapterJobsKey);
@@ -247,15 +249,51 @@ export default function CoursePage() {
               allJobs.push(...chapterJobs);
               console.log('[courses] Loaded', chapterJobs.length, 'chapter jobs for parent job', parentJob.job_id);
 
-              // Remove the parent job since we have chapter jobs
-              const parentIndex = allJobs.findIndex(j => j.job_id === parentJob.job_id);
-              if (parentIndex >= 0) {
-                allJobs.splice(parentIndex, 1);
-              }
+              // Keep track of parent jobs with chapters (don't show them in UI, but keep polling them)
+              parentJobsWithChapters.push(parentJob.job_id);
             } catch (e) {
               console.error('[courses] Failed to parse chapter jobs:', e);
             }
           }
+        });
+
+        // Remove parent jobs from display (but we'll still poll them)
+        const jobsToDisplay = allJobs.filter(job => !parentJobsWithChapters.includes(job.job_id));
+        allJobs.length = 0;
+        allJobs.push(...jobsToDisplay);
+
+        // Start polling for parent jobs with chapters
+        parentJobsWithChapters.forEach(parentJobId => {
+          if (pollingJobsRef.current.has(parentJobId)) {
+            return; // Already polling
+          }
+
+          console.log('[courses] Starting poller for parent job with chapters:', parentJobId);
+          pollingJobsRef.current.add(parentJobId);
+
+          createJobPoller(parentJobId, {
+            interval: 2000,
+            onProgress: (jobData: Job) => {
+              console.log('[courses] Parent job progress:', jobData.progress, jobData.data);
+              updateJobProgress(parentJobId, jobData.progress, jobData.status, jobData.data);
+            },
+            onComplete: async (jobData: Job) => {
+              console.log('[courses] Parent job completed');
+              pollingJobsRef.current.delete(parentJobId);
+
+              // Remove all chapter jobs
+              setProcessingJobs(prev => prev.filter(j => !j.job_id.startsWith(`${parentJobId}-ch-`)));
+
+              // Refresh and cleanup
+              await fetchCourseData();
+              removeProcessingJob(parentJobId);
+            },
+            onError: (error: string) => {
+              console.error('[courses] Parent job error:', error);
+              pollingJobsRef.current.delete(parentJobId);
+              removeProcessingJob(parentJobId);
+            }
+          });
         });
       }
 
@@ -330,16 +368,23 @@ export default function CoursePage() {
   }
 
   function updateJobProgress(jobId: string, progress: number, status: string, metadata?: any) {
+    console.log('[courses] updateJobProgress called:', { jobId, progress, status, metadata });
+
     setProcessingJobs(prev => {
       let updated = [...prev];
 
       // Handle chapters_detected: create separate job for each chapter
       if (metadata?.phase === 'chapters_detected' && metadata.chapters_list) {
-        console.log('[courses] Chapters detected, creating individual chapter jobs');
+        console.log('[courses] ✅ Chapters detected! Creating', metadata.chapters_list.length, 'individual chapter jobs');
 
         // Find the parent job
         const parentJob = updated.find(j => j.job_id === jobId);
-        if (!parentJob) return prev;
+        if (!parentJob) {
+          console.warn('[courses] ⚠️ Parent job not found in state:', jobId);
+          return prev;
+        }
+
+        console.log('[courses] Parent job found:', parentJob);
 
         // Remove the parent job (we'll show individual chapter jobs instead)
         updated = updated.filter(j => j.job_id !== jobId);
@@ -358,6 +403,7 @@ export default function CoursePage() {
         }));
 
         updated.push(...chapterJobs);
+        console.log('[courses] ✅ Created chapter jobs:', chapterJobs.map(j => j.job_id));
 
         // Persist chapter jobs to sessionStorage
         try {
@@ -370,8 +416,9 @@ export default function CoursePage() {
             course_id: courseId
           }));
           sessionStorage.setItem(`chapter-jobs-${jobId}`, JSON.stringify(chapterJobsData));
+          console.log('[courses] ✅ Persisted chapter jobs to sessionStorage');
         } catch (e) {
-          console.error('[courses] Failed to persist chapter jobs:', e);
+          console.error('[courses] ❌ Failed to persist chapter jobs:', e);
         }
 
         return updated;
@@ -380,8 +427,11 @@ export default function CoursePage() {
       // Handle chapter progress updates
       if (metadata?.current_chapter_info) {
         const chapterJobId = `${jobId}-ch-${metadata.current_chapter_info.chapter_number}`;
+        console.log('[courses] 📊 Chapter progress update for:', chapterJobId, 'progress:', progress);
+
         updated = updated.map(job => {
           if (job.job_id === chapterJobId) {
+            console.log('[courses] ✅ Found matching chapter job, updating progress');
             return {
               ...job,
               progress: progress,
@@ -397,13 +447,15 @@ export default function CoursePage() {
       // Handle chapter completion
       if (metadata?.completed_chapter) {
         const chapterJobId = `${jobId}-ch-${metadata.completed_chapter.chapter_number}`;
+        console.log('[courses] ✅ Chapter completed:', chapterJobId);
 
         // Trigger refresh to show the new section
-        console.log('[courses] Chapter completed, refreshing course data');
+        console.log('[courses] Refreshing course data to show new chapter');
         fetchCourseData();
 
         // Remove the completed chapter job immediately
         updated = updated.filter(job => job.job_id !== chapterJobId);
+        console.log('[courses] Removed completed chapter job from state');
 
         return updated;
       }
