@@ -135,12 +135,13 @@ export default function CoursePage() {
         console.log('[courses] Upload progress:', job.progress, job.status);
         updateJobProgress(uploadJobId, job.progress, job.status);
       },
-      onComplete: (job: Job) => {
+      onComplete: async (job: Job) => {
         console.log('[courses] Upload completed:', job);
         pollingJobsRef.current.delete(uploadJobId);
+        // Refresh course data FIRST to show the new document
+        await fetchCourseData();
+        // Then remove processing job to avoid "No material uploaded yet" flash
         removeProcessingJob(uploadJobId);
-        // Refresh course data to show the new document
-        fetchCourseData();
       },
       onError: (error: string) => {
         console.error('[courses] Upload job error:', error);
