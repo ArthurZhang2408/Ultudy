@@ -61,9 +61,6 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
-  generating?: boolean;
-  generation_progress?: number;
-  job_id?: string;
 };
 
 export default function CoursePage() {
@@ -279,26 +276,6 @@ export default function CoursePage() {
     setProcessingJobs(prev => prev.map(job =>
       job.job_id === jobId ? { ...job, progress, status } : job
     ));
-
-    // Also update section generating state if this is a lesson generation job
-    setProcessingJobs(prev => {
-      const job = prev.find(j => j.job_id === jobId);
-      if (job && job.type === 'lesson' && job.section_id) {
-        setSectionsByChapter(prevSections => {
-          const newState = { ...prevSections };
-          const chapterKey = job.chapter || 'Uncategorized';
-          if (newState[chapterKey]) {
-            newState[chapterKey] = newState[chapterKey].map(s =>
-              s.id === job.section_id
-                ? { ...s, generating: true, generation_progress: progress, job_id: jobId }
-                : s
-            );
-          }
-          return newState;
-        });
-      }
-      return prev;
-    });
   }
 
   function removeProcessingJob(jobId: string) {
@@ -461,20 +438,6 @@ export default function CoursePage() {
   async function generateLessonForSection(section: SectionWithMastery, documentId: string, chapter: string | null) {
     console.log(`[courses] Generating lesson for section ${section.name}`);
 
-    // Optimistically mark section as generating BEFORE API call
-    setSectionsByChapter(prev => {
-      const newState = { ...prev };
-      const chapterKey = chapter || 'Uncategorized';
-      if (newState[chapterKey]) {
-        newState[chapterKey] = newState[chapterKey].map(s =>
-          s.id === section.id
-            ? { ...s, generating: true, generation_progress: 0 }
-            : s
-        );
-      }
-      return newState;
-    });
-
     try {
       const res = await fetch('/api/lessons/generate', {
         method: 'POST',
@@ -536,20 +499,6 @@ export default function CoursePage() {
             onComplete: async (job: Job) => {
               console.log('[courses] Generation completed:', job);
 
-              // Clear generating state for section
-              setSectionsByChapter(prev => {
-                const newState = { ...prev };
-                const chapterKey = chapter || 'Uncategorized';
-                if (newState[chapterKey]) {
-                  newState[chapterKey] = newState[chapterKey].map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, generation_progress: undefined, job_id: undefined, concepts_generated: true }
-                      : s
-                  );
-                }
-                return newState;
-              });
-
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
 
@@ -559,21 +508,6 @@ export default function CoursePage() {
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
-
-              // Clear generating state for section
-              setSectionsByChapter(prev => {
-                const newState = { ...prev };
-                const chapterKey = chapter || 'Uncategorized';
-                if (newState[chapterKey]) {
-                  newState[chapterKey] = newState[chapterKey].map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, generation_progress: undefined, job_id: undefined }
-                      : s
-                  );
-                }
-                return newState;
-              });
-
               pollingJobsRef.current.delete(data.job_id);
               removeProcessingJob(data.job_id);
 
@@ -603,20 +537,6 @@ export default function CoursePage() {
           router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
         }
       } else {
-        // Clear generating state on error
-        setSectionsByChapter(prev => {
-          const newState = { ...prev };
-          const chapterKey = chapter || 'Uncategorized';
-          if (newState[chapterKey]) {
-            newState[chapterKey] = newState[chapterKey].map(s =>
-              s.id === section.id
-                ? { ...s, generating: false, generation_progress: undefined, job_id: undefined }
-                : s
-            );
-          }
-          return newState;
-        });
-
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.error || 'Failed to generate lesson';
 
@@ -642,21 +562,6 @@ export default function CoursePage() {
       }
     } catch (error) {
       console.error('[courses] Error generating lesson:', error);
-
-      // Clear generating state on exception
-      setSectionsByChapter(prev => {
-        const newState = { ...prev };
-        const chapterKey = chapter || 'Uncategorized';
-        if (newState[chapterKey]) {
-          newState[chapterKey] = newState[chapterKey].map(s =>
-            s.id === section.id
-              ? { ...s, generating: false, generation_progress: undefined, job_id: undefined }
-              : s
-          );
-        }
-        return newState;
-      });
-
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 
       // Check if it's a network error
@@ -918,7 +823,7 @@ export default function CoursePage() {
             // Add section overview squares before concepts, with loading placeholders if generating
             orderedSections.forEach((section) => {
               // Check if this section is currently generating
-              const isGenerating = section.generating || processingJobs.some(job =>
+              const isGenerating = processingJobs.some(job =>
                 job.type === 'lesson' &&
                 job.section_id === section.id &&
                 (job.chapter || 'Uncategorized') === chapter &&
@@ -954,7 +859,7 @@ export default function CoursePage() {
               // Add loading placeholders if generating (exactly one row dynamically calculated)
               if (isGenerating) {
                 const job = processingJobs.find(j => j.section_id === section.id);
-                const progress = section.generation_progress || job?.progress || 0;
+                const progress = job?.progress || 0;
 
                 // Use dynamically calculated number of placeholders to fill exactly one row
                 Array.from({ length: placeholdersPerRow }, (_, index) => {
