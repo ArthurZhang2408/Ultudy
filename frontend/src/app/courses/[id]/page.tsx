@@ -325,10 +325,25 @@ export default function CoursePage() {
       });
 
       console.log('[courses] Total jobs loaded:', allJobs.length, '(', allJobs.filter(j => j.type === 'upload').length, 'uploads,', allJobs.filter(j => j.type === 'lesson').length, 'lessons)');
-      setProcessingJobs(allJobs);
 
-      // Start polling for each job
+      // IMPORTANT: Use callback form to avoid overwriting jobs that were added from URL
+      setProcessingJobs(prev => {
+        // Keep any jobs that are already being polled (from URL redirect)
+        const existingJobIds = prev.map(j => j.job_id);
+        const newJobs = allJobs.filter(j => !existingJobIds.includes(j.job_id));
+
+        console.log('[courses] Merging', newJobs.length, 'new jobs with', prev.length, 'existing jobs');
+        return [...prev, ...newJobs];
+      });
+
+      // Start polling for each job (but NOT chapter jobs - they're polled via parent job)
       allJobs.forEach((job) => {
+        // Skip chapter jobs - they're UI-only constructs, polled via parent job
+        if (job.job_id.includes('-ch-')) {
+          console.log('[courses] Skipping poller for chapter job (polled via parent):', job.job_id);
+          return;
+        }
+
         if (pollingJobsRef.current.has(job.job_id)) {
           return; // Already polling
         }
