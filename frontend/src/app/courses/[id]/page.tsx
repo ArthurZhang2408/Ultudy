@@ -251,11 +251,27 @@ export default function CoursePage() {
           onComplete: async (jobData: Job) => {
             pollingJobsRef.current.delete(job.job_id);
 
-            // For lesson generation, refresh concepts FIRST, then remove job
-            if (job.type === 'lesson') {
-              console.log('[courses] Lesson generation completed, refreshing concepts');
+            // For lesson generation, clear generating state and refresh concepts
+            if (job.type === 'lesson' && job.section_id) {
+              console.log('[courses] Lesson generation completed, clearing generating state');
+
+              // Clear generating state for the section
+              setSectionsByChapter(prev => {
+                const newState = { ...prev };
+                const chapterKey = job.chapter || 'no-chapter';
+                if (newState[chapterKey]) {
+                  newState[chapterKey] = newState[chapterKey].map(s =>
+                    s.id === job.section_id
+                      ? { ...s, generating: false, generation_progress: undefined, job_id: undefined, concepts_generated: true }
+                      : s
+                  );
+                }
+                return newState;
+              });
+
+              console.log('[courses] Refreshing concepts');
               await fetchConceptsForCourse();
-              console.log('[courses] Concepts refreshed, removing job from UI');
+              console.log('[courses] Removing job from UI');
               removeProcessingJob(job.job_id);
             } else {
               // For uploads, refresh everything
@@ -423,7 +439,42 @@ export default function CoursePage() {
       }
 
       setConceptsByChapter(conceptsMap);
-      setSectionsByChapter(sectionsMap);
+
+      // Sync sections with active jobs to preserve generating state
+      // Capture processingJobs from component scope (not from inside setState updater)
+      setProcessingJobs(currentJobs => {
+        const updatedSectionsMap = { ...sectionsMap };
+
+        // For each chapter, merge generating state from active jobs
+        Object.keys(updatedSectionsMap).forEach(chapterKey => {
+          updatedSectionsMap[chapterKey] = updatedSectionsMap[chapterKey].map(section => {
+            // Check if there's an active job for this section
+            const activeJob = currentJobs.find(job =>
+              job.type === 'lesson' &&
+              job.section_id === section.id &&
+              job.status !== 'completed'
+            );
+
+            if (activeJob) {
+              // Preserve generating state from active job
+              return {
+                ...section,
+                generating: true,
+                generation_progress: activeJob.progress,
+                job_id: activeJob.job_id
+              };
+            }
+
+            // No active job, use section as-is
+            return section;
+          });
+        });
+
+        setSectionsByChapter(updatedSectionsMap);
+
+        // Return jobs unchanged
+        return currentJobs;
+      });
     } catch (error) {
       console.error('Failed to fetch concepts and sections:', error);
     }
