@@ -226,15 +226,21 @@ async function extractMultiChapterPdf(pdfPath, chaptersInfo) {
   console.log(`[extractMultiChapterPdf] 📚 Extracting multi-chapter PDF`);
   console.log(`[extractMultiChapterPdf] Processing ${chaptersInfo.length} chapters`);
 
+  // Load source PDF ONCE (optimization: reuse for all chapter splits)
+  console.log(`[extractMultiChapterPdf] 📖 Loading source PDF...`);
+  const pdfBytes = await fs.readFile(pdfPath);
+  const sourcePdfDoc = await PDFDocument.load(pdfBytes);
+  console.log(`[extractMultiChapterPdf] ✅ Source PDF loaded (${sourcePdfDoc.getPageCount()} pages)`);
+
   const allChapters = [];
 
   for (let i = 0; i < chaptersInfo.length; i++) {
     const chapterInfo = chaptersInfo[i];
     console.log(`[extractMultiChapterPdf] Processing ${i + 1}/${chaptersInfo.length}: Chapter ${chapterInfo.chapter_number}`);
 
-    // Split PDF to extract just this chapter's pages
-    const chapterPdfPath = await splitPdfByPageRange(
-      pdfPath,
+    // Split PDF to extract just this chapter's pages (pass loaded PDF doc)
+    const chapterPdfPath = await createChapterPdf(
+      sourcePdfDoc,
       chapterInfo.page_start,
       chapterInfo.page_end,
       chapterInfo.chapter_number
@@ -299,31 +305,30 @@ Start immediately with content.`;
 }
 
 /**
- * Split PDF by page range and return path to temporary PDF file
+ * Create a chapter PDF from an already-loaded source PDF document
+ * Optimized: Reuses loaded PDFDocument instead of reading/parsing file each time
  */
-async function splitPdfByPageRange(sourcePdfPath, startPage, endPage, chapterNumber) {
-  console.log(`[splitPdfByPageRange] ✂️ Splitting pages ${startPage}-${endPage} for chapter ${chapterNumber}`);
+async function createChapterPdf(sourcePdfDoc, startPage, endPage, chapterNumber) {
+  console.log(`[createChapterPdf] ✂️ Creating chapter ${chapterNumber} PDF (pages ${startPage}-${endPage})`);
 
-  const pdfBytes = await fs.readFile(sourcePdfPath);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const newPdf = await PDFDocument.create();
+  const chapterPdf = await PDFDocument.create();
 
   const startIndex = startPage - 1;
-  const endIndex = Math.min(endPage - 1, pdfDoc.getPageCount() - 1);
+  const endIndex = Math.min(endPage - 1, sourcePdfDoc.getPageCount() - 1);
 
   const pagesToCopy = [];
   for (let i = startIndex; i <= endIndex; i++) {
     pagesToCopy.push(i);
   }
 
-  const copiedPages = await newPdf.copyPages(pdfDoc, pagesToCopy);
-  copiedPages.forEach(page => newPdf.addPage(page));
+  const copiedPages = await chapterPdf.copyPages(sourcePdfDoc, pagesToCopy);
+  copiedPages.forEach(page => chapterPdf.addPage(page));
 
   const tempPath = path.join(os.tmpdir(), `chapter_${chapterNumber}_${randomUUID()}.pdf`);
-  const newPdfBytes = await newPdf.save();
-  await fs.writeFile(tempPath, newPdfBytes);
+  const chapterPdfBytes = await chapterPdf.save();
+  await fs.writeFile(tempPath, chapterPdfBytes);
 
-  console.log(`[splitPdfByPageRange] ✅ Created temp PDF: ${tempPath} (${copiedPages.length} pages)`);
+  console.log(`[createChapterPdf] ✅ Created temp PDF: ${tempPath} (${copiedPages.length} pages)`);
   return tempPath;
 }
 
