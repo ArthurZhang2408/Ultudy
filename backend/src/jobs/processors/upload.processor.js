@@ -85,7 +85,32 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       //   - Single chapter: extract full PDF directly
       //   - Multi-chapter: split PDF by page ranges, extract each separately
       console.log(`[UploadProcessor] 📤 Starting two-phase extraction...`);
-      const extraction = await extractPdfAsMarkdown(processingPath);
+
+      // Progress callbacks for multi-chapter PDFs
+      const progressCallbacks = {
+        onChapterStart: async (currentChapter, totalChapters, chapterInfo) => {
+          console.log(`[UploadProcessor] 📖 Starting chapter ${currentChapter}/${totalChapters}: ${chapterInfo.title}`);
+
+          // Calculate progress: 20% to 70% range, divided by chapters
+          const baseProgress = 20;
+          const extractionProgressRange = 50; // 20% to 70%
+          const chapterProgress = baseProgress + Math.floor((currentChapter / totalChapters) * extractionProgressRange);
+
+          // Update job with chapter metadata
+          await jobTracker.updateProgress(ownerId, jobId, chapterProgress, {
+            current_chapter: currentChapter,
+            total_chapters: totalChapters,
+            chapter_info: {
+              chapter_number: chapterInfo.chapter_number,
+              title: chapterInfo.title,
+              page_start: chapterInfo.page_start,
+              page_end: chapterInfo.page_end
+            }
+          });
+        }
+      };
+
+      const extraction = await extractPdfAsMarkdown(processingPath, progressCallbacks);
       console.log(`[UploadProcessor] 📥 Extraction completed successfully`);
 
       console.log(`[UploadProcessor] 📝 Extracted ${extraction.total_chapters} chapter(s)`);

@@ -24,8 +24,11 @@ import { PDFDocument } from 'pdf-lib';
 /**
  * Extract PDF as plain markdown with chapter structure
  * Uses smart single-call approach: detect single vs multi-chapter in one LLM call
+ * @param {string} pdfPath - Path to PDF file
+ * @param {object} progressCallbacks - Optional callbacks for progress tracking
+ * @returns {Promise<object>} Extraction result
  */
-export async function extractPdfAsMarkdown(pdfPath) {
+export async function extractPdfAsMarkdown(pdfPath, progressCallbacks = {}) {
   console.log('[llm_extractor_markdown] ========================================');
   console.log('[llm_extractor_markdown] 📝 SMART SINGLE-CALL EXTRACTION');
   console.log('[llm_extractor_markdown] ========================================');
@@ -96,7 +99,7 @@ List them in format: <chapter_number> <chapter_title> <page_start> <page_end>
     const chapters = parseChapterList(response);
     console.log(`[llm_extractor_markdown] 📚 Found ${chapters.length} chapters`);
 
-    const result = await extractMultiChapterPdf(pdfPath, chapters);
+    const result = await extractMultiChapterPdf(pdfPath, chapters, progressCallbacks);
     console.log(`[llm_extractor_markdown] ✅ Extraction complete: ${result.total_chapters} chapter(s)`);
     return result;
   } else {
@@ -221,10 +224,16 @@ function parseChapterList(response) {
 
 /**
  * Extract multi-chapter PDF by splitting and processing each chapter
+ * @param {string} pdfPath - Path to PDF file
+ * @param {Array} chaptersInfo - Array of chapter metadata
+ * @param {object} progressCallbacks - Optional callbacks for progress tracking
+ * @returns {Promise<object>} Extraction result
  */
-async function extractMultiChapterPdf(pdfPath, chaptersInfo) {
+async function extractMultiChapterPdf(pdfPath, chaptersInfo, progressCallbacks = {}) {
   console.log(`[extractMultiChapterPdf] 📚 Extracting multi-chapter PDF`);
   console.log(`[extractMultiChapterPdf] Processing ${chaptersInfo.length} chapters`);
+
+  const { onChapterStart } = progressCallbacks;
 
   // Load source PDF ONCE (optimization: reuse for all chapter splits)
   console.log(`[extractMultiChapterPdf] 📖 Loading source PDF...`);
@@ -237,6 +246,11 @@ async function extractMultiChapterPdf(pdfPath, chaptersInfo) {
   for (let i = 0; i < chaptersInfo.length; i++) {
     const chapterInfo = chaptersInfo[i];
     console.log(`[extractMultiChapterPdf] Processing ${i + 1}/${chaptersInfo.length}: Chapter ${chapterInfo.chapter_number}`);
+
+    // Notify progress callback that we're starting this chapter
+    if (onChapterStart) {
+      await onChapterStart(i + 1, chaptersInfo.length, chapterInfo);
+    }
 
     let chapterPdfPath = null;
 
