@@ -48,7 +48,7 @@ if (DISABLE_QUEUES) {
     console.log('[Queue] Queues disabled (CI/test mode)');
   }
 
-  // Create mock queues for CI/testing that process jobs synchronously
+  // Create mock queues for CI/testing that process jobs asynchronously in background
   const createMockQueue = (name) => {
     let processor = null;
 
@@ -60,16 +60,18 @@ if (DISABLE_QUEUES) {
           data
         };
 
-        // If a processor is registered, execute it immediately (synchronous processing in tests)
+        // If a processor is registered, execute it asynchronously in background
+        // This mimics real Bull behavior - queue.add() returns immediately
         if (processor) {
-          try {
-            await processor(mockJob);
-          } catch (error) {
-            console.error(`[MockQueue] ${name} job processing failed:`, error);
-            throw error;
-          }
+          // Process job asynchronously without blocking
+          setImmediate(() => {
+            processor(mockJob).catch(error => {
+              console.error(`[MockQueue] ${name} job processing failed:`, error);
+            });
+          });
         }
 
+        // Return immediately (like real Bull queues)
         return mockJob;
       },
       process: (concurrencyOrProcessor, maybeProcessor) => {
@@ -79,7 +81,7 @@ if (DISABLE_QUEUES) {
           : maybeProcessor;
 
         // Allow calling process() multiple times in tests (just overwrites the processor)
-        // Note: Mock queues ignore concurrency and always process synchronously
+        // Note: Mock queues process asynchronously in background using setImmediate
         processor = processorFn;
       },
       on: () => {},

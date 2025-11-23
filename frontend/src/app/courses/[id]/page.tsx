@@ -6,6 +6,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
 import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import { FormattedText } from '@/components/FormattedText';
 
 type Course = {
   id: string;
@@ -24,6 +25,15 @@ type Document = {
   uploaded_at: string;
 };
 
+type ChapterInfo = {
+  chapter_number: string;
+  title: string;
+  page_start: number;
+  page_end: number;
+  status: 'queued' | 'processing' | 'completed';
+  section_id?: string;
+};
+
 type ProcessingJob = {
   job_id: string;
   document_id: string;
@@ -35,6 +45,12 @@ type ProcessingJob = {
   progress: number;
   status: string;
   chapter?: string;
+  // Chapter extraction metadata
+  phase?: 'chapters_detected' | 'extracting_chapters';
+  chapters_list?: ChapterInfo[];
+  total_chapters?: number;
+  current_chapter?: number;
+  current_chapter_info?: ChapterInfo;
 };
 
 type ConceptWithMastery = {
@@ -61,6 +77,8 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
+  markdown_text?: string; // 🆕 TESTING: Chapter markdown for debugging
+  chapter?: string; // 🆕 TESTING: Chapter number
 };
 
 export default function CoursePage() {
@@ -81,6 +99,7 @@ export default function CoursePage() {
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
+  const [showRawMarkdown, setShowRawMarkdown] = useState<Record<string, boolean>>({}); // Track raw/rendered per section
 
   useEffect(() => {
     if (courseId) {
@@ -128,15 +147,22 @@ export default function CoursePage() {
     const cancelPoller = createJobPoller(uploadJobId, {
       interval: 2000,
       onProgress: (job: Job) => {
-        console.log('[courses] Upload progress:', job.progress, job.status);
-        updateJobProgress(uploadJobId, job.progress, job.status);
+        console.log('[courses] Upload progress:', job.progress, job.status, 'data:', job.data);
+        updateJobProgress(uploadJobId, job.progress, job.status, job.data);
       },
-      onComplete: (job: Job) => {
+      onComplete: async (job: Job) => {
         console.log('[courses] Upload completed:', job);
         pollingJobsRef.current.delete(uploadJobId);
+
+        // Remove all chapter jobs for this upload (if multi-chapter PDF)
+        setProcessingJobs(prev => prev.filter(j =>
+          j.job_id !== uploadJobId && !j.job_id.startsWith(`${uploadJobId}-ch-`)
+        ));
+
+        // Refresh course data FIRST to show the new document
+        await fetchCourseData();
+        // Then remove processing job to avoid "No material uploaded yet" flash
         removeProcessingJob(uploadJobId);
-        // Refresh course data to show the new document
-        fetchCourseData();
       },
       onError: (error: string) => {
         console.error('[courses] Upload job error:', error);
@@ -200,6 +226,75 @@ export default function CoursePage() {
           }));
         allJobs.push(...courseUploadJobs);
         console.log('[courses] Loaded', courseUploadJobs.length, 'upload jobs from sessionStorage');
+
+        // Also check for chapter jobs (multi-chapter PDFs)
+        // If chapter jobs exist, we need to keep polling the parent job
+        const parentJobsWithChapters: string[] = [];
+        courseUploadJobs.forEach((parentJob: any) => {
+          const chapterJobsKey = `chapter-jobs-${parentJob.job_id}`;
+          const chapterJobsStored = sessionStorage.getItem(chapterJobsKey);
+          if (chapterJobsStored) {
+            try {
+              const chapterJobsData = JSON.parse(chapterJobsStored);
+              const chapterJobs = chapterJobsData.map((chJob: any) => ({
+                job_id: chJob.job_id,
+                document_id: chJob.document_id,
+                title: chJob.title,
+                type: 'upload' as const,
+                progress: 0,
+                status: 'queued',
+                chapter: chJob.chapter,
+                phase: 'extracting_chapters'
+              }));
+              allJobs.push(...chapterJobs);
+              console.log('[courses] Loaded', chapterJobs.length, 'chapter jobs for parent job', parentJob.job_id);
+
+              // Keep track of parent jobs with chapters (don't show them in UI, but keep polling them)
+              parentJobsWithChapters.push(parentJob.job_id);
+            } catch (e) {
+              console.error('[courses] Failed to parse chapter jobs:', e);
+            }
+          }
+        });
+
+        // Remove parent jobs from display (but we'll still poll them)
+        const jobsToDisplay = allJobs.filter(job => !parentJobsWithChapters.includes(job.job_id));
+        allJobs.length = 0;
+        allJobs.push(...jobsToDisplay);
+
+        // Start polling for parent jobs with chapters
+        parentJobsWithChapters.forEach(parentJobId => {
+          if (pollingJobsRef.current.has(parentJobId)) {
+            return; // Already polling
+          }
+
+          console.log('[courses] Starting poller for parent job with chapters:', parentJobId);
+          pollingJobsRef.current.add(parentJobId);
+
+          createJobPoller(parentJobId, {
+            interval: 2000,
+            onProgress: (jobData: Job) => {
+              console.log('[courses] Parent job progress:', jobData.progress, jobData.data);
+              updateJobProgress(parentJobId, jobData.progress, jobData.status, jobData.data);
+            },
+            onComplete: async (jobData: Job) => {
+              console.log('[courses] Parent job completed');
+              pollingJobsRef.current.delete(parentJobId);
+
+              // Remove all chapter jobs
+              setProcessingJobs(prev => prev.filter(j => !j.job_id.startsWith(`${parentJobId}-ch-`)));
+
+              // Refresh and cleanup
+              await fetchCourseData();
+              removeProcessingJob(parentJobId);
+            },
+            onError: (error: string) => {
+              console.error('[courses] Parent job error:', error);
+              pollingJobsRef.current.delete(parentJobId);
+              removeProcessingJob(parentJobId);
+            }
+          });
+        });
       }
 
       // Load lesson generation jobs from 'lesson-job-*' sessionStorage entries
@@ -230,10 +325,25 @@ export default function CoursePage() {
       });
 
       console.log('[courses] Total jobs loaded:', allJobs.length, '(', allJobs.filter(j => j.type === 'upload').length, 'uploads,', allJobs.filter(j => j.type === 'lesson').length, 'lessons)');
-      setProcessingJobs(allJobs);
 
-      // Start polling for each job
+      // IMPORTANT: Use callback form to avoid overwriting jobs that were added from URL
+      setProcessingJobs(prev => {
+        // Keep any jobs that are already being polled (from URL redirect)
+        const existingJobIds = prev.map(j => j.job_id);
+        const newJobs = allJobs.filter(j => !existingJobIds.includes(j.job_id));
+
+        console.log('[courses] Merging', newJobs.length, 'new jobs with', prev.length, 'existing jobs');
+        return [...prev, ...newJobs];
+      });
+
+      // Start polling for each job (but NOT chapter jobs - they're polled via parent job)
       allJobs.forEach((job) => {
+        // Skip chapter jobs - they're UI-only constructs, polled via parent job
+        if (job.job_id.includes('-ch-')) {
+          console.log('[courses] Skipping poller for chapter job (polled via parent):', job.job_id);
+          return;
+        }
+
         if (pollingJobsRef.current.has(job.job_id)) {
           return; // Already polling
         }
@@ -243,7 +353,7 @@ export default function CoursePage() {
         createJobPoller(job.job_id, {
           interval: 2000,
           onProgress: (jobData: Job) => {
-            updateJobProgress(job.job_id, jobData.progress, jobData.status);
+            updateJobProgress(job.job_id, jobData.progress, jobData.status, jobData.data);
           },
           onComplete: async (jobData: Job) => {
             pollingJobsRef.current.delete(job.job_id);
@@ -272,14 +382,156 @@ export default function CoursePage() {
     }
   }
 
-  function updateJobProgress(jobId: string, progress: number, status: string) {
-    setProcessingJobs(prev => prev.map(job =>
-      job.job_id === jobId ? { ...job, progress, status } : job
-    ));
+  function updateJobProgress(jobId: string, progress: number, status: string, metadata?: any) {
+    console.log('[courses] updateJobProgress called:', { jobId, progress, status, metadata });
+
+    setProcessingJobs(prev => {
+      let updated = [...prev];
+
+      // Handle chapters_detected: create separate job for each chapter
+      if (metadata?.phase === 'chapters_detected' && metadata.chapters_list) {
+        console.log('[courses] ✅ Chapters detected! Creating', metadata.chapters_list.length, 'individual chapter jobs');
+
+        // Find the parent job
+        const parentJob = updated.find(j => j.job_id === jobId);
+        if (!parentJob) {
+          console.warn('[courses] ⚠️ Parent job not found in state:', jobId);
+          return prev;
+        }
+
+        console.log('[courses] Parent job found:', parentJob);
+
+        // Remove the parent job (we'll show individual chapter jobs instead)
+        updated = updated.filter(j => j.job_id !== jobId);
+
+        // Create individual jobs for each chapter
+        const chapterJobs: ProcessingJob[] = metadata.chapters_list.map((ch: ChapterInfo) => ({
+          job_id: `${jobId}-ch-${ch.chapter_number}`,
+          document_id: parentJob.document_id,
+          title: ch.title,
+          type: 'upload' as const,
+          progress: 0,
+          status: 'queued',
+          chapter: ch.chapter_number,
+          phase: 'extracting_chapters',
+          current_chapter_info: ch
+        }));
+
+        updated.push(...chapterJobs);
+        console.log('[courses] ✅ Created chapter jobs:', chapterJobs.map(j => j.job_id));
+
+        // Persist chapter jobs to sessionStorage
+        try {
+          const chapterJobsData = chapterJobs.map(job => ({
+            job_id: job.job_id,
+            parent_job_id: jobId,
+            document_id: job.document_id,
+            title: job.title,
+            chapter: job.chapter,
+            course_id: courseId
+          }));
+          sessionStorage.setItem(`chapter-jobs-${jobId}`, JSON.stringify(chapterJobsData));
+          console.log('[courses] ✅ Persisted chapter jobs to sessionStorage');
+        } catch (e) {
+          console.error('[courses] ❌ Failed to persist chapter jobs:', e);
+        }
+
+        return updated;
+      }
+
+      // Handle chapter progress updates
+      if (metadata?.current_chapter_info) {
+        const chapterJobId = `${jobId}-ch-${metadata.current_chapter_info.chapter_number}`;
+        console.log('[courses] 📊 Chapter progress update for:', chapterJobId, 'progress:', progress);
+
+        // Check if chapter job exists
+        const chapterJobExists = updated.some(j => j.job_id === chapterJobId);
+
+        if (!chapterJobExists && metadata.chapters_list) {
+          // Chapter jobs don't exist yet (probably missed chapters_detected after refresh)
+          // Create them now using chapters_list from metadata
+          console.log('[courses] 🔄 Chapter job missing! Creating all chapter jobs from chapters_list');
+
+          const parentJob = updated.find(j => j.job_id === jobId);
+          if (parentJob) {
+            // Remove parent job
+            updated = updated.filter(j => j.job_id !== jobId);
+
+            // Create all chapter jobs
+            const chapterJobs: ProcessingJob[] = metadata.chapters_list.map((ch: ChapterInfo) => ({
+              job_id: `${jobId}-ch-${ch.chapter_number}`,
+              document_id: parentJob.document_id,
+              title: ch.title,
+              type: 'upload' as const,
+              progress: ch.chapter_number === metadata.current_chapter_info.chapter_number ? progress : 0,
+              status: ch.chapter_number === metadata.current_chapter_info.chapter_number ? 'processing' : 'queued',
+              chapter: ch.chapter_number,
+              phase: 'extracting_chapters',
+              current_chapter_info: ch
+            }));
+
+            updated.push(...chapterJobs);
+            console.log('[courses] ✅ Created', chapterJobs.length, 'chapter jobs retroactively');
+
+            // Persist to sessionStorage
+            try {
+              const chapterJobsData = chapterJobs.map(job => ({
+                job_id: job.job_id,
+                parent_job_id: jobId,
+                document_id: job.document_id,
+                title: job.title,
+                chapter: job.chapter,
+                course_id: courseId
+              }));
+              sessionStorage.setItem(`chapter-jobs-${jobId}`, JSON.stringify(chapterJobsData));
+            } catch (e) {
+              console.error('[courses] Failed to persist chapter jobs:', e);
+            }
+          }
+        } else {
+          // Update existing chapter job
+          updated = updated.map(job => {
+            if (job.job_id === chapterJobId) {
+              console.log('[courses] ✅ Found matching chapter job, updating progress');
+              return {
+                ...job,
+                progress: progress,
+                status: 'processing',
+                phase: 'extracting_chapters'
+              };
+            }
+            return job;
+          });
+        }
+
+        return updated;
+      }
+
+      // Handle chapter completion
+      if (metadata?.completed_chapter) {
+        const chapterJobId = `${jobId}-ch-${metadata.completed_chapter.chapter_number}`;
+        console.log('[courses] ✅ Chapter completed:', chapterJobId);
+
+        // Trigger refresh to show the new section
+        console.log('[courses] Refreshing course data to show new chapter');
+        fetchCourseData();
+
+        // Remove the completed chapter job immediately
+        updated = updated.filter(job => job.job_id !== chapterJobId);
+        console.log('[courses] Removed completed chapter job from state');
+
+        return updated;
+      }
+
+      // Default: update the job normally (for single-chapter uploads)
+      return updated.map(job =>
+        job.job_id === jobId ? { ...job, progress, status } : job
+      );
+    });
   }
 
   function removeProcessingJob(jobId: string) {
-    setProcessingJobs(prev => prev.filter(job => job.job_id !== jobId));
+    setProcessingJobs(prev => prev.filter(job => job.job_id !== jobId && !job.job_id.startsWith(`${jobId}-ch-`)));
 
     // Also remove from session storage
     try {
@@ -290,6 +542,9 @@ export default function CoursePage() {
         const updated = allJobs.filter((job: any) => job.job_id !== jobId);
         sessionStorage.setItem('processingJobs', JSON.stringify(updated));
       }
+
+      // Remove chapter jobs
+      sessionStorage.removeItem(`chapter-jobs-${jobId}`);
 
       // Remove from lesson jobs
       sessionStorage.removeItem(`lesson-job-${jobId}`);
@@ -494,7 +749,7 @@ export default function CoursePage() {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
-              updateJobProgress(data.job_id, job.progress, job.status);
+              updateJobProgress(data.job_id, job.progress, job.status, job.data);
             },
             onComplete: async (job: Job) => {
               console.log('[courses] Generation completed:', job);
@@ -897,6 +1152,120 @@ export default function CoursePage() {
                   </h2>
                 </div>
 
+                {/* 🎯 TESTING: Section Content Debugging Display (Grouped by Chapter) */}
+                {orderedSections.some(s => s.markdown_text) && (
+                  <div className="space-y-6">
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2">
+                        🧪 TESTING MODE: Section Content Preview
+                      </h3>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        This displays all sections extracted from the PDF, grouped by chapter. Hybrid extraction splits multi-chapter PDFs automatically.
+                      </p>
+                    </div>
+
+                    {/* Group sections by chapter for display */}
+                    {(() => {
+                      // Group sections by their chapter field
+                      const sectionsByChapter = orderedSections.reduce((acc, section) => {
+                        if (!section.markdown_text) return acc;
+                        const chapterNum = section.chapter || chapter || 'Unknown';
+
+                        // Debug logging
+                        console.log('[Course Page] Section:', section.name, 'chapter field:', section.chapter, 'using:', chapterNum);
+
+                        if (!acc[chapterNum]) acc[chapterNum] = [];
+                        acc[chapterNum].push(section);
+                        return acc;
+                      }, {} as Record<string, typeof orderedSections>);
+
+                      return Object.entries(sectionsByChapter).map(([chapterNum, sections]) => (
+                        <div key={chapterNum} className="space-y-4">
+                          <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 dark:border-blue-600 p-4">
+                            <h3 className="text-lg font-bold text-blue-900 dark:text-blue-200">
+                              Chapter {chapterNum}
+                            </h3>
+                            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                              {sections.length} section{sections.length !== 1 ? 's' : ''} extracted
+                              {sections[0]?.page_start && sections[0]?.page_end &&
+                                ` • Pages ${sections[0].page_start}-${sections[0].page_end}`
+                              }
+                            </p>
+                          </div>
+
+                          {sections.map((section, idx) => {
+                            const isRaw = showRawMarkdown[section.id] || false;
+                            return (
+                              <Card key={section.id} padding="lg" hover={false}>
+                                <div className="space-y-4">
+                                  <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-2 py-1 rounded">
+                                            Section {idx + 1}
+                                          </span>
+                                          <h4 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">
+                                            {section.name}
+                                          </h4>
+                                        </div>
+                                        {section.description && (
+                                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
+                                            {section.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <Button
+                                          onClick={() => setShowRawMarkdown(prev => ({
+                                            ...prev,
+                                            [section.id]: !isRaw
+                                          }))}
+                                          variant="secondary"
+                                          size="sm"
+                                        >
+                                          {isRaw ? (
+                                            <>
+                                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                              </svg>
+                                              Rendered
+                                            </>
+                                          ) : (
+                                            <>
+                                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                                              </svg>
+                                              Raw
+                                            </>
+                                          )}
+                                        </Button>
+                                        <div className="text-xs text-neutral-500 dark:text-neutral-500">
+                                          {section.markdown_text?.length.toLocaleString() ?? 0} chars
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className={isRaw ? "font-mono text-sm bg-neutral-50 dark:bg-neutral-900 p-4 rounded-lg overflow-x-auto whitespace-pre-wrap" : "prose prose-neutral dark:prose-invert max-w-none"}>
+                                    {section.markdown_text && (
+                                      isRaw ? (
+                                        <>{section.markdown_text}</>
+                                      ) : (
+                                        <FormattedText>{section.markdown_text}</FormattedText>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                )}
+
                 {/* Concept Mastery Grid */}
                 <div ref={gridContainerRef}>
                   <Card hover={false}>
@@ -943,24 +1312,24 @@ export default function CoursePage() {
                                   {job.title}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <Badge variant="primary" size="sm">
-                                    Uploading...
-                                  </Badge>
-                                  <span className="text-xs text-primary-700 dark:text-primary-400">
-                                    {job.status === 'processing' ? `${job.progress}%` : job.status}
-                                  </span>
+                                  {job.status === 'processing' ? (
+                                    <>
+                                      <Badge variant="warning" size="sm">
+                                        Processing...
+                                      </Badge>
+                                      <svg className="w-4 h-4 text-warning-600 dark:text-warning-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    </>
+                                  ) : (
+                                    <Badge variant="neutral" size="sm">
+                                      Queued
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                            {/* Progress bar */}
-                            {job.status === 'processing' && (
-                              <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
-                                <div
-                                  className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${job.progress}%` }}
-                                />
-                              </div>
-                            )}
                           </div>
                         </div>
                       </Card>

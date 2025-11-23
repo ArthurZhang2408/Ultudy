@@ -3,9 +3,27 @@
  *
  * Handles PDF upload and extraction in the background
  * Works with both S3 and local filesystem storage
+ *
+ * TWO-PHASE EXTRACTION APPROACH:
+ *   Phase 1: Analyze PDF structure (JSON metadata)
+ *     - Determine if single or multi-chapter
+ *     - Extract chapter count and page ranges
+ *   Phase 2: Extract chapter content (plain markdown)
+ *     - Single chapter: Extract full PDF directly
+ *     - Multi-chapter: Split PDF by page ranges, extract each separately
+ *
+ * Benefits:
+ *   - Handles both single and multi-chapter PDFs intelligently
+ *   - Avoids token limits by splitting large PDFs
+ *   - Native $ and $$ math support, standard markdown tables
+ *   - No JSON escaping issues for LaTeX/special chars
+ *   - Each chapter stored as one row in sections table
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
+import { extractChapters } from '../../ingestion/llm_extractor_chapters.js';
+import { extractPdfWithHybridApproach } from '../../ingestion/llm_extractor_hybrid.js';
+import { extractPdfAsMarkdown } from '../../ingestion/llm_extractor_markdown.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -50,62 +68,149 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       console.log(`[UploadProcessor] PDF downloaded to temp file: ${tempPdfPath}`);
     }
 
-    console.log(`[UploadProcessor] Extracting structured sections from ${processingPath}`);
+    console.log(`[UploadProcessor] ========================================`);
+    console.log(`[UploadProcessor] 📚 TWO-PHASE EXTRACTION: ANALYZE → EXTRACT`);
+    console.log(`[UploadProcessor] ========================================`);
+    console.log(`[UploadProcessor] PDF path: ${processingPath}`);
+    console.log(`[UploadProcessor] Job ID: ${jobId}`);
+    console.log(`[UploadProcessor] Document ID: ${documentId}`);
 
     // Update progress: 20% - Starting extraction
     await jobTracker.updateProgress(ownerId, jobId, 20);
 
-    // Extract structured sections with LLM vision
-    const extraction = await extractStructuredSections(processingPath);
+    try {
+      // Two-phase extraction:
+      // Phase 1: Analyze structure (JSON metadata - chapter count, page ranges)
+      // Phase 2: Extract content (plain markdown)
+      //   - Single chapter: extract full PDF directly
+      //   - Multi-chapter: split PDF by page ranges, extract each separately
+      console.log(`[UploadProcessor] 📤 Starting two-phase extraction...`);
 
-    console.log(`[UploadProcessor] Extracted ${extraction.sections.length} sections`);
-    console.log(`[UploadProcessor] Title: "${extraction.title}"`);
+      // Progress callbacks for multi-chapter PDFs
+      const progressCallbacks = {
+        onChaptersDetected: async (chapters) => {
+          console.log(`[UploadProcessor] 📋 Chapters detected: ${chapters.length} chapters`);
 
-    // Update progress: 70% - Extraction complete
-    await jobTracker.updateProgress(ownerId, jobId, 70);
+          // Store chapter list in job.data for frontend to display
+          await jobTracker.updateProgress(ownerId, jobId, 25, {
+            chapters_list: chapters.map(ch => ({
+              chapter_number: ch.chapter_number,
+              title: ch.title,
+              page_start: ch.page_start,
+              page_end: ch.page_end,
+              status: 'queued'
+            })),
+            total_chapters: chapters.length,
+            phase: 'chapters_detected'
+          });
+        },
+        onChapterStart: async (currentChapter, totalChapters, chapterInfo) => {
+          console.log(`[UploadProcessor] 📖 Starting chapter ${currentChapter}/${totalChapters}: ${chapterInfo.title}`);
 
-    // Use provided title or fall back to extracted title
-    const documentTitle = title || extraction.title;
+          // Calculate progress: 25% to 70% range, divided by chapters
+          const baseProgress = 25;
+          const extractionProgressRange = 45; // 25% to 70%
+          const chapterProgress = baseProgress + Math.floor((currentChapter / totalChapters) * extractionProgressRange);
 
-    // Store in database
+          // Update job with chapter metadata
+          await jobTracker.updateProgress(ownerId, jobId, chapterProgress, {
+            current_chapter: currentChapter,
+            total_chapters: totalChapters,
+            current_chapter_info: {
+              chapter_number: chapterInfo.chapter_number,
+              title: chapterInfo.title,
+              page_start: chapterInfo.page_start,
+              page_end: chapterInfo.page_end,
+              status: 'processing'
+            },
+            phase: 'extracting_chapters'
+          });
+        },
+        onChapterComplete: async (currentChapter, totalChapters, chapterInfo, sectionId) => {
+          console.log(`[UploadProcessor] ✅ Completed chapter ${currentChapter}/${totalChapters}: ${chapterInfo.title}`);
+
+          // Notify frontend that this chapter is complete and has a section_id
+          await jobTracker.updateProgress(ownerId, jobId, null, {
+            completed_chapter: {
+              chapter_number: chapterInfo.chapter_number,
+              title: chapterInfo.title,
+              section_id: sectionId,
+              status: 'completed'
+            }
+          });
+        }
+      };
+
+      const extraction = await extractPdfAsMarkdown(processingPath, progressCallbacks);
+      console.log(`[UploadProcessor] 📥 Extraction completed successfully`);
+
+      console.log(`[UploadProcessor] 📝 Extracted ${extraction.total_chapters} chapter(s)`);
+      extraction.chapters.forEach((ch, idx) => {
+        console.log(`[UploadProcessor]   Chapter ${ch.chapter_number}: "${ch.title}" (${ch.markdown.length} chars, pages ${ch.page_start}-${ch.page_end})`);
+      });
+
+      // Update progress: 70% - Extraction complete
+      await jobTracker.updateProgress(ownerId, jobId, 70);
+
+      // Use provided title or use first chapter title
+      const documentTitle = title || extraction.chapters[0]?.title || 'Untitled Document';
+
+      // Use extracted chapter number from PDF (prefer LLM extraction over user input)
+      // If multiple chapters, use the first one; if single chapter PDF, use that chapter
+      const extractedChapter = extraction.chapters[0]?.chapter_number || chapter || null;
+
+    // 📝 TESTING: Store chapters in database (each chapter as one section row)
     await tenantHelpers.withTenant(ownerId, async (client) => {
       // Insert document with metadata
       await client.query(
         `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [documentId, documentTitle, extraction.sections.length, ownerId, courseId, chapter, materialType]
+        [documentId, documentTitle, extraction.total_chapters, ownerId, courseId, extractedChapter, materialType]
       );
 
-      console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${chapter}`);
+      console.log(`[UploadProcessor] Document created: ${documentId} with course_id=${courseId}, chapter=${extractedChapter}`);
 
       // Update progress: 80% - Document created
       await jobTracker.updateProgress(ownerId, jobId, 80);
 
-      // Insert sections with LLM-generated markdown
-      for (let i = 0; i < extraction.sections.length; i++) {
-        const section = extraction.sections[i];
+      // 📝 TESTING: Insert each chapter as one row in sections table
+      const totalToInsert = extraction.total_chapters;
+
+      for (let i = 0; i < extraction.chapters.length; i++) {
+        const chapterData = extraction.chapters[i];
+        console.log(`[UploadProcessor] 📝 Storing Chapter ${chapterData.chapter_number}: "${chapterData.title}"`);
 
         const { rows } = await client.query(
           `INSERT INTO sections
-           (owner_id, document_id, section_number, name, description,
-            markdown_text, concepts_generated)
-           VALUES ($1, $2, $3, $4, $5, $6, false)
+           (owner_id, document_id, course_id, chapter, section_number, name, description,
+            markdown_text, page_start, page_end, concepts_generated)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
            RETURNING id`,
           [
             ownerId,
             documentId,
-            i + 1,
-            section.name,
-            section.description,
-            section.markdown
+            courseId,
+            chapterData.chapter_number, // Chapter number
+            i + 1, // Sequential number
+            chapterData.title, // Chapter title as name
+            `Chapter ${chapterData.chapter_number}: ${chapterData.title}`, // Description
+            chapterData.markdown, // Full chapter markdown
+            chapterData.page_start,
+            chapterData.page_end
           ]
         );
 
-        console.log(`[UploadProcessor] Section ${i + 1} "${section.name}": ${section.markdown.length} chars, id=${rows[0].id}`);
+        const sectionId = rows[0].id;
+        console.log(`[UploadProcessor] ✅ Chapter ${chapterData.chapter_number}: "${chapterData.title}" (${chapterData.markdown.length} chars), id=${sectionId}`);
+
+        // Notify frontend that this chapter is stored
+        if (progressCallbacks.onChapterComplete) {
+          await progressCallbacks.onChapterComplete(i + 1, totalToInsert, chapterData, sectionId);
+        }
 
         // Update progress incrementally
-        const sectionProgress = 80 + Math.floor((i + 1) / extraction.sections.length * 20);
-        await jobTracker.updateProgress(ownerId, jobId, sectionProgress);
+        const chapterProgress = 80 + Math.floor((i + 1) / totalToInsert * 20);
+        await jobTracker.updateProgress(ownerId, jobId, chapterProgress);
       }
     });
 
@@ -115,27 +220,37 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
     await jobTracker.completeJob(ownerId, jobId, {
       document_id: documentId,
       title: documentTitle,
-      section_count: extraction.sections.length,
+      chapter_count: extraction.total_chapters,
       course_id: courseId,
-      chapter: chapter,
+      chapter: extractedChapter,
       material_type: materialType,
-      sections: extraction.sections.map((s, i) => ({
-        section_number: i + 1,
-        name: s.name,
-        description: s.description,
-        markdown_length: s.markdown.length
+      chapters: extraction.chapters.map(ch => ({
+        chapter_number: ch.chapter_number,
+        title: ch.title,
+        markdown_length: ch.markdown.length,
+        page_range: `${ch.page_start}-${ch.page_end}`
       }))
     });
 
-    return {
-      document_id: documentId,
-      title: documentTitle,
-      section_count: extraction.sections.length,
-      course_id: courseId,
-      chapter: chapter
-    };
+      return {
+        document_id: documentId,
+        title: documentTitle,
+        chapter_count: extraction.total_chapters,
+        course_id: courseId,
+        chapter: extractedChapter
+      };
+    } catch (extractionError) {
+      console.error(`[UploadProcessor] ❌ Markdown extraction failed`);
+      console.error(`[UploadProcessor] Error type: ${extractionError.constructor.name}`);
+      console.error(`[UploadProcessor] Error message: ${extractionError.message}`);
+      console.error(`[UploadProcessor] Error stack:`, extractionError.stack);
+
+      // Re-throw with more context
+      throw new Error(`Markdown extraction failed: ${extractionError.message}`);
+    }
   } catch (error) {
     console.error(`[UploadProcessor] ❌ Job ${jobId} failed:`, error);
+    console.error(`[UploadProcessor] Full error:`, error);
 
     // Mark job as failed
     await jobTracker.failJob(ownerId, jobId, error);
