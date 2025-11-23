@@ -286,7 +286,7 @@ export default function CoursePage() {
       if (job && job.type === 'lesson' && job.section_id) {
         setSectionsByChapter(prevSections => {
           const newState = { ...prevSections };
-          const chapterKey = job.chapter || 'no-chapter';
+          const chapterKey = job.chapter || 'Uncategorized';
           if (newState[chapterKey]) {
             newState[chapterKey] = newState[chapterKey].map(s =>
               s.id === job.section_id
@@ -464,7 +464,7 @@ export default function CoursePage() {
     // Optimistically mark section as generating BEFORE API call
     setSectionsByChapter(prev => {
       const newState = { ...prev };
-      const chapterKey = chapter || 'no-chapter';
+      const chapterKey = chapter || 'Uncategorized';
       if (newState[chapterKey]) {
         newState[chapterKey] = newState[chapterKey].map(s =>
           s.id === section.id
@@ -539,7 +539,7 @@ export default function CoursePage() {
               // Clear generating state for section
               setSectionsByChapter(prev => {
                 const newState = { ...prev };
-                const chapterKey = chapter || 'no-chapter';
+                const chapterKey = chapter || 'Uncategorized';
                 if (newState[chapterKey]) {
                   newState[chapterKey] = newState[chapterKey].map(s =>
                     s.id === section.id
@@ -563,7 +563,7 @@ export default function CoursePage() {
               // Clear generating state for section
               setSectionsByChapter(prev => {
                 const newState = { ...prev };
-                const chapterKey = chapter || 'no-chapter';
+                const chapterKey = chapter || 'Uncategorized';
                 if (newState[chapterKey]) {
                   newState[chapterKey] = newState[chapterKey].map(s =>
                     s.id === section.id
@@ -606,7 +606,7 @@ export default function CoursePage() {
         // Clear generating state on error
         setSectionsByChapter(prev => {
           const newState = { ...prev };
-          const chapterKey = chapter || 'no-chapter';
+          const chapterKey = chapter || 'Uncategorized';
           if (newState[chapterKey]) {
             newState[chapterKey] = newState[chapterKey].map(s =>
               s.id === section.id
@@ -646,7 +646,7 @@ export default function CoursePage() {
       // Clear generating state on exception
       setSectionsByChapter(prev => {
         const newState = { ...prev };
-        const chapterKey = chapter || 'no-chapter';
+        const chapterKey = chapter || 'Uncategorized';
         if (newState[chapterKey]) {
           newState[chapterKey] = newState[chapterKey].map(s =>
             s.id === section.id
