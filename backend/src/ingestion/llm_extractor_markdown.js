@@ -99,6 +99,11 @@ List them in format: <chapter_number> <chapter_title> <page_start> <page_end>
     const chapters = parseChapterList(response);
     console.log(`[llm_extractor_markdown] 📚 Found ${chapters.length} chapters`);
 
+    // Notify callback that chapters have been detected
+    if (progressCallbacks.onChaptersDetected) {
+      await progressCallbacks.onChaptersDetected(chapters);
+    }
+
     const result = await extractMultiChapterPdf(pdfPath, chapters, progressCallbacks);
     console.log(`[llm_extractor_markdown] ✅ Extraction complete: ${result.total_chapters} chapter(s)`);
     return result;

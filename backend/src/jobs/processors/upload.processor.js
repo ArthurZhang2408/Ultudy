@@ -88,23 +88,54 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
 
       // Progress callbacks for multi-chapter PDFs
       const progressCallbacks = {
+        onChaptersDetected: async (chapters) => {
+          console.log(`[UploadProcessor] 📋 Chapters detected: ${chapters.length} chapters`);
+
+          // Store chapter list in job.data for frontend to display
+          await jobTracker.updateProgress(ownerId, jobId, 25, {
+            chapters_list: chapters.map(ch => ({
+              chapter_number: ch.chapter_number,
+              title: ch.title,
+              page_start: ch.page_start,
+              page_end: ch.page_end,
+              status: 'queued'
+            })),
+            total_chapters: chapters.length,
+            phase: 'chapters_detected'
+          });
+        },
         onChapterStart: async (currentChapter, totalChapters, chapterInfo) => {
           console.log(`[UploadProcessor] 📖 Starting chapter ${currentChapter}/${totalChapters}: ${chapterInfo.title}`);
 
-          // Calculate progress: 20% to 70% range, divided by chapters
-          const baseProgress = 20;
-          const extractionProgressRange = 50; // 20% to 70%
+          // Calculate progress: 25% to 70% range, divided by chapters
+          const baseProgress = 25;
+          const extractionProgressRange = 45; // 25% to 70%
           const chapterProgress = baseProgress + Math.floor((currentChapter / totalChapters) * extractionProgressRange);
 
           // Update job with chapter metadata
           await jobTracker.updateProgress(ownerId, jobId, chapterProgress, {
             current_chapter: currentChapter,
             total_chapters: totalChapters,
-            chapter_info: {
+            current_chapter_info: {
               chapter_number: chapterInfo.chapter_number,
               title: chapterInfo.title,
               page_start: chapterInfo.page_start,
-              page_end: chapterInfo.page_end
+              page_end: chapterInfo.page_end,
+              status: 'processing'
+            },
+            phase: 'extracting_chapters'
+          });
+        },
+        onChapterComplete: async (currentChapter, totalChapters, chapterInfo, sectionId) => {
+          console.log(`[UploadProcessor] ✅ Completed chapter ${currentChapter}/${totalChapters}: ${chapterInfo.title}`);
+
+          // Notify frontend that this chapter is complete and has a section_id
+          await jobTracker.updateProgress(ownerId, jobId, null, {
+            completed_chapter: {
+              chapter_number: chapterInfo.chapter_number,
+              title: chapterInfo.title,
+              section_id: sectionId,
+              status: 'completed'
             }
           });
         }
@@ -169,7 +200,13 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
           ]
         );
 
-        console.log(`[UploadProcessor] ✅ Chapter ${chapterData.chapter_number}: "${chapterData.title}" (${chapterData.markdown.length} chars), id=${rows[0].id}`);
+        const sectionId = rows[0].id;
+        console.log(`[UploadProcessor] ✅ Chapter ${chapterData.chapter_number}: "${chapterData.title}" (${chapterData.markdown.length} chars), id=${sectionId}`);
+
+        // Notify frontend that this chapter is stored
+        if (progressCallbacks.onChapterComplete) {
+          await progressCallbacks.onChapterComplete(i + 1, totalToInsert, chapterData, sectionId);
+        }
 
         // Update progress incrementally
         const chapterProgress = 80 + Math.floor((i + 1) / totalToInsert * 20);
