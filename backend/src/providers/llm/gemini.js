@@ -128,6 +128,43 @@ function normalizeSources(values) {
   });
 }
 
+/**
+ * Process code block tags in examples
+ * Converts <cb lang="language">code</cb> tags to markdown code blocks
+ */
+function processCodeBlocks(examples) {
+  if (!Array.isArray(examples)) {
+    return [];
+  }
+
+  return examples.map((ex, idx) => {
+    if (typeof ex !== 'string') {
+      console.warn(`[processCodeBlocks] Example ${idx + 1} is not a string:`, typeof ex);
+      return String(ex || '');
+    }
+
+    // Check if this example contains a <cb> tag
+    const cbRegex = /<cb\s+lang="([^"]+)">(.+?)<\/cb>/s;
+    const match = ex.match(cbRegex);
+
+    if (match) {
+      const language = match[1];
+      const code = match[2];
+
+      // Replace \n with actual newlines
+      const processedCode = code.replace(/\\n/g, '\n');
+
+      console.log(`[processCodeBlocks] Example ${idx + 1}: Found code block (${language}, ${processedCode.length} chars)`);
+
+      // Convert to markdown code block
+      return `\`\`\`${language}\n${processedCode}\n\`\`\``;
+    }
+
+    // No code block tag, return as-is
+    return ex;
+  });
+}
+
 function normalizeLessonPayload(payload) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Gemini LLM provider returned an invalid lesson payload');
@@ -456,17 +493,21 @@ Create a comprehensive, interactive learning experience that prepares students f
 - Use **bold** for key terms and important concepts
 - Use *italic* for emphasis and definitions
 - Use inline code with single backticks for short code: \`SELECT * FROM table\`
-- **For multi-line code blocks:** Use standard markdown code blocks with language identifier:
-  * \`\`\`sql
-  * SELECT * FROM table;
-  * \`\`\`
-  * Use actual line breaks, not \\n escapes
-- **For mathematical formulas and equations:** Use native LaTeX with $ delimiters:
-  * Inline math: $x^2 + y^2 = z^2$
-  * Display math: $$E = mc^2$$
-  * Complex formulas: $$\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
-  * Use raw LaTeX syntax without escaping or HTML entities
-- **CRITICAL:** NO special tags like <eqs> or <cb> - use standard markdown and LaTeX only!
+- **For multi-line code blocks:**
+  * Wrap code in <cb lang="language">code here</cb> tags
+  * Replace "language" with actual language (e.g., sql, python, javascript)
+  * Put the raw code inside the tags WITHOUT markdown fences
+  * Use \\n for newlines inside the code, not literal newlines
+  * Example: <cb lang="sql">CREATE PROCEDURE proc()\\nBEGIN\\n  SELECT * FROM table;\\nEND</cb>
+- **For inline text examples:** Just use plain markdown text in the examples array
+- **For mathematical formulas and equations:**
+  * Wrap ALL math expressions (both inline and display) in <eqs>LaTeX here</eqs> tags
+  * Inline math example: <eqs>x^2 + y^2 = z^2</eqs>
+  * Display math example: <eqs>E = mc^2</eqs>
+  * Use raw LaTeX syntax without any escaping or HTML entities
+  * Example: <eqs>\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}</eqs>
+- **CRITICAL:** Never use markdown code blocks (triple backticks) directly in JSON strings. Always use <cb> tags for multi-line code.
+- **CRITICAL:** Never use dollar signs ($) for math. Always use <eqs> tags for ALL mathematical expressions.
 
 **PEDAGOGY:**
 - Progressive disclosure: One concept at a time
@@ -523,13 +564,13 @@ Return JSON in this EXACT structure:
   "concepts": [
     {
       "name": "Concept Name",
-      "explanation": "2-3 sentence explanation with **key terms** in bold and *definitions* in italics. Use Markdown. For formulas, use LaTeX like $E = mc^2$.",
+      "explanation": "2-3 sentence explanation with **key terms** in bold and *definitions* in italics. Use Markdown. For formulas, wrap in <eqs> tags like <eqs>E = mc^2</eqs>.",
       "key_details": {
         "formulas": [
-          {"formula": "$$E = mc^2$$", "variables": "$E$ is energy (joules), $m$ is mass (kg), $c$ is speed of light"}
+          {"formula": "<eqs>E = mc^2</eqs>", "variables": "<eqs>E</eqs> is energy (joules), <eqs>m</eqs> is mass (kg), <eqs>c</eqs> is speed of light"}
         ],
         "examples": [
-          "**Example 1:** Calculate energy for mass $m = 2$ kg:\\n\\n$$E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17} \\text{ J}$$"
+          "**Example 1:** Calculate energy for mass <eqs>m = 2</eqs> kg: <eqs>E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17}</eqs> J"
         ],
         "important_notes": [
           "**Critical:** Only applies in *relativistic* contexts",
@@ -655,7 +696,7 @@ function normalizeFullContextLessonPayload(payload, document_id) {
     const keyDetails = concept?.key_details || {};
     return {
       formulas: Array.isArray(keyDetails.formulas) ? keyDetails.formulas : [],
-      examples: Array.isArray(keyDetails.examples) ? keyDetails.examples : [], // Examples already in markdown
+      examples: processCodeBlocks(keyDetails.examples), // Process <cb> tags to markdown code blocks
       important_notes: Array.isArray(keyDetails.important_notes) ? keyDetails.important_notes : []
     };
   }
@@ -762,7 +803,7 @@ const LESSON_SCHEMA = {
                 type: 'array',
                 items: {
                   type: 'string',
-                  description: 'Example text with markdown formatting. Use ```language code blocks for code, $LaTeX$ for math'
+                  description: 'Example text or code. For multi-line code, use <cb lang="language">code</cb> tags with \\n for newlines'
                 },
                 description: 'Concrete examples demonstrating the concept'
               },
