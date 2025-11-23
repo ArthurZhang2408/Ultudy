@@ -25,6 +25,15 @@ type Document = {
   uploaded_at: string;
 };
 
+type ChapterInfo = {
+  chapter_number: string;
+  title: string;
+  page_start: number;
+  page_end: number;
+  status: 'queued' | 'processing' | 'completed';
+  section_id?: string;
+};
+
 type ProcessingJob = {
   job_id: string;
   document_id: string;
@@ -36,6 +45,12 @@ type ProcessingJob = {
   progress: number;
   status: string;
   chapter?: string;
+  // Chapter extraction metadata
+  phase?: 'chapters_detected' | 'extracting_chapters';
+  chapters_list?: ChapterInfo[];
+  total_chapters?: number;
+  current_chapter?: number;
+  current_chapter_info?: ChapterInfo;
 };
 
 type ConceptWithMastery = {
@@ -93,6 +108,24 @@ export default function CoursePage() {
     }
   }, [courseId]);
 
+  // Auto-refresh when chapters complete to show content immediately
+  useEffect(() => {
+    const hasCompletedChapters = processingJobs.some(job =>
+      job.type === 'upload' &&
+      job.chapters_list?.some(ch => ch.status === 'completed' && ch.section_id)
+    );
+
+    if (hasCompletedChapters) {
+      // Debounce: only refresh once per second to avoid excessive refreshes
+      const timeoutId = setTimeout(() => {
+        console.log('[courses] Chapter completed, refreshing course data');
+        fetchCourseData();
+      }, 1000);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [processingJobs]);
+
   // Poll for upload job completion when redirected from upload page
   useEffect(() => {
     const uploadJobId = searchParams.get('upload_job_id');
@@ -132,8 +165,8 @@ export default function CoursePage() {
     const cancelPoller = createJobPoller(uploadJobId, {
       interval: 2000,
       onProgress: (job: Job) => {
-        console.log('[courses] Upload progress:', job.progress, job.status);
-        updateJobProgress(uploadJobId, job.progress, job.status);
+        console.log('[courses] Upload progress:', job.progress, job.status, 'data:', job.data);
+        updateJobProgress(uploadJobId, job.progress, job.status, job.data);
       },
       onComplete: async (job: Job) => {
         console.log('[courses] Upload completed:', job);
@@ -248,7 +281,7 @@ export default function CoursePage() {
         createJobPoller(job.job_id, {
           interval: 2000,
           onProgress: (jobData: Job) => {
-            updateJobProgress(job.job_id, jobData.progress, jobData.status);
+            updateJobProgress(job.job_id, jobData.progress, jobData.status, jobData.data);
           },
           onComplete: async (jobData: Job) => {
             pollingJobsRef.current.delete(job.job_id);
@@ -277,10 +310,57 @@ export default function CoursePage() {
     }
   }
 
-  function updateJobProgress(jobId: string, progress: number, status: string) {
-    setProcessingJobs(prev => prev.map(job =>
-      job.job_id === jobId ? { ...job, progress, status } : job
-    ));
+  function updateJobProgress(jobId: string, progress: number, status: string, metadata?: any) {
+    setProcessingJobs(prev => prev.map(job => {
+      if (job.job_id === jobId) {
+        const updated = { ...job, progress, status };
+
+        // Extract chapter metadata from job.data if available
+        if (metadata) {
+          if (metadata.phase) {
+            updated.phase = metadata.phase;
+          }
+          if (metadata.chapters_list) {
+            updated.chapters_list = metadata.chapters_list;
+          }
+          if (metadata.total_chapters) {
+            updated.total_chapters = metadata.total_chapters;
+          }
+          if (metadata.current_chapter) {
+            updated.current_chapter = metadata.current_chapter;
+          }
+          if (metadata.current_chapter_info) {
+            updated.current_chapter_info = metadata.current_chapter_info;
+
+            // Update the corresponding chapter in chapters_list to 'processing'
+            if (updated.chapters_list) {
+              updated.chapters_list = updated.chapters_list.map(ch =>
+                ch.chapter_number === metadata.current_chapter_info.chapter_number
+                  ? { ...ch, status: 'processing' as const }
+                  : ch
+              );
+            }
+          }
+          if (metadata.completed_chapter) {
+            // Mark chapter as completed in chapters_list
+            if (updated.chapters_list) {
+              updated.chapters_list = updated.chapters_list.map(ch =>
+                ch.chapter_number === metadata.completed_chapter.chapter_number
+                  ? {
+                      ...ch,
+                      status: 'completed' as const,
+                      section_id: metadata.completed_chapter.section_id
+                    }
+                  : ch
+              );
+            }
+          }
+        }
+
+        return updated;
+      }
+      return job;
+    }));
   }
 
   function removeProcessingJob(jobId: string) {
@@ -499,7 +579,7 @@ export default function CoursePage() {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
-              updateJobProgress(data.job_id, job.progress, job.status);
+              updateJobProgress(data.job_id, job.progress, job.status, job.data);
             },
             onComplete: async (job: Job) => {
               console.log('[courses] Generation completed:', job);
@@ -1062,22 +1142,97 @@ export default function CoursePage() {
                                   {job.title}
                                 </h4>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <Badge variant="primary" size="sm">
-                                    Uploading...
-                                  </Badge>
+                                  {job.phase === 'chapters_detected' && job.total_chapters && (
+                                    <Badge variant="primary" size="sm">
+                                      {job.total_chapters} chapters detected
+                                    </Badge>
+                                  )}
+                                  {job.phase === 'extracting_chapters' && job.current_chapter && job.total_chapters && (
+                                    <Badge variant="primary" size="sm">
+                                      Chapter {job.current_chapter}/{job.total_chapters}
+                                    </Badge>
+                                  )}
+                                  {!job.phase && (
+                                    <Badge variant="primary" size="sm">
+                                      Processing...
+                                    </Badge>
+                                  )}
                                   <span className="text-xs text-primary-700 dark:text-primary-400">
                                     {job.status === 'processing' ? `${job.progress}%` : job.status}
                                   </span>
                                 </div>
                               </div>
                             </div>
-                            {/* Progress bar */}
+
+                            {/* Overall Progress bar */}
                             {job.status === 'processing' && (
                               <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
                                 <div
                                   className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
                                   style={{ width: `${job.progress}%` }}
                                 />
+                              </div>
+                            )}
+
+                            {/* Chapter List - Show when chapters are detected */}
+                            {job.chapters_list && job.chapters_list.length > 0 && (
+                              <div className="space-y-2 pt-2 border-t border-primary-200 dark:border-primary-800">
+                                <h5 className="text-sm font-semibold text-primary-900 dark:text-primary-300">
+                                  Chapters:
+                                </h5>
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                  {job.chapters_list.map((chapterInfo) => (
+                                    <div
+                                      key={chapterInfo.chapter_number}
+                                      className={`flex items-center justify-between p-2 rounded ${
+                                        chapterInfo.status === 'completed'
+                                          ? 'bg-success-100 dark:bg-success-900/30'
+                                          : chapterInfo.status === 'processing'
+                                          ? 'bg-warning-100 dark:bg-warning-900/30'
+                                          : 'bg-neutral-100 dark:bg-neutral-800'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 flex-1">
+                                        {chapterInfo.status === 'completed' && (
+                                          <svg className="w-4 h-4 text-success-600 dark:text-success-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                          </svg>
+                                        )}
+                                        {chapterInfo.status === 'processing' && (
+                                          <svg className="w-4 h-4 text-warning-600 dark:text-warning-400 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                          </svg>
+                                        )}
+                                        {chapterInfo.status === 'queued' && (
+                                          <svg className="w-4 h-4 text-neutral-400 dark:text-neutral-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                        )}
+                                        <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                                          Chapter {chapterInfo.chapter_number}: {chapterInfo.title}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {chapterInfo.status === 'completed' && (
+                                          <Badge variant="success" size="sm">
+                                            Completed
+                                          </Badge>
+                                        )}
+                                        {chapterInfo.status === 'processing' && (
+                                          <Badge variant="warning" size="sm">
+                                            Processing
+                                          </Badge>
+                                        )}
+                                        {chapterInfo.status === 'queued' && (
+                                          <Badge variant="neutral" size="sm">
+                                            Queued
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>
