@@ -94,6 +94,9 @@ Return structured JSON with title and sections.`;
 
   const userPrompt = `Extract all major sections from this PDF for educational lesson generation.
 
+**IMPORTANT: Extract MULTIPLE sections - do NOT combine the entire document into one section!**
+Most educational documents naturally divide into 3-10 major sections or topics. Identify and extract each one separately.
+
 **CRITICAL EXCLUSIONS:**
 - **DO NOT create sections for**: References, Bibliography, Works Cited, Acknowledgments
 - **DO NOT include**: Page numbers, headers, footers, chapter numbers
@@ -113,6 +116,7 @@ Think like an educator designing a curriculum. For each section you create:
 - Topics that could be taught in different class sessions
 - Concepts that don't depend on each other to be understood
 - Content that serves different learning objectives
+- Different major headings or topics in the source material
 
 **When to combine into one section:**
 - Content that builds sequentially (must learn A before B)
@@ -148,18 +152,18 @@ Think like an educator designing a curriculum. For each section you create:
       },
       sections: {
         type: 'array',
-        description: 'Array of sections, each containing 4-20 concepts',
+        description: 'Array of all major sections/topics from the document. Extract each distinct topic as a separate section. Most documents should have 3-10 sections.',
         minItems: 1,
         items: {
           type: 'object',
           properties: {
             name: {
               type: 'string',
-              description: 'Clear, logical name for this conceptual cluster'
+              description: 'Clear, logical name for this section/topic'
             },
             description: {
               type: 'string',
-              description: 'Brief 1-2 sentence overview of concepts covered'
+              description: 'Brief 1-2 sentence overview of what this section covers'
             },
             markdown: {
               type: 'string',
