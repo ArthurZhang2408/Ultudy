@@ -163,6 +163,10 @@ export default function ConceptNavigationSidebar({
                       {/* Section Header */}
                       <button
                         onClick={() => {
+                          if (isGenerating) {
+                            // Disable clicks while generating
+                            return;
+                          }
                           if (section.concepts_generated) {
                             // Only toggle expansion, no redirection
                             toggleSection(section.id);
@@ -171,8 +175,11 @@ export default function ConceptNavigationSidebar({
                             onGenerateSection(section);
                           }
                         }}
+                        disabled={isGenerating}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
-                          isActive
+                          isGenerating
+                            ? 'cursor-not-allowed opacity-60'
+                            : isActive
                             ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-900 dark:text-primary-100'
                             : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                         }`}
