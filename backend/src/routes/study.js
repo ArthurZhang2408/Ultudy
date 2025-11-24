@@ -677,7 +677,7 @@ export default function createStudyRouter(options = {}) {
                 WHEN s.correct_attempts = 0 THEN 'incorrect'
                 ELSE 'in_progress'
               END as mastery_level,
-              (SELECT COUNT(*) FROM concepts WHERE lesson_id = c.lesson_id AND owner_id = c.owner_id) as lesson_position
+              COALESCE(c.concept_number - 1, 0) as lesson_position
             FROM concepts c
             LEFT JOIN (
               SELECT
@@ -712,7 +712,7 @@ export default function createStudyRouter(options = {}) {
                 WHEN s.correct_attempts = 0 THEN 'incorrect'
                 ELSE 'in_progress'
               END as mastery_level,
-              (SELECT COUNT(*) FROM concepts WHERE lesson_id = c.lesson_id AND owner_id = c.owner_id) as lesson_position
+              COALESCE(c.concept_number - 1, 0) as lesson_position
             FROM concepts c
             LEFT JOIN (
               SELECT
