@@ -912,26 +912,37 @@ function LearnPageContent() {
 
       // If localStorage is empty or incomplete, restore conceptProgress from backend mastery data
       // This ensures mastery line segments persist through deployments
-      if (lesson.concepts && restoredConceptProgress.size === 0) {
+      if (lesson.concepts && restoredConceptProgress.size === 0 && selectedSection) {
         const backendProgress = new Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'>();
-        lesson.concepts.forEach((concept, index) => {
-          if (concept.mastery_level) {
-            const status: 'completed' | 'wrong' | 'in_progress' =
-              concept.mastery_level === 'completed' ? 'completed' :
-              concept.mastery_level === 'incorrect' ? 'wrong' :
-              concept.mastery_level === 'in_progress' ? 'in_progress' :
-              'in_progress'; // default for 'not_started'
 
-            // Only mark as completed/wrong/in_progress if there's actual mastery data
-            if (concept.mastery_level !== 'not_started') {
-              backendProgress.set(index, status);
+        // Get the current section's concept metadata from sections state
+        const currentSection = sections.find(s => s.id === selectedSection.id);
+        if (currentSection?.concepts) {
+          // Map lesson concepts to their mastery status from section metadata
+          lesson.concepts.forEach((concept, index) => {
+            // Find matching concept in section metadata by name
+            const conceptMeta = currentSection.concepts?.find(
+              c => c.name.toLowerCase() === concept.name.toLowerCase()
+            );
+
+            if (conceptMeta?.mastery_level) {
+              const status: 'completed' | 'wrong' | 'in_progress' =
+                conceptMeta.mastery_level === 'completed' ? 'completed' :
+                conceptMeta.mastery_level === 'incorrect' ? 'wrong' :
+                conceptMeta.mastery_level === 'in_progress' ? 'in_progress' :
+                'in_progress'; // default for 'not_started'
+
+              // Only mark as completed/wrong/in_progress if there's actual mastery data
+              if (conceptMeta.mastery_level !== 'not_started') {
+                backendProgress.set(index, status);
+              }
             }
-          }
-        });
+          });
 
-        if (backendProgress.size > 0) {
-          console.log(`[learn] Restored ${backendProgress.size} concept statuses from backend mastery data`);
-          restoredConceptProgress = backendProgress;
+          if (backendProgress.size > 0) {
+            console.log(`[learn] Restored ${backendProgress.size} concept statuses from backend mastery data`);
+            restoredConceptProgress = backendProgress;
+          }
         }
       }
 
@@ -944,7 +955,7 @@ function LearnPageContent() {
       setCurrentConceptIndex(0);
       setCurrentMCQIndex(0);
     }
-  }, [lesson]);
+  }, [lesson, sections, selectedSection]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
