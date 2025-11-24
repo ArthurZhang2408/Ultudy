@@ -894,21 +894,48 @@ function LearnPageContent() {
 
     try {
       const raw = window.localStorage.getItem(storageKey);
+      let restoredConceptProgress: Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'> = new Map();
 
       if (raw) {
         const parsed = JSON.parse(raw) as StoredProgress;
         setStoredProgress(parsed);
-        setConceptProgress(new Map(parsed.conceptProgress || []));
+        restoredConceptProgress = new Map(parsed.conceptProgress || []);
         setAnswerHistory(parsed.answerHistory || {});
         setCurrentConceptIndex(parsed.conceptIndex ?? 0);
         setCurrentMCQIndex(parsed.mcqIndex ?? 0);
       } else {
         setStoredProgress(null);
-        setConceptProgress(new Map());
         setAnswerHistory({});
         setCurrentConceptIndex(0);
         setCurrentMCQIndex(0);
       }
+
+      // If localStorage is empty or incomplete, restore conceptProgress from backend mastery data
+      // This ensures mastery line segments persist through deployments
+      if (lesson.concepts && restoredConceptProgress.size === 0) {
+        const backendProgress = new Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'>();
+        lesson.concepts.forEach((concept, index) => {
+          if (concept.mastery_level) {
+            const status: 'completed' | 'wrong' | 'in_progress' =
+              concept.mastery_level === 'completed' ? 'completed' :
+              concept.mastery_level === 'incorrect' ? 'wrong' :
+              concept.mastery_level === 'in_progress' ? 'in_progress' :
+              'in_progress'; // default for 'not_started'
+
+            // Only mark as completed/wrong/in_progress if there's actual mastery data
+            if (concept.mastery_level !== 'not_started') {
+              backendProgress.set(index, status);
+            }
+          }
+        });
+
+        if (backendProgress.size > 0) {
+          console.log(`[learn] Restored ${backendProgress.size} concept statuses from backend mastery data`);
+          restoredConceptProgress = backendProgress;
+        }
+      }
+
+      setConceptProgress(restoredConceptProgress);
     } catch (error) {
       console.error('Failed to restore lesson progress:', error);
       setStoredProgress(null);
