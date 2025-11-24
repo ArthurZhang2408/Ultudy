@@ -2055,7 +2055,11 @@ function LearnPageContent() {
               onClick={() => {
                 void handleNextMCQ();
               }}
-              disabled={!showingExplanations || generatingNextSection}
+              disabled={!showingExplanations || generatingNextSection || (() => {
+                // Also disable if next section is already generating from sidebar
+                const nextSection = getNextSection();
+                return nextSection?.generating === true;
+              })()}
               className="rounded-md bg-slate-900 dark:bg-neutral-700 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {(() => {
@@ -2072,7 +2076,8 @@ function LearnPageContent() {
                 // Last MCQ of last concept - check for next section
                 const nextSection = getNextSection();
 
-                if (generatingNextSection) {
+                // Check if next section is already generating (from sidebar or other source)
+                if (nextSection?.generating === true || generatingNextSection) {
                   return 'Generating...';
                 }
 
