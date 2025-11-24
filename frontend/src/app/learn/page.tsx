@@ -646,20 +646,28 @@ function LearnPageContent() {
             },
             onComplete: async (job: Job) => {
               console.log('[learn] Generation completed:', job);
+              console.log('[learn] ⚠️ DEBUG: About to start concept fetch for section:', section.id);
+              console.log('[learn] ⚠️ DEBUG: documentId:', documentId, 'chapter:', chapter);
 
               // Fetch the new concepts for this section
               try {
+                console.log('[learn] ⚠️ DEBUG: Inside try block - constructing URL...');
                 const conceptsUrl = chapter
                   ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
                   : `/api/concepts/mastery?document_id=${documentId}`;
 
+                console.log('[learn] ⚠️ DEBUG: URL constructed:', conceptsUrl);
                 console.log('[learn] Fetching concepts from:', conceptsUrl);
                 console.log('[learn] Looking for section_id:', section.id);
+                console.log('[learn] ⚠️ DEBUG: About to call fetch...');
 
                 const conceptsRes = await fetch(conceptsUrl);
+                console.log('[learn] ⚠️ DEBUG: Fetch completed, status:', conceptsRes.status);
 
                 if (conceptsRes.ok) {
+                  console.log('[learn] ⚠️ DEBUG: Response OK, parsing JSON...');
                   const conceptsData = await conceptsRes.json();
+                  console.log('[learn] ⚠️ DEBUG: JSON parsed:', conceptsData);
                   const allConcepts = conceptsData.concepts || [];
 
                   console.log('[learn] Received concepts:', allConcepts.length, 'total');
@@ -701,7 +709,12 @@ function LearnPageContent() {
                   ));
                 }
               } catch (error) {
+                console.error('[learn] ⚠️ DEBUG: Caught error in concept fetch!');
                 console.error('[learn] Failed to fetch concepts after generation:', error);
+                console.error('[learn] ⚠️ DEBUG: Error details:', {
+                  message: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined
+                });
                 // Fallback: just mark as generated
                 setSections(prev => prev.map(s =>
                   s.id === section.id
