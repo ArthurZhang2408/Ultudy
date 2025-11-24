@@ -191,27 +191,29 @@ export default function createDocumentsRouter(options = {}) {
         const document = docRows[0];
 
         // 2. Delete all related data (withTenant already provides a transaction)
-        // Delete concepts (MUST be before sections since concepts reference sections)
-        const { rowCount: conceptsDeleted } = await client.query(
-          'DELETE FROM concepts WHERE document_id = $1 AND owner_id = $2',
+        // CRITICAL ORDER: Delete in reverse dependency order to avoid foreign key violations
+
+        // Delete study sessions first (references lessons)
+        const { rowCount: sessionsDeleted } = await client.query(
+          'DELETE FROM study_sessions WHERE document_id = $1 AND owner_id = $2',
           [id, ownerId]
         );
 
-        // Delete sections
-        const { rowCount: sectionsDeleted } = await client.query(
-          'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
-          [id, ownerId]
-        );
-
-        // Delete lessons/study sessions
+        // Delete lessons before sections (lessons may reference section_id)
         const { rowCount: lessonsDeleted } = await client.query(
           'DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2',
           [id, ownerId]
         );
 
-        // Delete study sessions
-        const { rowCount: sessionsDeleted } = await client.query(
-          'DELETE FROM study_sessions WHERE document_id = $1 AND owner_id = $2',
+        // Delete concepts (references sections via section_id)
+        const { rowCount: conceptsDeleted } = await client.query(
+          'DELETE FROM concepts WHERE document_id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        // Delete sections (now safe - no more references)
+        const { rowCount: sectionsDeleted } = await client.query(
+          'DELETE FROM sections WHERE document_id = $1 AND owner_id = $2',
           [id, ownerId]
         );
 
