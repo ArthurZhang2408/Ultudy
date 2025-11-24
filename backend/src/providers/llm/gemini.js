@@ -131,6 +131,9 @@ function normalizeSources(values) {
 /**
  * Process code block tags in examples
  * Converts <cb lang="language">code</cb> tags to markdown code blocks
+ *
+ * @deprecated This is for backward compatibility with JSON-based lessons.
+ * New markdown-based lessons use native code blocks.
  */
 function processCodeBlocks(examples) {
   if (!Array.isArray(examples)) {
@@ -163,6 +166,315 @@ function processCodeBlocks(examples) {
     // No code block tag, return as-is
     return ex;
   });
+}
+
+/**
+ * Parse markdown-formatted lesson into structured JSON
+ *
+ * Expected format:
+ * # Topic Name
+ * ## Summary
+ * ...
+ * # Concept 1 Name
+ * ## Explanation
+ * ...
+ * ## Check Your Understanding
+ * ...
+ */
+function parseMarkdownLesson(markdown, document_id) {
+  const lines = markdown.split('\n');
+
+  // Extract topic (first # heading)
+  let topic = 'Untitled Lesson';
+  let topicLineIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
+      topic = line.substring(2).trim();
+      topicLineIndex = i;
+      break;
+    }
+  }
+
+  console.log(`[parseMarkdownLesson] Topic: "${topic}"`);
+
+  // Find Summary section (## Summary right after topic)
+  let summary = '';
+  let summaryEndIndex = topicLineIndex + 1;
+
+  for (let i = topicLineIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === '## Summary') {
+      // Collect summary content until next # or ## heading
+      const summaryLines = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const contentLine = lines[j].trim();
+        if (contentLine.startsWith('#')) {
+          summaryEndIndex = j;
+          break;
+        }
+        summaryLines.push(lines[j]);
+      }
+      summary = summaryLines.join('\n').trim();
+      break;
+    }
+    if (line.startsWith('#')) {
+      summaryEndIndex = i;
+      break;
+    }
+  }
+
+  console.log(`[parseMarkdownLesson] Summary extracted: ${summary.length} chars`);
+
+  // Find all concept headings (# Concept Name, but not the first topic heading)
+  const conceptIndices = [];
+  for (let i = summaryEndIndex; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
+      conceptIndices.push(i);
+    }
+  }
+
+  console.log(`[parseMarkdownLesson] Found ${conceptIndices.length} concepts`);
+
+  if (conceptIndices.length === 0) {
+    throw new Error('No concepts found in markdown lesson');
+  }
+
+  // Parse each concept
+  const concepts = [];
+
+  for (let i = 0; i < conceptIndices.length; i++) {
+    const startIndex = conceptIndices[i];
+    const endIndex = i < conceptIndices.length - 1 ? conceptIndices[i + 1] : lines.length;
+
+    const conceptName = lines[startIndex].substring(2).trim();
+    const conceptContent = lines.slice(startIndex + 1, endIndex);
+
+    // Parse concept sections
+    const concept = parseConceptSections(conceptName, conceptContent);
+    concepts.push(concept);
+  }
+
+  // Build combined explanation from all concepts
+  const explanation = concepts
+    .map((c) => `**${c.name}**: ${c.explanation}`)
+    .join('\n\n');
+
+  // Collect all MCQs
+  const allCheckins = concepts.flatMap(c => c.check_ins);
+
+  return {
+    topic,
+    summary,
+    explanation,
+    analogies: [], // Not using analogies in new format
+    examples: [], // Examples are part of concepts now
+    concepts,
+    check_ins: allCheckins
+  };
+}
+
+/**
+ * Parse a single concept's markdown sections
+ */
+function parseConceptSections(conceptName, contentLines) {
+  const sections = {
+    explanation: '',
+    formulas: [],
+    examples: [],
+    important_notes: [],
+    mcqs: []
+  };
+
+  let currentSection = null;
+  let currentContent = [];
+
+  for (let i = 0; i < contentLines.length; i++) {
+    const line = contentLines[i].trim();
+
+    // Detect section headers
+    if (line === '## Explanation') {
+      if (currentSection && currentContent.length > 0) {
+        processSectionContent(currentSection, currentContent, sections);
+      }
+      currentSection = 'explanation';
+      currentContent = [];
+    } else if (line === '## Formulas') {
+      if (currentSection && currentContent.length > 0) {
+        processSectionContent(currentSection, currentContent, sections);
+      }
+      currentSection = 'formulas';
+      currentContent = [];
+    } else if (line === '## Examples') {
+      if (currentSection && currentContent.length > 0) {
+        processSectionContent(currentSection, currentContent, sections);
+      }
+      currentSection = 'examples';
+      currentContent = [];
+    } else if (line === '## Important Notes') {
+      if (currentSection && currentContent.length > 0) {
+        processSectionContent(currentSection, currentContent, sections);
+      }
+      currentSection = 'important_notes';
+      currentContent = [];
+    } else if (line === '## Check Your Understanding') {
+      if (currentSection && currentContent.length > 0) {
+        processSectionContent(currentSection, currentContent, sections);
+      }
+      currentSection = 'mcqs';
+      currentContent = [];
+    } else {
+      // Add line to current section content
+      currentContent.push(contentLines[i]);
+    }
+  }
+
+  // Process last section
+  if (currentSection && currentContent.length > 0) {
+    processSectionContent(currentSection, currentContent, sections);
+  }
+
+  // Build concept object
+  return {
+    name: conceptName,
+    explanation: sections.explanation,
+    key_details: {
+      formulas: sections.formulas,
+      examples: sections.examples,
+      important_notes: sections.important_notes
+    },
+    check_ins: sections.mcqs
+  };
+}
+
+/**
+ * Process content for a specific section type
+ */
+function processSectionContent(sectionType, contentLines, sections) {
+  const content = contentLines.join('\n').trim();
+
+  if (sectionType === 'explanation') {
+    sections.explanation = content;
+  } else if (sectionType === 'formulas') {
+    // Parse formulas in format: - **Formula**: ... **Variables**: ...
+    const formulaItems = content.split('\n').filter(line => line.trim().startsWith('-'));
+    sections.formulas = formulaItems.map(item => {
+      const formulaMatch = item.match(/\*\*Formula\*\*:\s*(.+?)(?:\*\*Variables\*\*:\s*(.+))?$/);
+      if (formulaMatch) {
+        return {
+          formula: formulaMatch[1].trim(),
+          variables: formulaMatch[2] ? formulaMatch[2].trim() : ''
+        };
+      }
+      return { formula: item.substring(1).trim(), variables: '' };
+    });
+  } else if (sectionType === 'examples') {
+    // Keep examples as-is (markdown with code blocks)
+    sections.examples = [content];
+  } else if (sectionType === 'important_notes') {
+    // Parse bullet points
+    const notes = content.split('\n').filter(line => line.trim().startsWith('-'));
+    sections.important_notes = notes.map(note => note.substring(1).trim());
+  } else if (sectionType === 'mcqs') {
+    // Parse MCQs
+    sections.mcqs = parseMCQs(content);
+  }
+}
+
+/**
+ * Parse MCQ questions from markdown
+ *
+ * Expected format:
+ * **Question 1**: What is the formula?
+ * 1. Correct answer (CORRECT)
+ * 2. Wrong answer
+ * 3. Wrong answer
+ * 4. Wrong answer
+ *
+ * **Explanations**:
+ * - **Option 1**: Why correct
+ * - **Option 2**: Why wrong
+ * - **Option 3**: Why wrong
+ * - **Option 4**: Why wrong
+ */
+function parseMCQs(content) {
+  const mcqs = [];
+  const questionBlocks = content.split(/\*\*Question \d+\*\*:/);
+
+  for (let i = 1; i < questionBlocks.length; i++) {
+    const block = questionBlocks[i];
+
+    // Extract question text (everything before first numbered option)
+    const questionMatch = block.match(/^(.+?)\n\d+\./s);
+    if (!questionMatch) continue;
+
+    const question = questionMatch[1].trim();
+
+    // Extract options (numbered 1-4)
+    const optionMatches = [...block.matchAll(/^(\d+)\.\s*(.+?)(?=\n\d+\.|\n\*\*Explanations\*\*:|\n$)/gms)];
+
+    if (optionMatches.length !== 4) {
+      console.warn(`[parseMCQs] Question has ${optionMatches.length} options, expected 4`);
+      continue;
+    }
+
+    // Find which option is marked as CORRECT
+    const options = optionMatches.map((match, idx) => {
+      const text = match[2].trim();
+      const isCorrect = text.includes('(CORRECT)');
+      return {
+        letter: String.fromCharCode(65 + idx), // A, B, C, D
+        text: text.replace(/\s*\(CORRECT\)\s*/g, '').trim(),
+        correct: isCorrect,
+        explanation: '' // Will fill in next step
+      };
+    });
+
+    // Extract explanations
+    const explanationsMatch = block.match(/\*\*Explanations\*\*:\s*([\s\S]+)/);
+    if (explanationsMatch) {
+      const explanationsList = explanationsMatch[1].trim().split('\n').filter(line => line.trim().startsWith('-'));
+
+      explanationsList.forEach((expLine, idx) => {
+        if (idx < 4) {
+          const expMatch = expLine.match(/\*\*Option \d+\*\*:\s*(.+)/);
+          if (expMatch) {
+            options[idx].explanation = expMatch[1].trim();
+          }
+        }
+      });
+    }
+
+    // Shuffle options but remember correct answer
+    const correctOption = options.find(opt => opt.correct);
+    if (!correctOption) {
+      console.warn('[parseMCQs] No correct option found, skipping question');
+      continue;
+    }
+
+    // Shuffle the options
+    const shuffled = [...options];
+    for (let j = shuffled.length - 1; j > 0; j--) {
+      const k = Math.floor(Math.random() * (j + 1));
+      [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+    }
+
+    // Re-assign letters after shuffle
+    shuffled.forEach((opt, idx) => {
+      opt.letter = String.fromCharCode(65 + idx);
+    });
+
+    mcqs.push({
+      question,
+      options: shuffled,
+      expected_answer: correctOption.text,
+      hint: ''
+    });
+  }
+
+  return mcqs;
 }
 
 function normalizeLessonPayload(payload) {
@@ -351,6 +663,88 @@ async function callModel(systemPrompt, userPrompt, responseSchema = null, maxRet
 
       console.log(`[gemini] ✅ Valid response received on attempt ${attempt + 1}`);
       return parsed;
+    } catch (error) {
+      lastError = error;
+      const errorMsg = error.message || '';
+
+      if (isRetryableError(error)) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // Exponential backoff, max 30s
+        console.warn(`[gemini] ⚠️  Attempt ${attempt + 1} failed: ${errorMsg}`);
+
+        if (attempt < maxRetries - 1) {
+          console.log(`[gemini] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error(`[gemini] ❌ All ${maxRetries} attempts exhausted`);
+        }
+      } else {
+        // Non-retryable error, throw immediately
+        console.error(`[gemini] ❌ Non-retryable error:`, errorMsg);
+        throw error;
+      }
+    }
+  }
+
+  // All retries exhausted
+  console.error(`[gemini] ❌ Failed after ${maxRetries} attempts`);
+  throw lastError;
+}
+
+/**
+ * Call model for markdown generation (no JSON schema)
+ * Returns plain text/markdown response
+ */
+async function callMarkdownModel(systemPrompt, userPrompt, maxRetries = 5) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is required when using the gemini LLM provider');
+  }
+
+  const modelName = process.env.GEMINI_GEN_MODEL || DEFAULT_MODEL;
+
+  const GoogleGenerativeAI = await loadGoogleGenerativeAI();
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: systemPrompt
+  });
+
+  const generationConfig = {
+    temperature: 0.4
+    // No responseMimeType - returns plain text by default
+  };
+
+  // Helper to check if error is retryable
+  function isRetryableError(error) {
+    const errorMsg = error.message || '';
+    return errorMsg.includes('503') ||
+           errorMsg.includes('overloaded') ||
+           errorMsg.includes('rate limit') ||
+           errorMsg.includes('ECONNRESET') ||
+           errorMsg.includes('ETIMEDOUT');
+  }
+
+  // Retry logic with exponential backoff
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`[gemini] Attempt ${attempt + 1}/${maxRetries} to generate markdown...`);
+
+      const response = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        generationConfig
+      });
+
+      const markdown = extractResponseText(response);
+
+      if (!markdown || markdown.trim().length === 0) {
+        throw new Error('LLM returned empty response');
+      }
+
+      console.log(`[gemini] ✅ Valid markdown received on attempt ${attempt + 1}`);
+      return markdown;
     } catch (error) {
       lastError = error;
       const errorMsg = error.message || '';
@@ -603,6 +997,197 @@ CRITICAL REMINDERS:
 - Test understanding, not memorization
 - IMPORTANT: Return ONLY valid JSON, no markdown code blocks, no explanatory text before or after
 - Your entire response must be a single valid JSON object starting with { and ending with }`;
+
+  return { systemInstruction, userPrompt };
+}
+
+/**
+ * Build markdown-based lesson generation prompt (new approach)
+ * Returns plain markdown instead of JSON - NO tags needed!
+ */
+function buildMarkdownLessonPrompt({
+  title,
+  full_text,
+  chapter,
+  include_check_ins,
+  section_name,
+  section_description
+}) {
+  const systemInstruction = `You are an expert educational content creator specializing in comprehensive, exam-focused learning. Your role is to:
+1. Extract ALL testable content from course materials (formulas, definitions, procedures, examples)
+2. Create detailed, hierarchical concept structures that preserve information depth
+3. Generate focused explanations with practical examples
+4. Create multiple-choice questions that test both understanding and application
+
+Return ONLY plain markdown. NO JSON, NO special tags, just pure markdown formatting.`;
+
+  // Build context string with section info if provided
+  let contextString = `**Title:** ${title || 'Course Material'}`;
+  if (chapter) {
+    contextString += `\n**Chapter:** ${chapter}`;
+  }
+  if (section_name) {
+    contextString += `\n**Section:** ${section_name}`;
+    if (section_description) {
+      contextString += `\n**Section Overview:** ${section_description}`;
+    }
+  }
+
+  // Build topic instruction based on whether this is section-scoped
+  let scopeInstruction = '';
+  if (section_name) {
+    scopeInstruction = `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CRITICAL SCOPE REQUIREMENT ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This is a SECTION-SCOPED lesson generation.
+
+**Section:** "${section_name}"
+${section_description ? `**Description:** ${section_description}` : ''}
+
+YOU MUST:
+1. Use "${section_name}" as the topic title (# heading)
+2. Generate concepts ONLY from content related to "${section_name}"
+3. IGNORE content from other sections or the broader chapter
+4. Focus on concepts specifically mentioned in this section's text
+
+YOU MUST NOT:
+- Generate concepts from the entire chapter/document
+- Include concepts that belong to other sections
+- Create generic concepts that apply to the whole document
+
+If the section text is too short or unclear, generate 3-5 focused concepts
+based strictly on what's present in this section's content.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+  }
+
+  const userPrompt = `I'm studying from this material:
+
+${contextString}${scopeInstruction}
+
+**Full Content:**
+${full_text}
+
+---
+
+Create a comprehensive, interactive learning experience in **pure markdown format**. NO JSON, NO special tags.
+
+**OUTPUT FORMAT:**
+
+# Topic Name
+
+## Summary
+
+What you'll learn:
+1. First learning point
+2. Second learning point
+3. Third learning point
+
+Why it matters: One sentence on real-world relevance
+
+Learning outcome: What you'll be able to do after mastering this
+
+# Concept 1 Name
+
+## Explanation
+
+2-3 sentence focused explanation with **key terms** in bold and *definitions* in italics. Use native LaTeX for math: $E = mc^2$ for inline or $$E = mc^2$$ for display equations.
+
+## Formulas
+
+- **Formula**: $E = mc^2$ **Variables**: $E$ is energy (joules), $m$ is mass (kg), $c$ is speed of light
+- **Formula**: $F = ma$ **Variables**: $F$ is force (newtons), $m$ is mass (kg), $a$ is acceleration (m/s²)
+
+## Examples
+
+**Example 1:** Calculate energy for mass $m = 2$ kg:
+
+$$E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17} \\text{ J}$$
+
+**Example 2:** With code:
+
+\`\`\`python
+def calculate_energy(mass):
+    c = 3e8  # speed of light
+    return mass * c**2
+
+print(calculate_energy(2))  # 1.8e17
+\`\`\`
+
+## Important Notes
+
+- **Critical:** Only applies in *relativistic* contexts
+- **Common mistake:** Don't confuse rest mass with relativistic mass
+- **Key insight:** Energy and mass are equivalent forms
+
+## Check Your Understanding
+
+**Question 1**: What does $E = mc^2$ represent?
+1. Einstein's mass-energy equivalence formula (CORRECT)
+2. Newton's second law of motion
+3. The momentum formula
+4. Kinetic energy equation
+
+**Explanations**:
+- **Option 1**: Correct! This is Einstein's famous mass-energy equivalence, showing that mass and energy are interchangeable.
+- **Option 2**: This is $F = ma$, Newton's second law relating force, mass, and acceleration.
+- **Option 3**: Momentum is $p = mv$, a different concept from energy.
+- **Option 4**: Kinetic energy is $KE = \\frac{1}{2}mv^2$, which only applies at non-relativistic speeds.
+
+**Question 2**: In $E = mc^2$, what is $c$?
+1. Mass constant
+2. Energy coefficient
+3. Speed of light (CORRECT)
+4. Charge constant
+
+**Explanations**:
+- **Option 1**: There's no "mass constant" in this equation.
+- **Option 2**: While $c^2$ is multiplied, $c$ itself is the speed of light, not just a coefficient.
+- **Option 3**: Correct! $c$ is the speed of light in vacuum, approximately $3 \\times 10^8$ m/s.
+- **Option 4**: Charge is represented by $q$ or $e$, not $c$.
+
+# Concept 2 Name
+
+## Explanation
+...
+
+**CRITICAL GUIDELINES:**
+
+**Content Coverage:**
+- READ THE ENTIRE SECTION before deciding which concepts to include
+- IDENTIFY ALL MAJOR TOPICS covered (if section has multiple topics, include ALL)
+- DO NOT skip important topics that appear later in the text
+- Generate 6-15 concepts based on content breadth:
+  * 1-2 major topics → 6-8 concepts
+  * 3-4 major topics → 9-12 concepts
+  * 5+ major topics → 12-15 concepts
+
+**Formatting:**
+- Use **bold** for key terms
+- Use *italic* for emphasis and definitions
+- Use native LaTeX: $inline$ or $$display$$ (NO <eqs> tags!)
+- Use markdown code blocks: \`\`\`language (NO <cb> tags!)
+- Use standard markdown tables
+- # for main topic, # for each concept, ## for sections within concepts
+
+**MCQ Requirements:**
+- 2-3 questions per concept
+- 4 options each (mark correct one with "(CORRECT)")
+- List correct answer FIRST, then 3 wrong answers
+- Provide detailed explanations for ALL 4 options
+- Test understanding, not memorization
+
+**Structure:**
+- ## Summary right after topic
+- Each concept as # heading
+- Within each concept: ## Explanation, ## Formulas, ## Examples, ## Important Notes, ## Check Your Understanding
+- Optional sections can be omitted if not relevant
+
+Return ONLY the markdown. No JSON, no code fences around the whole thing, no explanatory text. Just start with # and the topic name.`;
 
   return { systemInstruction, userPrompt };
 }
@@ -899,7 +1484,7 @@ export default async function createGeminiLLMProvider() {
         throw new Error('Full text is required for lesson generation');
       }
 
-      const { systemInstruction, userPrompt } = buildFullContextLessonPrompt({
+      const { systemInstruction, userPrompt } = buildMarkdownLessonPrompt({
         title,
         full_text,
         chapter,
@@ -921,13 +1506,14 @@ export default async function createGeminiLLMProvider() {
         console.log('[gemini] User prompt length:', userPrompt.length, 'characters');
         console.log('[gemini] ===============================================================');
 
-        console.log('[gemini] Calling model for full context lesson with JSON schema...');
-        const lesson = await callModel(systemInstruction, userPrompt, LESSON_SCHEMA);
-        console.log('[gemini] Raw lesson response:', JSON.stringify(lesson, null, 2));
+        console.log('[gemini] Calling model for markdown lesson generation (NO JSON)...');
+        const markdown = await callMarkdownModel(systemInstruction, userPrompt);
+        console.log('[gemini] Markdown lesson received:', markdown.length, 'characters');
+        console.log('[gemini] Markdown preview (first 500 chars):\n', markdown.substring(0, 500));
 
-        console.log('[gemini] Normalizing lesson payload...');
-        const normalized = normalizeFullContextLessonPayload(lesson, document_id);
-        console.log('[gemini] Normalization successful');
+        console.log('[gemini] Parsing markdown lesson...');
+        const normalized = parseMarkdownLesson(markdown, document_id);
+        console.log('[gemini] Parsing successful - extracted', normalized.concepts.length, 'concepts');
         return normalized;
       } catch (error) {
         console.error('[gemini] ERROR in generateFullContextLesson:', error);
