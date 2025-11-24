@@ -182,6 +182,10 @@ function processCodeBlocks(examples) {
  * ...
  */
 function parseMarkdownLesson(markdown, document_id) {
+  // Clean up any <eqs> or <cb> tags that might have slipped through
+  markdown = markdown.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
+  markdown = markdown.replace(/<cb\s+lang="([^"]+)">/g, '```$1\n').replace(/<\/cb>/g, '\n```');
+
   const lines = markdown.split('\n');
 
   // Extract topic (first # heading)
@@ -336,15 +340,14 @@ function parseConceptSections(conceptName, contentLines) {
     processSectionContent(currentSection, currentContent, sections);
   }
 
-  // Build concept object
+  // Return flat structure matching old JSON format
   return {
     name: conceptName,
     explanation: sections.explanation,
-    key_details: {
-      formulas: sections.formulas,
-      examples: sections.examples,
-      important_notes: sections.important_notes
-    },
+    analogies: [], // Not using analogies in new format
+    examples: sections.examples,
+    formulas: sections.formulas,
+    important_notes: sections.important_notes,
     check_ins: sections.mcqs
   };
 }
@@ -353,30 +356,83 @@ function parseConceptSections(conceptName, contentLines) {
  * Process content for a specific section type
  */
 function processSectionContent(sectionType, contentLines, sections) {
-  const content = contentLines.join('\n').trim();
+  let content = contentLines.join('\n').trim();
+
+  // Clean up any <eqs> tags that might have slipped through
+  content = content.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
 
   if (sectionType === 'explanation') {
     sections.explanation = content;
   } else if (sectionType === 'formulas') {
-    // Parse formulas in format: - **Formula**: ... **Variables**: ...
-    const formulaItems = content.split('\n').filter(line => line.trim().startsWith('-'));
-    sections.formulas = formulaItems.map(item => {
-      const formulaMatch = item.match(/\*\*Formula\*\*:\s*(.+?)(?:\*\*Variables\*\*:\s*(.+))?$/);
-      if (formulaMatch) {
-        return {
-          formula: formulaMatch[1].trim(),
-          variables: formulaMatch[2] ? formulaMatch[2].trim() : ''
+    // Parse formulas flexibly - handle different formats
+    const lines = content.split('\n').filter(line => line.trim());
+    const formulas = [];
+
+    let currentFormula = null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Check if this is a formula line with **Formula**: marker
+      if (trimmed.match(/^-?\s*\*\*Formula\*\*:/i)) {
+        // Save previous formula if exists
+        if (currentFormula) {
+          formulas.push(currentFormula);
+        }
+
+        // Extract formula and variables from same line
+        const match = trimmed.match(/\*\*Formula\*\*:\s*(.+?)(?:\s+\*\*Variables\*\*:\s*(.+))?$/);
+        if (match) {
+          currentFormula = {
+            formula: match[1].trim(),
+            variables: match[2] ? match[2].trim() : ''
+          };
+        }
+      } else if (trimmed.match(/^-?\s*\*\*Variables\*\*:/i) && currentFormula) {
+        // Variables on separate line
+        const varMatch = trimmed.match(/\*\*Variables\*\*:\s*(.+)/);
+        if (varMatch) {
+          currentFormula.variables = varMatch[1].trim();
+        }
+      } else if (trimmed.startsWith('-') && !trimmed.match(/\*\*Formula\*\*:/i) && !trimmed.match(/\*\*Variables\*\*:/i)) {
+        // Generic bullet point formula without explicit markers
+        if (currentFormula) {
+          formulas.push(currentFormula);
+        }
+        currentFormula = {
+          formula: trimmed.substring(1).trim(),
+          variables: ''
         };
       }
-      return { formula: item.substring(1).trim(), variables: '' };
-    });
+    }
+
+    // Push last formula
+    if (currentFormula) {
+      formulas.push(currentFormula);
+    }
+
+    sections.formulas = formulas.length > 0 ? formulas : [];
   } else if (sectionType === 'examples') {
-    // Keep examples as-is (markdown with code blocks)
-    sections.examples = [content];
+    // Split examples by **Example N**: markers, or keep as single block
+    const exampleMatches = content.match(/\*\*Example \d+\*\*:[\s\S]+?(?=\*\*Example \d+\*\*:|$)/g);
+    if (exampleMatches && exampleMatches.length > 0) {
+      sections.examples = exampleMatches.map(ex => ex.trim());
+    } else if (content.trim()) {
+      // Single example or no markers
+      sections.examples = [content];
+    } else {
+      sections.examples = [];
+    }
   } else if (sectionType === 'important_notes') {
-    // Parse bullet points
-    const notes = content.split('\n').filter(line => line.trim().startsWith('-'));
-    sections.important_notes = notes.map(note => note.substring(1).trim());
+    // Parse bullet points, handling various formats
+    const notes = content.split('\n')
+      .filter(line => line.trim().startsWith('-'))
+      .map(note => {
+        let cleaned = note.trim().substring(1).trim();
+        // Remove common markdown artifacts
+        cleaned = cleaned.replace(/^\*\*(.+?)\*\*:\s*/, '$1: ');
+        return cleaned;
+      });
+    sections.important_notes = notes.length > 0 ? notes : [];
   } else if (sectionType === 'mcqs') {
     // Parse MCQs
     sections.mcqs = parseMCQs(content);
@@ -404,7 +460,10 @@ function parseMCQs(content) {
   const questionBlocks = content.split(/\*\*Question \d+\*\*:/);
 
   for (let i = 1; i < questionBlocks.length; i++) {
-    const block = questionBlocks[i];
+    let block = questionBlocks[i];
+
+    // Clean up any <eqs> tags
+    block = block.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
 
     // Extract question text (everything before first numbered option)
     const questionMatch = block.match(/^(.+?)\n\d+\./s);
@@ -1169,10 +1228,16 @@ print(calculate_energy(2))  # 1.8e17
 **Formatting:**
 - Use **bold** for key terms
 - Use *italic* for emphasis and definitions
-- Use native LaTeX: $inline$ or $$display$$ (NO <eqs> tags!)
+- **CRITICAL**: Use ONLY native LaTeX: $inline$ or $$display$$
+  - ❌ NEVER use <eqs> tags
+  - ❌ NEVER use dollar signs inside tags
+  - ✅ Correct: $E = mc^2$ or $$E = mc^2$$
+  - ✅ Correct: $\Pi_{A,B}(R)$
 - Use markdown code blocks: \`\`\`language (NO <cb> tags!)
 - Use standard markdown tables
 - # for main topic, # for each concept, ## for sections within concepts
+
+**ABSOLUTE REQUIREMENT**: Do NOT use any special tags like <eqs>, <cb>, or any custom XML-style tags. Use ONLY standard markdown and LaTeX.
 
 **MCQ Requirements:**
 - 2-3 questions per concept
