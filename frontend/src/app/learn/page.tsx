@@ -120,8 +120,31 @@ function LearnPageContent() {
   // Track active pollers to prevent duplicates
   const pollingJobsRef = useRef<Set<string>>(new Set());
 
+  // Track if generating next section
+  const [generatingNextSection, setGeneratingNextSection] = useState(false);
+
   function makeQuestionKey(conceptIndex: number, mcqIndex: number) {
     return `${conceptIndex}-${mcqIndex}`;
+  }
+
+  // Helper to find the next section after the current one
+  function getNextSection(): Section | null {
+    if (!selectedSection || sections.length === 0) {
+      return null;
+    }
+
+    // Sort sections by section_number
+    const sortedSections = [...sections].sort((a, b) => a.section_number - b.section_number);
+
+    // Find current section index
+    const currentIndex = sortedSections.findIndex(s => s.id === selectedSection.id);
+
+    // Return next section if it exists
+    if (currentIndex >= 0 && currentIndex < sortedSections.length - 1) {
+      return sortedSections[currentIndex + 1];
+    }
+
+    return null;
   }
 
   function getLessonStorageKey(lessonData: Lesson | null) {
@@ -962,7 +985,9 @@ function LearnPageContent() {
 
   // Helper function to scroll to top of page
   function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Use 'auto' (instant) instead of 'smooth' to prevent click misalignment
+    // Smooth scrolling can cause DOM position mismatches while animating
+    window.scrollTo({ top: 0, behavior: 'auto' });
   }
 
   useEffect(() => {
@@ -970,8 +995,40 @@ function LearnPageContent() {
       return;
     }
 
-    scrollToTop();
+    // Small delay to ensure DOM has finished rendering before scrolling
+    // This prevents click misalignment issues when navigating between questions
+    const scrollTimer = setTimeout(() => {
+      scrollToTop();
+    }, 50);
+
+    return () => clearTimeout(scrollTimer);
   }, [showingSummary, currentConceptIndex, currentMCQIndex]);
+
+  // Auto-navigate to next section when it finishes generating
+  useEffect(() => {
+    if (!generatingNextSection) return;
+
+    const nextSection = getNextSection();
+    if (nextSection && nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+      console.log('[learn] Next section generated, navigating to first concept');
+
+      // Clear current lesson progress
+      if (storageKeyRef.current && typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(storageKeyRef.current);
+        } catch (error) {
+          console.error('Failed to clear lesson progress cache:', error);
+        }
+      }
+
+      // Navigate to first concept of next section
+      const firstConcept = nextSection.concepts[0];
+      router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${nextSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+
+      // Reset generating state
+      setGeneratingNextSection(false);
+    }
+  }, [sections, generatingNextSection]);
 
   async function startStudySession(): Promise<string | null> {
     if (sessionId) {
@@ -1322,22 +1379,59 @@ function LearnPageContent() {
         router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
       }
     } else {
-      if (storageKeyRef.current && typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem(storageKeyRef.current);
-        } catch (error) {
-          console.error('Failed to clear lesson progress cache:', error);
+      // Last concept finished - check if there's a next section
+      const nextSection = getNextSection();
+
+      if (nextSection) {
+        // There's a next section!
+        if (nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+          // Next section is already generated - navigate to its first concept
+          console.log('[learn] Navigating to first concept of next section:', nextSection.name);
+
+          // Clear current lesson progress
+          if (storageKeyRef.current && typeof window !== 'undefined') {
+            try {
+              window.localStorage.removeItem(storageKeyRef.current);
+            } catch (error) {
+              console.error('Failed to clear lesson progress cache:', error);
+            }
+          }
+
+          await completeStudySession();
+
+          // Navigate to first concept of next section
+          const firstConcept = nextSection.concepts[0];
+          router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${nextSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+        } else {
+          // Next section not generated - generate it
+          console.log('[learn] Generating next section:', nextSection.name);
+          setGeneratingNextSection(true);
+
+          // Generate the next section
+          await generateLessonForSection(nextSection);
+
+          // The generation completion handler will update sections state
+          // We'll navigate in a useEffect when generation completes
         }
-      }
-
-      await completeStudySession();
-
-      // Return to course page (sections list view eliminated)
-      const courseId = documentInfo?.course_id;
-      if (courseId) {
-        router.push(`/courses/${courseId}`);
       } else {
-        router.push('/'); // Home page shows all courses
+        // No next section - finish lesson and return to course page
+        if (storageKeyRef.current && typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem(storageKeyRef.current);
+          } catch (error) {
+            console.error('Failed to clear lesson progress cache:', error);
+          }
+        }
+
+        await completeStudySession();
+
+        // Return to course page (sections list view eliminated)
+        const courseId = documentInfo?.course_id;
+        if (courseId) {
+          router.push(`/courses/${courseId}`);
+        } else {
+          router.push('/'); // Home page shows all courses
+        }
       }
     }
   }
@@ -1685,8 +1779,8 @@ function LearnPageContent() {
             <div className="space-y-2">
               {lesson.concepts.map((concept, idx) => (
                 <div key={idx} className="flex items-start gap-2 text-blue-800 dark:text-blue-400">
-                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{idx + 1}.</span>
-                  <span>{concept.name}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold flex-shrink-0">{idx + 1}.</span>
+                  <div className="flex-1"><FormattedText>{concept.name}</FormattedText></div>
                 </div>
               ))}
             </div>
@@ -1759,7 +1853,7 @@ function LearnPageContent() {
                   setCurrentMCQIndex(0);
                   setShowingSummary(false);
                   setShowingSections(false);
-                  scrollToTop();
+                  // scrollToTop() is handled by useEffect when currentConceptIndex changes
                   return;
                 }
               }
@@ -1795,7 +1889,9 @@ function LearnPageContent() {
 
       {/* Concept Explanation */}
       <div ref={activeConceptRef} className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-4">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-neutral-100">{currentConcept.name}</h2>
+        <div className="text-2xl font-bold text-slate-900 dark:text-neutral-100">
+          <FormattedText>{currentConcept.name}</FormattedText>
+        </div>
 
         <FormattedText className="text-slate-700 dark:text-neutral-300 text-base leading-relaxed">
           {currentConcept.explanation}
@@ -1826,16 +1922,16 @@ function LearnPageContent() {
         )}
 
         {currentConcept.formulas && currentConcept.formulas.length > 0 && (
-          <div className="rounded-lg bg-purple-50 p-4 space-y-3">
-            <div className="text-sm font-semibold uppercase tracking-wide text-purple-900">Formulas & Equations</div>
+          <div className="rounded-lg bg-purple-50 dark:bg-purple-950/30 p-4 space-y-3">
+            <div className="text-sm font-semibold uppercase tracking-wide text-purple-900 dark:text-purple-300">Formulas & Equations</div>
             {currentConcept.formulas.map((formulaObj, index) => (
               <div key={index} className="space-y-1">
-                <div className="text-purple-900 bg-white p-3 rounded border border-purple-200">
+                <div className="text-purple-900 dark:text-purple-100 bg-white dark:bg-purple-900/40 p-3 rounded border border-purple-200 dark:border-purple-700">
                   <FormattedText>
                     {formulaObj.formula}
                   </FormattedText>
                 </div>
-                <FormattedText className="text-xs text-purple-700 pl-3">
+                <FormattedText className="text-xs text-purple-700 dark:text-purple-400 pl-3">
                   {formulaObj.variables}
                 </FormattedText>
               </div>
@@ -1962,14 +2058,38 @@ function LearnPageContent() {
               onClick={() => {
                 void handleNextMCQ();
               }}
-              disabled={!showingExplanations}
+              disabled={!showingExplanations || generatingNextSection}
               className="rounded-md bg-slate-900 dark:bg-neutral-700 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {currentMCQIndex === totalMCQsInConcept - 1
-                ? currentConceptIndex === totalConcepts - 1
-                  ? 'Finish Lesson'
-                  : 'Next Concept'
-                : 'Next Question'}
+              {(() => {
+                // Not last MCQ - show "Next Question"
+                if (currentMCQIndex < totalMCQsInConcept - 1) {
+                  return 'Next Question';
+                }
+
+                // Last MCQ but not last concept - show "Next Concept"
+                if (currentConceptIndex < totalConcepts - 1) {
+                  return 'Next Concept';
+                }
+
+                // Last MCQ of last concept - check for next section
+                const nextSection = getNextSection();
+
+                if (generatingNextSection) {
+                  return 'Generating...';
+                }
+
+                if (nextSection) {
+                  if (nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+                    return 'Next Section';
+                  } else {
+                    return 'Generate Next Section';
+                  }
+                }
+
+                // No next section - finish lesson
+                return 'Finish Lesson';
+              })()}
             </button>
           </div>
         </div>

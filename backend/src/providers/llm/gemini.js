@@ -959,16 +959,18 @@ Learning outcome: What you'll be able to do after mastering this
 
 ## Examples
 
-**Example 1:** Calculate energy for mass $m = 2$ kg:
+**IMPORTANT**: Examples MUST demonstrate how to apply the formulas above. Show step-by-step calculations using the formulas.
+
+**Example 1:** Calculate energy for mass $m = 2$ kg using $E = mc^2$:
 
 $$E = 2 \\times (3 \\times 10^8)^2 = 1.8 \\times 10^{17} \\text{ J}$$
 
-**Example 2:** With code:
+**Example 2:** With code applying the formula:
 
 \`\`\`python
 def calculate_energy(mass):
     c = 3e8  # speed of light
-    return mass * c**2
+    return mass * c**2  # Applying E = mc²
 
 print(calculate_energy(2))  # 1.8e17
 \`\`\`
@@ -1035,6 +1037,7 @@ print(calculate_energy(2))  # 1.8e17
 - List correct answer FIRST, then 3 wrong answers
 - Provide detailed explanations for ALL 4 options
 - Test understanding, not memorization
+- **CRITICAL**: Questions MUST be different from the Examples section. Use different numbers, scenarios, or contexts while testing the same concept. Examples show HOW, MCQs test IF they understood.
 
 **Structure:**
 - ## Summary right after topic

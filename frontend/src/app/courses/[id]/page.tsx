@@ -52,6 +52,15 @@ type ConceptWithMastery = {
   correct_attempts: number;
 };
 
+type ConceptMeta = {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  lesson_position: number;
+  mastery_level: MasteryLevel;
+  accuracy: number;
+};
+
 type SectionWithMastery = {
   id: string;
   section_number: number;
@@ -61,6 +70,7 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
+  concepts?: ConceptMeta[]; // Populated for sidebar navigation
 };
 
 export default function CoursePage() {
@@ -397,6 +407,31 @@ export default function CoursePage() {
             }
           }
         }
+      }
+
+      // Map concepts to their parent sections for sidebar navigation
+      for (const chapterKey in sectionsMap) {
+        const chapterConcepts = conceptsMap[chapterKey] || [];
+
+        sectionsMap[chapterKey] = sectionsMap[chapterKey].map(section => {
+          // Find all concepts belonging to this section
+          const sectionConcepts = chapterConcepts
+            .filter(c => c.section_id === section.id)
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              concept_number: c.concept_number,
+              lesson_position: c.lesson_position ?? 0,
+              mastery_level: c.mastery_level,
+              accuracy: c.accuracy
+            }))
+            .sort((a, b) => a.lesson_position - b.lesson_position);
+
+          return {
+            ...section,
+            concepts: sectionConcepts
+          };
+        });
       }
 
       setConceptsByChapter(conceptsMap);
