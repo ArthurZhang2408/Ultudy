@@ -1,6 +1,6 @@
 # Ultudy Documentation System
 
-**Last Updated:** 2025-11-18
+**Last Updated:** 2025-11-24
 **Purpose:** Central index for all project documentation with self-maintenance instructions
 
 ---
@@ -53,6 +53,9 @@ When you open this repository:
 |----------|---------|--------|
 | **LESSON_GENERATION_ARCHITECTURE.md** | How AI lessons are generated | Current |
 | **ASYNC_OPERATIONS.md** | Job queue and async processing | Current |
+| **PRICING_TIERS.md** | Tier structure, cost analysis, feature matrix | Current |
+| **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing technical design | Planning |
+| **MARKDOWN_MIGRATION_CHANGELOG.md** | JSON to Markdown migration & UI/UX fixes | Current |
 
 ---
 
@@ -76,6 +79,9 @@ Files that represent the current state of the system:
 - `backend/src/db/migrations/README.md` - Database migrations
 - `LESSON_GENERATION_ARCHITECTURE.md` - Core architecture
 - `ASYNC_OPERATIONS.md` - Async job processing
+- `PRICING_TIERS.md` - Pricing strategy and cost analysis
+- `TIER_2_ARCHITECTURE.md` - Tier 2 multi-chapter technical design
+- `MARKDOWN_MIGRATION_CHANGELOG.md` - Recent migration documentation
 
 ### Archived/Historical Documentation
 Implementation plans, migration docs, and phase documents that are completed:
@@ -304,6 +310,15 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How do lessons get generated?"
 → See `LESSON_GENERATION_ARCHITECTURE.md`
+
+### "What are the pricing tiers?"
+→ See `PRICING_TIERS.md`
+
+### "How does Tier 2 multi-chapter work?"
+→ See `TIER_2_ARCHITECTURE.md`
+
+### "What changed in the recent PR?"
+→ See `MARKDOWN_MIGRATION_CHANGELOG.md`
 
 ---
 
