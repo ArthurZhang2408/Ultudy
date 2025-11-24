@@ -182,10 +182,6 @@ function processCodeBlocks(examples) {
  * ...
  */
 function parseMarkdownLesson(markdown, document_id) {
-  // Clean up any <eqs> or <cb> tags that might have slipped through
-  markdown = markdown.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
-  markdown = markdown.replace(/<cb\s+lang="([^"]+)">/g, '```$1\n').replace(/<\/cb>/g, '\n```');
-
   const lines = markdown.split('\n');
 
   // Extract topic (first # heading)
@@ -356,10 +352,7 @@ function parseConceptSections(conceptName, contentLines) {
  * Process content for a specific section type
  */
 function processSectionContent(sectionType, contentLines, sections) {
-  let content = contentLines.join('\n').trim();
-
-  // Clean up any <eqs> tags that might have slipped through
-  content = content.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
+  const content = contentLines.join('\n').trim();
 
   if (sectionType === 'explanation') {
     sections.explanation = content;
@@ -460,10 +453,7 @@ function parseMCQs(content) {
   const questionBlocks = content.split(/\*\*Question \d+\*\*:/);
 
   for (let i = 1; i < questionBlocks.length; i++) {
-    let block = questionBlocks[i];
-
-    // Clean up any <eqs> tags
-    block = block.replace(/<eqs>/g, '$').replace(/<\/eqs>/g, '$');
+    const block = questionBlocks[i];
 
     // Extract question text (everything before first numbered option)
     const questionMatch = block.match(/^(.+?)\n\d+\./s);
@@ -1228,16 +1218,10 @@ print(calculate_energy(2))  # 1.8e17
 **Formatting:**
 - Use **bold** for key terms
 - Use *italic* for emphasis and definitions
-- **CRITICAL**: Use ONLY native LaTeX: $inline$ or $$display$$
-  - ❌ NEVER use <eqs> tags
-  - ❌ NEVER use dollar signs inside tags
-  - ✅ Correct: $E = mc^2$ or $$E = mc^2$$
-  - ✅ Correct: $\Pi_{A,B}(R)$
-- Use markdown code blocks: \`\`\`language (NO <cb> tags!)
+- Use native LaTeX: $inline$ or $$display$$
+- Use markdown code blocks: \`\`\`language
 - Use standard markdown tables
 - # for main topic, # for each concept, ## for sections within concepts
-
-**ABSOLUTE REQUIREMENT**: Do NOT use any special tags like <eqs>, <cb>, or any custom XML-style tags. Use ONLY standard markdown and LaTeX.
 
 **MCQ Requirements:**
 - 2-3 questions per concept
