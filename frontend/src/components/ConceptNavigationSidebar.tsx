@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type Concept = {
@@ -70,10 +70,43 @@ export default function ConceptNavigationSidebar({
     new Set(currentSectionId ? [currentSectionId] : [])
   );
 
+  // Track which sections were generating in previous render
+  const prevGeneratingRef = useRef<Set<string>>(new Set());
+
   // Notify parent when collapsed state changes
   useEffect(() => {
     onCollapseChange?.(isCollapsed);
   }, [isCollapsed, onCollapseChange]);
+
+  // Auto-expand sections that just finished generating
+  useEffect(() => {
+    const currentGenerating = new Set<string>();
+    const justCompleted: string[] = [];
+
+    sections.forEach(section => {
+      if (section.generating) {
+        currentGenerating.add(section.id);
+      } else if (prevGeneratingRef.current.has(section.id) &&
+                 section.concepts_generated &&
+                 section.concepts &&
+                 section.concepts.length > 0) {
+        // This section was generating before and just finished
+        justCompleted.push(section.id);
+      }
+    });
+
+    // Update the previous generating set
+    prevGeneratingRef.current = currentGenerating;
+
+    // Auto-expand sections that just completed
+    if (justCompleted.length > 0) {
+      setExpandedSections(prev => {
+        const newExpanded = new Set(prev);
+        justCompleted.forEach(id => newExpanded.add(id));
+        return newExpanded;
+      });
+    }
+  }, [sections]);
 
   const toggleSection = (sectionId: string) => {
     const newExpanded = new Set(expandedSections);
