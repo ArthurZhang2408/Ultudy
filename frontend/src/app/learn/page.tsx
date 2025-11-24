@@ -270,7 +270,61 @@ function LearnPageContent() {
     });
   }, [documentId, sections]);
 
+  // Helper function to fetch and populate concepts for a section after generation
+  async function fetchAndPopulateSectionConcepts(sectionId: string) {
+    try {
+      const conceptsUrl = chapter
+        ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+        : `/api/concepts/mastery?document_id=${documentId}`;
+
+      const conceptsRes = await fetch(conceptsUrl);
+
+      if (conceptsRes.ok) {
+        const conceptsData = await conceptsRes.json();
+        const allConcepts = conceptsData.concepts || [];
+
+        // Find concepts for this specific section
+        const sectionConcepts = allConcepts
+          .filter((c: any) => c.section_id === sectionId)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            concept_number: c.concept_number,
+            lesson_position: c.lesson_position,
+            mastery_level: c.mastery_level,
+            accuracy: c.accuracy
+          }));
+
+        console.log(`[learn] Fetched ${sectionConcepts.length} concepts for section ${sectionId}`);
+
+        // Update section with concepts
+        setSections(prev => prev.map(s =>
+          s.id === sectionId
+            ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
+            : s
+        ));
+      } else {
+        console.error('[learn] Concepts API error:', conceptsRes.status);
+        // Fallback: just mark as generated without concepts
+        setSections(prev => prev.map(s =>
+          s.id === sectionId
+            ? { ...s, generating: false, concepts_generated: true }
+            : s
+        ));
+      }
+    } catch (error) {
+      console.error('[learn] Failed to fetch concepts after generation:', error);
+      // Fallback: just mark as generated
+      setSections(prev => prev.map(s =>
+        s.id === sectionId
+          ? { ...s, generating: false, concepts_generated: true }
+          : s
+      ));
+    }
+  }
+
   // Helper function to resume polling for a lesson generation job
+  // Called when restoring jobs from sessionStorage after page reload
   function resumeLessonGenerationPolling(jobId: string, section: Section) {
     createJobPoller(jobId, {
       interval: 2000,
@@ -283,70 +337,10 @@ function LearnPageContent() {
         ));
       },
       onComplete: async (job: Job) => {
-        console.log('[learn] Generation completed:', job);
+        console.log('[learn] resumeLessonGenerationPolling: Generation completed:', job);
 
-        // Fetch the new concepts for this section
-        try {
-          const conceptsUrl = chapter
-            ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
-            : `/api/concepts/mastery?document_id=${documentId}`;
-
-          console.log('[learn] Fetching concepts from:', conceptsUrl);
-          console.log('[learn] Looking for section_id:', section.id);
-
-          const conceptsRes = await fetch(conceptsUrl);
-
-          if (conceptsRes.ok) {
-            const conceptsData = await conceptsRes.json();
-            const allConcepts = conceptsData.concepts || [];
-
-            console.log('[learn] Received concepts:', allConcepts.length, 'total');
-            console.log('[learn] All concepts:', allConcepts.map((c: any) => ({ id: c.id, name: c.name, section_id: c.section_id })));
-
-            // Find concepts for this specific section
-            const sectionConcepts = allConcepts
-              .filter((c: any) => c.section_id === section.id)
-              .map((c: any) => ({
-                id: c.id,
-                name: c.name,
-                concept_number: c.concept_number,
-                lesson_position: c.lesson_position,
-                mastery_level: c.mastery_level,
-                accuracy: c.accuracy
-              }));
-
-            console.log('[learn] Filtered concepts for section:', sectionConcepts.length);
-            console.log('[learn] Section concepts:', sectionConcepts);
-
-            // Update the section with new concepts
-            setSections(prev => prev.map(s =>
-              s.id === section.id
-                ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
-                : s
-            ));
-
-            console.log('[learn] Updated sections state with', sectionConcepts.length, 'concepts');
-          } else {
-            console.error('[learn] Concepts API returned error:', conceptsRes.status, conceptsRes.statusText);
-            const errorText = await conceptsRes.text();
-            console.error('[learn] Error response:', errorText);
-
-            // Fallback: just mark as generated without concepts
-            setSections(prev => prev.map(s =>
-              s.id === section.id
-                ? { ...s, generating: false, concepts_generated: true }
-                : s
-            ));
-          }
-        } catch (error) {
-          console.error('[learn] Failed to fetch concepts after generation:', error);
-          // Fallback: just mark as generated
-          setSections(prev => prev.map(s =>
-            s.id === section.id
-              ? { ...s, generating: false, concepts_generated: true }
-              : s
-          ));
-        }
+        // Fetch and populate concepts for this section
+        await fetchAndPopulateSectionConcepts(section.id);
 
         // Remove from polling set and sessionStorage
         pollingJobsRef.current.delete(jobId);
@@ -559,7 +553,8 @@ function LearnPageContent() {
     }
   }
 
-  // Load existing lesson or generate if not found (for grid navigation)
+  // Load existing lesson or generate if not found
+  // Called when navigating from course page (mastery grid) or from URL with concept_name parameter
   async function loadOrGenerateLesson(section: Section) {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
     setSelectedSection(section);
@@ -645,83 +640,10 @@ function LearnPageContent() {
               ));
             },
             onComplete: async (job: Job) => {
-              console.log('[learn] Generation completed:', job);
-              console.log('[learn] ⚠️ DEBUG: About to start concept fetch for section:', section.id);
-              console.log('[learn] ⚠️ DEBUG: documentId:', documentId, 'chapter:', chapter);
+              console.log('[learn] loadOrGenerateLesson: Generation completed:', job);
 
-              // Fetch the new concepts for this section
-              try {
-                console.log('[learn] ⚠️ DEBUG: Inside try block - constructing URL...');
-                const conceptsUrl = chapter
-                  ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
-                  : `/api/concepts/mastery?document_id=${documentId}`;
-
-                console.log('[learn] ⚠️ DEBUG: URL constructed:', conceptsUrl);
-                console.log('[learn] Fetching concepts from:', conceptsUrl);
-                console.log('[learn] Looking for section_id:', section.id);
-                console.log('[learn] ⚠️ DEBUG: About to call fetch...');
-
-                const conceptsRes = await fetch(conceptsUrl);
-                console.log('[learn] ⚠️ DEBUG: Fetch completed, status:', conceptsRes.status);
-
-                if (conceptsRes.ok) {
-                  console.log('[learn] ⚠️ DEBUG: Response OK, parsing JSON...');
-                  const conceptsData = await conceptsRes.json();
-                  console.log('[learn] ⚠️ DEBUG: JSON parsed:', conceptsData);
-                  const allConcepts = conceptsData.concepts || [];
-
-                  console.log('[learn] Received concepts:', allConcepts.length, 'total');
-                  console.log('[learn] All concepts:', allConcepts.map((c: any) => ({ id: c.id, name: c.name, section_id: c.section_id })));
-
-                  // Find concepts for this specific section
-                  const sectionConcepts = allConcepts
-                    .filter((c: any) => c.section_id === section.id)
-                    .map((c: any) => ({
-                      id: c.id,
-                      name: c.name,
-                      concept_number: c.concept_number,
-                      lesson_position: c.lesson_position,
-                      mastery_level: c.mastery_level,
-                      accuracy: c.accuracy
-                    }));
-
-                  console.log('[learn] Filtered concepts for section:', sectionConcepts.length);
-                  console.log('[learn] Section concepts:', sectionConcepts);
-
-                  // Mark section as ready with concepts populated
-                  setSections(prev => prev.map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
-                      : s
-                  ));
-
-                  console.log('[learn] Updated sections state with', sectionConcepts.length, 'concepts');
-                } else {
-                  console.error('[learn] Concepts API returned error:', conceptsRes.status, conceptsRes.statusText);
-                  const errorText = await conceptsRes.text();
-                  console.error('[learn] Error response:', errorText);
-
-                  // Fallback: just mark as generated without concepts
-                  setSections(prev => prev.map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, concepts_generated: true }
-                      : s
-                  ));
-                }
-              } catch (error) {
-                console.error('[learn] ⚠️ DEBUG: Caught error in concept fetch!');
-                console.error('[learn] Failed to fetch concepts after generation:', error);
-                console.error('[learn] ⚠️ DEBUG: Error details:', {
-                  message: error instanceof Error ? error.message : String(error),
-                  stack: error instanceof Error ? error.stack : undefined
-                });
-                // Fallback: just mark as generated
-                setSections(prev => prev.map(s =>
-                  s.id === section.id
-                    ? { ...s, generating: false, concepts_generated: true }
-                    : s
-                ));
-              }
+              // Fetch and populate concepts for this section
+              await fetchAndPopulateSectionConcepts(section.id);
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -816,6 +738,8 @@ function LearnPageContent() {
 }
 
   // Generate lesson for a specific section
+  // Called when clicking a non-generated section in the sidebar
+  // Note: This doesn't set selectedSection - it only triggers generation and updates section state
   async function generateLessonForSection(section: Section) {
     // Don't set selectedSection here - we're only triggering generation/discovery,
     // not actually loading the lesson. Setting it would create state mismatch
@@ -879,69 +803,10 @@ function LearnPageContent() {
               ));
             },
             onComplete: async (job: Job) => {
-              console.log('[learn] ⚠️ generateLessonForSection: Generation completed:', job);
-              console.log('[learn] ⚠️ DEBUG: About to fetch concepts for section:', section.id);
+              console.log('[learn] generateLessonForSection: Generation completed:', job);
 
-              // Fetch the new concepts for this section
-              try {
-                console.log('[learn] ⚠️ DEBUG: Constructing concepts URL...');
-                const conceptsUrl = chapter
-                  ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
-                  : `/api/concepts/mastery?document_id=${documentId}`;
-
-                console.log('[learn] ⚠️ DEBUG: Fetching from:', conceptsUrl);
-                const conceptsRes = await fetch(conceptsUrl);
-                console.log('[learn] ⚠️ DEBUG: Fetch completed, status:', conceptsRes.status);
-
-                if (conceptsRes.ok) {
-                  console.log('[learn] ⚠️ DEBUG: Parsing JSON...');
-                  const conceptsData = await conceptsRes.json();
-                  const allConcepts = conceptsData.concepts || [];
-
-                  console.log('[learn] ⚠️ DEBUG: Received', allConcepts.length, 'total concepts');
-                  console.log('[learn] ⚠️ DEBUG: Filtering for section_id:', section.id);
-
-                  // Find concepts for this specific section
-                  const sectionConcepts = allConcepts
-                    .filter((c: any) => c.section_id === section.id)
-                    .map((c: any) => ({
-                      id: c.id,
-                      name: c.name,
-                      concept_number: c.concept_number,
-                      lesson_position: c.lesson_position,
-                      mastery_level: c.mastery_level,
-                      accuracy: c.accuracy
-                    }));
-
-                  console.log('[learn] ⚠️ DEBUG: Found', sectionConcepts.length, 'concepts for this section');
-                  console.log('[learn] ⚠️ DEBUG: Section concepts:', sectionConcepts.map((c: any) => c.name));
-
-                  // Mark section as ready with concepts populated
-                  setSections(prev => prev.map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
-                      : s
-                  ));
-
-                  console.log('[learn] ⚠️ DEBUG: Updated sections state with concepts');
-                } else {
-                  console.error('[learn] ⚠️ ERROR: Concepts API returned error:', conceptsRes.status);
-                  // Fallback: just mark as generated without concepts
-                  setSections(prev => prev.map(s =>
-                    s.id === section.id
-                      ? { ...s, generating: false, concepts_generated: true }
-                      : s
-                  ));
-                }
-              } catch (error) {
-                console.error('[learn] ⚠️ ERROR: Failed to fetch concepts:', error);
-                // Fallback: just mark as generated
-                setSections(prev => prev.map(s =>
-                  s.id === section.id
-                    ? { ...s, generating: false, concepts_generated: true }
-                    : s
-                ));
-              }
+              // Fetch and populate concepts for this section
+              await fetchAndPopulateSectionConcepts(section.id);
 
               // Remove from polling set and sessionStorage
               pollingJobsRef.current.delete(rawData.job_id);
