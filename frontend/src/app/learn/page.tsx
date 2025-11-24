@@ -437,12 +437,12 @@ function LearnPageContent() {
             concepts: conceptsBySectionId[section.id] || []
           }));
 
-          console.log('[learn] Initial load - sections with concepts:', sectionsWithConcepts.map(s => ({
+          console.log('[learn] Initial load - sections with concepts:', sectionsWithConcepts.map((s: Section) => ({
             id: s.id,
             name: s.name,
             concepts_generated: s.concepts_generated,
             concepts_count: s.concepts?.length || 0,
-            concepts: s.concepts?.map(c => c.name)
+            concepts: s.concepts?.map((c: ConceptMeta) => c.name)
           })));
 
           setSections(sectionsWithConcepts);
