@@ -155,7 +155,8 @@ function LearnPageContent() {
     // Use document_id, chapter, and section_id to ensure each section has separate progress
     const docId = lessonData.document_id || documentId;
     const chapterVal = lessonData.chapter || chapter;
-    const sectionId = lessonData.section_id || selectedSection?.id;
+    // Try lesson data first, then selectedSection, then URL parameter as fallback
+    const sectionId = lessonData.section_id || selectedSection?.id || urlSectionId;
 
     if (!docId) {
       return null;
