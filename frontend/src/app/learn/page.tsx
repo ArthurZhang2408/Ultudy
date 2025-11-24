@@ -287,14 +287,21 @@ function LearnPageContent() {
 
         // Fetch the new concepts for this section
         try {
-          const conceptsRes = await fetch(chapter
+          const conceptsUrl = chapter
             ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
-            : `/api/concepts/mastery?document_id=${documentId}`
-          );
+            : `/api/concepts/mastery?document_id=${documentId}`;
+
+          console.log('[learn] Fetching concepts from:', conceptsUrl);
+          console.log('[learn] Looking for section_id:', section.id);
+
+          const conceptsRes = await fetch(conceptsUrl);
 
           if (conceptsRes.ok) {
             const conceptsData = await conceptsRes.json();
             const allConcepts = conceptsData.concepts || [];
+
+            console.log('[learn] Received concepts:', allConcepts.length, 'total');
+            console.log('[learn] All concepts:', allConcepts.map((c: any) => ({ id: c.id, name: c.name, section_id: c.section_id })));
 
             // Find concepts for this specific section
             const sectionConcepts = allConcepts
@@ -308,13 +315,22 @@ function LearnPageContent() {
                 accuracy: c.accuracy
               }));
 
+            console.log('[learn] Filtered concepts for section:', sectionConcepts.length);
+            console.log('[learn] Section concepts:', sectionConcepts);
+
             // Update the section with new concepts
             setSections(prev => prev.map(s =>
               s.id === section.id
                 ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
                 : s
             ));
+
+            console.log('[learn] Updated sections state with', sectionConcepts.length, 'concepts');
           } else {
+            console.error('[learn] Concepts API returned error:', conceptsRes.status, conceptsRes.statusText);
+            const errorText = await conceptsRes.text();
+            console.error('[learn] Error response:', errorText);
+
             // Fallback: just mark as generated without concepts
             setSections(prev => prev.map(s =>
               s.id === section.id
@@ -420,6 +436,14 @@ function LearnPageContent() {
             ...section,
             concepts: conceptsBySectionId[section.id] || []
           }));
+
+          console.log('[learn] Initial load - sections with concepts:', sectionsWithConcepts.map(s => ({
+            id: s.id,
+            name: s.name,
+            concepts_generated: s.concepts_generated,
+            concepts_count: s.concepts?.length || 0,
+            concepts: s.concepts?.map(c => c.name)
+          })));
 
           setSections(sectionsWithConcepts);
           setLoadingSections(false);

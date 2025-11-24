@@ -191,6 +191,17 @@ export default function ConceptNavigationSidebar({
                   const isActive = currentSectionId === section.id;
                   const isGenerating = section.generating || false;
 
+                  // Debug logging
+                  if (section.concepts_generated) {
+                    console.log('[sidebar] Section:', section.name, {
+                      isExpanded,
+                      concepts_generated: section.concepts_generated,
+                      has_concepts: !!section.concepts,
+                      concepts_count: section.concepts?.length || 0,
+                      concepts_array: section.concepts
+                    });
+                  }
+
                   return (
                     <div key={section.id}>
                       {/* Section Header */}
