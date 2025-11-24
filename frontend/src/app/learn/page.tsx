@@ -985,24 +985,20 @@ function LearnPageContent() {
 
   // Helper function to scroll to top of page
   function scrollToTop() {
-    // Use 'auto' (instant) instead of 'smooth' to prevent click misalignment
-    // Smooth scrolling can cause DOM position mismatches while animating
-    window.scrollTo({ top: 0, behavior: 'auto' });
+    // Use smooth scrolling for animated transition when navigating between concepts
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // Scroll to top when navigating between concepts (but not between questions)
   useEffect(() => {
     if (showingSummary) {
       return;
     }
 
-    // Small delay to ensure DOM has finished rendering before scrolling
-    // This prevents click misalignment issues when navigating between questions
-    const scrollTimer = setTimeout(() => {
-      scrollToTop();
-    }, 50);
-
-    return () => clearTimeout(scrollTimer);
-  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
+    // Only scroll when concept changes, not when questions change within the same concept
+    // This prevents click misalignment and keeps the user's position during MCQ navigation
+    scrollToTop();
+  }, [showingSummary, currentConceptIndex]); // Removed currentMCQIndex from dependencies
 
   // Auto-navigate to next section when it finishes generating
   useEffect(() => {
