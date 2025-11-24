@@ -546,6 +546,39 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
+  // Delete ALL lessons for a document (force regeneration)
+  router.delete('/documents/:document_id/lessons', async (req, res) => {
+    const { document_id } = req.params;
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const deleted = await tenantHelpers.withTenant(ownerId, async (client) => {
+        const result = await client.query(
+          `DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2`,
+          [document_id, ownerId]
+        );
+        return result.rowCount;
+      });
+
+      // Also invalidate cache
+      const { invalidateLessonCache } = await import('../jobs/cache.js');
+      await invalidateLessonCache(document_id);
+
+      res.json({
+        success: true,
+        message: `Deleted ${deleted} lessons for document ${document_id}`,
+        deleted_count: deleted
+      });
+    } catch (error) {
+      console.error('Failed to delete lessons for document', error);
+      res.status(500).json({ error: error.message || 'Failed to delete lessons' });
+    }
+  });
+
   // MVP v1.0: Check-in submission and mastery tracking
   router.post('/check-ins/submit', async (req, res) => {
     const {
