@@ -104,7 +104,7 @@ function LearnPageContent() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showingExplanations, setShowingExplanations] = useState(false);
   const [hoveredOption, setHoveredOption] = useState<string | null>(null);
-  const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong'>>(new Map());
+  const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'>>(new Map());
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [answerHistory, setAnswerHistory] = useState<Record<string, AnswerRecord>>({});
   const [storedProgress, setStoredProgress] = useState<StoredProgress | null>(null);
@@ -1244,15 +1244,7 @@ function LearnPageContent() {
       }
     }));
 
-    if (!wasCorrect) {
-      setConceptProgress((prev) => {
-        const updated = new Map(prev);
-        updated.set(currentConceptIndex, 'wrong');
-        return updated;
-      });
-    }
-
-    // Update mastery in sidebar immediately after answering
+    // Calculate accuracy for this concept to update both progress bar and sidebar
     if (currentConcept && selectedSection) {
       const mcqs = currentConcept.check_ins || [];
       let correctCount = 0;
@@ -1277,6 +1269,18 @@ function LearnPageContent() {
         accuracy === 100 ? 'completed' :
         accuracy === 0 ? 'incorrect' :
         'in_progress';
+
+      // Update concept progress bar status based on accuracy
+      const progressStatus: 'completed' | 'wrong' | 'in_progress' =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'wrong' :
+        'in_progress';
+
+      setConceptProgress((prev) => {
+        const updated = new Map(prev);
+        updated.set(currentConceptIndex, progressStatus);
+        return updated;
+      });
 
       setSections(prev => prev.map(s => {
         if (s.id === selectedSection.id && s.concepts) {
@@ -1323,19 +1327,7 @@ function LearnPageContent() {
       return;
     }
 
-    setConceptProgress((prev) => {
-      const updated = new Map(prev);
-
-      if (!answered.correct) {
-        updated.set(currentConceptIndex, 'wrong');
-      } else if (!updated.has(currentConceptIndex) || updated.get(currentConceptIndex) !== 'wrong') {
-        updated.set(currentConceptIndex, 'completed');
-      }
-
-      return updated;
-    });
-
-    // Update mastery in sections state for real-time sidebar update
+    // Calculate accuracy after finishing last MCQ to update both progress bar and sidebar
     if (currentConcept && selectedSection) {
       // Calculate accuracy based on all questions for this concept
       const mcqs = currentConcept.check_ins || [];
@@ -1357,6 +1349,18 @@ function LearnPageContent() {
         accuracy === 100 ? 'completed' :
         accuracy === 0 ? 'incorrect' :
         'in_progress';
+
+      // Update concept progress bar status based on accuracy
+      const progressStatus: 'completed' | 'wrong' | 'in_progress' =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'wrong' :
+        'in_progress';
+
+      setConceptProgress((prev) => {
+        const updated = new Map(prev);
+        updated.set(currentConceptIndex, progressStatus);
+        return updated;
+      });
 
       setSections(prev => prev.map(s => {
         if (s.id === selectedSection.id && s.concepts) {
@@ -2127,6 +2131,8 @@ function LearnPageContent() {
                     ? 'bg-yellow-500 dark:bg-yellow-600'
                     : status === 'completed'
                     ? 'bg-green-500 dark:bg-green-600'
+                    : status === 'in_progress'
+                    ? 'bg-yellow-500 dark:bg-yellow-600'
                     : status === 'wrong'
                     ? 'bg-red-500 dark:bg-red-600'
                     : status === 'skipped'
@@ -2138,8 +2144,10 @@ function LearnPageContent() {
                     ? 'Current / In Progress'
                     : status === 'completed'
                     ? 'All check-ins correct'
+                    : status === 'in_progress'
+                    ? 'Some check-ins correct'
                     : status === 'wrong'
-                    ? 'Incorrect answers'
+                    ? 'All check-ins incorrect'
                     : status === 'skipped'
                     ? 'Skipped'
                     : 'Not started'
