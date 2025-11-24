@@ -437,6 +437,7 @@ export default function CoursePage() {
 
   async function generateLessonForSection(section: SectionWithMastery, documentId: string, chapter: string | null) {
     console.log(`[courses] Generating lesson for section ${section.name}`);
+    console.log(`[courses] Current processingJobs before API call:`, processingJobs);
 
     try {
       const res = await fetch('/api/lessons/generate', {
@@ -453,6 +454,8 @@ export default function CoursePage() {
       if (res.ok) {
         const data = await res.json();
         console.log('[courses] Received response:', data);
+        console.log('[courses] Response has job_id?', !!data.job_id);
+        console.log('[courses] Response has lesson_id?', !!data.lesson_id);
 
         // Check if it's a job (async generation) or existing lesson
         if (data.job_id) {
@@ -829,6 +832,10 @@ export default function CoursePage() {
                 (job.chapter || 'Uncategorized') === chapter &&
                 job.status !== 'completed'
               );
+
+              if (section.section_number === 1) {
+                console.log(`[courses] Section ${section.name}: isGenerating=${isGenerating}, processingJobs=`, processingJobs);
+              }
 
               // Add section overview square FIRST
               skillsWithOverviews.push({
