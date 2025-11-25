@@ -186,40 +186,146 @@ This doesn't fix the mixing issue but makes it clearer to users which content ca
 
 ---
 
-## Tier 2 Design (Current - Correct Approach)
+## Tier 2 Design (Source Extraction + Synthesis Model)
 
-Tier 2 takes the **document-based approach** correctly:
+Tier 2 has a fundamentally **different paradigm** from tier 1:
 
+### Tier 2 Architecture
 ```
-Chapter 1
-├── chapter_1.pdf
-│   ├── [Full markdown content]
-│   └── Pages 1-25
-└── lecture_1.pdf
-    ├── [Full markdown content]
-    └── Pages 1-30
+1. EXTRACTION PHASE (Upload & Auto-detect)
+   Documents (Sources):
+   ├── textbook.pdf (multi-chapter)
+   │   ├── Chapter 1: Introduction [markdown extracted]
+   │   ├── Chapter 2: Theory [markdown extracted]
+   │   └── Chapter 3: Applications [markdown extracted]
+   └── lecture_notes.pdf (multi-chapter)
+       ├── Chapter 1: Overview [markdown extracted]
+       ├── Chapter 2: Examples [markdown extracted]
+       └── Chapter 3: Practice [markdown extracted]
+
+2. SYNTHESIS PHASE (User generates study session)
+   Study Session for Chapter 2:
+   ├── Source 1: textbook.pdf Chapter 2 (pages 20-40)
+   ├── Source 2: lecture_notes.pdf Chapter 2 (pages 10-25)
+   └── [LLM synthesizes unified lesson from both sources]
 ```
 
-Each document is stored as a **separate chapter_markdown row** with its own content. No mixing occurs because there are no sections - just complete markdown extractions per document.
+### Key Differences
+
+**Tier 1:** `Document = Study Session` (1:1 mapping)
+- Upload `chapter_3.pdf` → Generates Section 3.1, 3.2, 3.3 → Study those sections
+- Each document is self-contained
+
+**Tier 2:** `Chapter (synthesized from sources) = Study Session` (N:1 mapping)
+- Upload multiple textbooks/notes → Extract all chapters as markdown sources
+- User picks Chapter 3 to study
+- System synthesizes content from:
+  - Part of textbook.pdf Chapter 3
+  - Part of lecture_notes.pdf Chapter 3
+  - Entirety of another document's Chapter 3
+  - etc.
+- Creates unified study experience
+
+### Current Tier 2 Implementation Status
+
+**Phase 1 (Completed):** Source Extraction
+- ✅ Multi-chapter PDF detection
+- ✅ Chapter-by-chapter markdown extraction
+- ✅ Storage in `chapter_markdown` table (one row per chapter per document)
+- ✅ Display sources with "View Markdown" for testing
+
+**Phase 2 (TODO):** Synthesis & Study Session Generation
+- ⬜ User selects a chapter to study
+- ⬜ System finds all sources for that chapter
+- ⬜ LLM synthesizes sources into unified lesson with:
+  - Combined concepts
+  - Integrated examples from multiple sources
+  - Cross-referenced explanations
+  - Practice problems from all sources
+- ⬜ Generate study session (like tier 1 sections, but synthesized)
 
 ---
 
 ## Recommendations
 
 ### Immediate Actions
-1. **For Testing Tier 2:**
+
+1. **For Testing Tier 2 Phase 1 (Source Extraction):**
    - Upgrade your test user to tier2 using the upgrade endpoint
-   - Retry the upload
-   - Verify it goes through tier 2 processing (no sections generated)
+   - Upload a multi-chapter PDF
+   - Verify chapter detection and markdown extraction works
+   - Check "View Markdown" shows extracted content
 
-2. **For Tier 1 Architecture:**
-   - **Short term:** Add source labels to sections showing which document they came from
-   - **Long term:** Refactor to document-based sessions (Option A above)
+2. **For Tier 1 Architecture Fix:**
+   - **Short term:** Add source labels showing which document each section came from
+   - **Long term:** Refactor to document-based sessions (see Option A above)
 
-### Long Term Architecture
-Consider treating **documents as the primary unit** across all tiers:
-- Free: 1 document, single chapter
-- Tier 1: Multiple documents, single chapter each
-- Tier 2: Multiple documents, multi-chapter detection
+### Long Term Architecture Plan
 
-This creates consistency across tiers and avoids the section-mixing problem.
+#### Tier Comparison Table
+
+| Tier | Upload Model | Study Unit | Source Handling |
+|------|-------------|-----------|-----------------|
+| **Free** | Single document, single chapter | Document = Session | One source only |
+| **Tier 1** | Multiple documents, single chapter each | Document = Session | Each doc is separate session |
+| **Tier 2** | Multiple documents, multi-chapter | Chapter = Session (synthesized) | Multiple sources → unified lesson |
+
+#### Implementation Roadmap
+
+**Phase 1: Fix Tier 1 (Document-Based Sessions)**
+```
+Current Problem:
+  Chapter 3
+  ├── chapter_3.pdf sections (3.1, 3.2) ┐
+  └── lecture_3.pdf sections (3.1, 3.2) ┴─ Mixed together!
+
+Desired Behavior:
+  Chapter 3
+  ├── Session 1: chapter_3.pdf
+  │   └── Sections: 3.1, 3.2, 3.3
+  └── Session 2: lecture_3.pdf
+      └── Sections: 3.1, 3.2
+```
+
+**Changes Required:**
+1. UI: Display each document as collapsible section with its own MasteryGrid
+2. Backend: Already works correctly (sections have document_id)
+3. Frontend: Stop merging sections from different documents
+
+**Phase 2: Tier 2 Synthesis (Future)**
+```
+User Flow:
+1. Upload multiple textbooks → All chapters extracted as sources
+2. Click "Study Chapter 3"
+3. Backend finds all Chapter 3 sources:
+   - textbook.pdf Chapter 3 (markdown)
+   - lecture_notes.pdf Chapter 3 (markdown)
+   - practice_problems.pdf Chapter 3 (markdown)
+4. LLM synthesizes unified lesson:
+   - Combines concepts from all sources
+   - Integrates examples
+   - Creates cohesive narrative
+5. Generates study session with sections/concepts
+6. User studies synthesized content
+```
+
+**Implementation for Phase 2:**
+- New endpoint: `POST /tier2/synthesize-chapter`
+- Input: `course_id`, `chapter_number`
+- Fetches all `chapter_markdown` rows for that chapter
+- Sends to LLM: "Synthesize these sources into a unified lesson..."
+- Generates sections + concepts (like tier 1, but from multiple sources)
+- Stores in same tables as tier 1 (but with synthesis metadata)
+
+---
+
+## Summary
+
+**Key Insight:** Tier 1 and Tier 2 have fundamentally different models:
+
+- **Tier 1:** Document-centric (each document is a self-contained study session)
+- **Tier 2:** Chapter-centric with synthesis (multiple document sources → unified chapter lesson)
+
+**Immediate Fix:** Tier 1 needs document-based sessions to stop mixing sections from different documents.
+
+**Future Work:** Tier 2 needs synthesis phase to combine multiple sources into unified study sessions per chapter.
