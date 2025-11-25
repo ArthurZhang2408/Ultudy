@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useModal } from '@/contexts/ModalContext';
 import { useRouter } from 'next/navigation';
 import { getBackendUrl } from '@/lib/api';
+import { useAuth } from '@clerk/nextjs';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -34,6 +35,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
   const [fetchingData, setFetchingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { getToken } = useAuth();
 
   useModal(isOpen, 'upgrade-modal');
 
@@ -67,9 +69,12 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
 
   async function fetchSubscription() {
     try {
+      const token = await getToken();
+      if (!token) return;
+
       const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
-          'Authorization': 'Bearer dev-token'
+          'Authorization': `Bearer ${token}`
         }
       });
       const data = await res.json();
@@ -83,12 +88,17 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
     setLoading(tier);
 
     try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       // TEST MODE: Directly upgrade tier without payment
       const res = await fetch(`${getBackendUrl()}/subscriptions/upgrade`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev-token'
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ tier })
       });
@@ -156,7 +166,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
             {error}
           </p>
           <p className="text-sm text-neutral-500 dark:text-neutral-500 mb-6">
-            Check your <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">NEXT_PUBLIC_API_URL</code> environment variable points to your Railway backend.
+            Check your <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">NEXT_PUBLIC_BACKEND_URL</code> environment variable points to your Railway backend.
           </p>
           <button
             onClick={onClose}

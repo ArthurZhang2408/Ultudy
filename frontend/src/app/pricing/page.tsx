@@ -21,7 +21,7 @@ interface Subscription {
 }
 
 export default function PricingPage() {
-  const { userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const router = useRouter();
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -49,9 +49,12 @@ export default function PricingPage() {
     if (!userId) return;
 
     try {
+      const token = await getToken();
+      if (!token) return;
+
       const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
-          'Authorization': `Bearer ${await getToken()}`
+          'Authorization': `Bearer ${token}`
         }
       });
       const data = await res.json();
@@ -59,11 +62,6 @@ export default function PricingPage() {
     } catch (error) {
       console.error('Failed to fetch subscription:', error);
     }
-  }
-
-  async function getToken() {
-    // In a real implementation, get the Clerk JWT token
-    return 'dev-token';
   }
 
   async function handleUpgrade(tier: string) {
@@ -75,12 +73,17 @@ export default function PricingPage() {
     setLoading(tier);
 
     try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       // TEST MODE: Directly upgrade tier without payment
       const res = await fetch(`${getBackendUrl()}/subscriptions/upgrade`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await getToken()}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ tier })
       });

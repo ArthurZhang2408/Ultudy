@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getBackendUrl } from '@/lib/api';
+import { useAuth } from '@clerk/nextjs';
 
 interface Usage {
   pdfs_uploaded: number;
@@ -29,6 +30,7 @@ interface SubscriptionData {
 export default function UsageDashboard() {
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { getToken } = useAuth();
 
   useEffect(() => {
     fetchSubscriptionData();
@@ -36,9 +38,15 @@ export default function UsageDashboard() {
 
   async function fetchSubscriptionData() {
     try {
+      const token = await getToken();
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
-          'Authorization': 'Bearer dev-token' // Replace with actual token
+          'Authorization': `Bearer ${token}`
         }
       });
       const data = await res.json();

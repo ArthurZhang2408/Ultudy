@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getBackendUrl } from '@/lib/api';
+import { useAuth } from '@clerk/nextjs';
 
 interface Chapter {
   chapter_number: number;
@@ -21,15 +22,21 @@ export default function ChapterManager({ documentId, onChaptersExtracted }: Chap
   const [detectedChapters, setDetectedChapters] = useState<Chapter[]>([]);
   const [selectedChapters, setSelectedChapters] = useState<number[]>([]);
   const [detectionType, setDetectionType] = useState<'single' | 'multi' | null>(null);
+  const { getToken } = useAuth();
 
   async function detectChapters() {
     setDetecting(true);
     try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       const res = await fetch(`${getBackendUrl()}/chapters/detect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev-token'
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ document_id: documentId })
       });
@@ -65,11 +72,16 @@ export default function ChapterManager({ documentId, onChaptersExtracted }: Chap
 
     setExtracting(true);
     try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required');
+      }
+
       const res = await fetch(`${getBackendUrl()}/chapters/extract`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer dev-token'
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           document_id: documentId,
