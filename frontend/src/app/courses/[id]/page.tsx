@@ -1082,121 +1082,22 @@ export default function CoursePage() {
                   );
                 })}
 
-                {/* Documents List */}
+                {/* Tier 2 Chapter Sources */}
                 <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
-                  <div className="grid gap-4">
-                    {/* Processing Jobs - Filter by chapter, exclude completed jobs, and hide if document already exists */}
-                    {processingJobs.filter(job => {
-                      // Filter by chapter and type
-                      if ((job.chapter || 'Uncategorized') !== chapter || job.type !== 'upload') {
-                        return false;
-                      }
-                      // Exclude completed jobs
-                      if (job.status === 'completed') {
-                        return false;
-                      }
-                      // Hide job if the document already exists in the documents list
-                      const documentExists = documentsByChapter[chapter]?.some(doc => doc.id === job.document_id);
-                      if (documentExists) {
-                        return false;
-                      }
-                      return true;
-                    }).map((job) => (
-                      <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-500 dark:bg-primary-600 rounded-lg flex items-center justify-center animate-pulse">
-                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              </div>
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-primary-900 dark:text-primary-300">
-                                  {job.title}
-                                </h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <Badge variant="primary" size="sm">
-                                    Uploading...
-                                  </Badge>
-                                  <span className="text-xs text-primary-700 dark:text-primary-400">
-                                    {job.status === 'processing' ? `${job.progress}%` : job.status}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            {/* Progress bar */}
-                            {job.status === 'processing' && (
-                              <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
-                                <div
-                                  className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${job.progress}%` }}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                  {(() => {
+                    // Extract chapter number from chapter string (e.g., "Chapter 1" → 1)
+                    const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
+                    const chapterNum = chapterMatch ? parseInt(chapterMatch[1], 10) : null;
+                    const sources = chapterNum ? chapterSources[chapterNum] : [];
 
-                    {documentsByChapter[chapter].map((doc) => (
-                      <Card key={doc.id} padding="md" hover className="group">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">
-                                  {doc.title}
-                                </h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  {doc.material_type && (
-                                    <Badge variant="neutral" size="sm">
-                                      {doc.material_type}
-                                    </Badge>
-                                  )}
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    {doc.pages} pages
-                                  </span>
-                                  <span className="text-xs text-neutral-400 dark:text-neutral-600">•</span>
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    {new Date(doc.uploaded_at).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      year: 'numeric'
-                                    })}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <Button
-                            onClick={() => openDeleteModal(doc.id, doc.title)}
-                            variant="danger"
-                            size="sm"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
+                    // Only show section if there are tier 2 sources
+                    if (!sources || sources.length === 0) return null;
 
-                    {/* Tier 2 Chapter Sources */}
-                    {(() => {
-                      // Extract chapter number from chapter string (e.g., "Chapter 1" → 1)
-                      const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
-                      const chapterNum = chapterMatch ? parseInt(chapterMatch[1], 10) : null;
-                      const sources = chapterNum ? chapterSources[chapterNum] : [];
-
-                      return sources?.map((source) => (
+                    return (
+                      <>
+                        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Tier 2 Sources</h3>
+                        <div className="grid gap-4">
+                          {sources.map((source) => (
                         <Card key={source.id} padding="md" hover className="group border-2 border-purple-200 dark:border-purple-800/50">
                           <div className="flex items-start justify-between">
                             <div className="flex-1 space-y-2">
@@ -1249,9 +1150,11 @@ export default function CoursePage() {
                             </Button>
                           </div>
                         </Card>
-                      ));
-                    })()}
-                  </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             );
