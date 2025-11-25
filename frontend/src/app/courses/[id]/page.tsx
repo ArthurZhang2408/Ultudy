@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import { useTier } from '@/contexts/TierContext';
 
 type Course = {
   id: string;
@@ -78,6 +79,7 @@ export default function CoursePage() {
   const searchParams = useSearchParams();
   const courseId = params.id as string;
   const router = useRouter();
+  const { tierData, isTier } = useTier();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,7 @@ export default function CoursePage() {
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isTier2UploadModalOpen, setIsTier2UploadModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
@@ -745,11 +748,11 @@ export default function CoursePage() {
             </div>
           </div>
         </div>
-        <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+        <Button variant="primary" size="lg" onClick={() => isTier('tier2') ? setIsTier2UploadModalOpen(true) : setIsUploadModalOpen(true)}>
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
-          Upload Materials
+          {isTier('tier2') ? 'Upload Textbook/Lecture Note' : 'Upload Materials'}
         </Button>
       </div>
 
@@ -786,11 +789,11 @@ export default function CoursePage() {
             <p className="text-neutral-600 dark:text-neutral-300">
               Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
             </p>
-            <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+            <Button variant="primary" size="lg" onClick={() => isTier('tier2') ? setIsTier2UploadModalOpen(true) : setIsUploadModalOpen(true)}>
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              Upload Your First Document
+              {isTier('tier2') ? 'Upload Your First Textbook/Lecture Note' : 'Upload Your First Document'}
             </Button>
           </div>
         </Card>
@@ -1076,6 +1079,13 @@ export default function CoursePage() {
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        preselectedCourseId={courseId}
+      />
+
+      {/* Tier 2 Upload Modal */}
+      <Tier2UploadModal
+        isOpen={isTier2UploadModalOpen}
+        onClose={() => setIsTier2UploadModalOpen(false)}
         preselectedCourseId={courseId}
       />
     </div>
