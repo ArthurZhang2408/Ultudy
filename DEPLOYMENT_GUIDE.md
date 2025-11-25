@@ -225,7 +225,7 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 
 # Backend API URL (from Railway)
-NEXT_PUBLIC_API_URL=https://ultudy-backend-production.up.railway.app
+NEXT_PUBLIC_BACKEND_URL=https://ultudy-backend-production.up.railway.app
 
 # Clerk Frontend API
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
@@ -390,7 +390,7 @@ vercel logs
 ## Troubleshooting
 
 ### Frontend shows "Failed to fetch"
-- Check `NEXT_PUBLIC_API_URL` in Vercel
+- Check `NEXT_PUBLIC_BACKEND_URL` in Vercel
 - Verify backend is running on Railway
 - Check CORS settings in backend
 

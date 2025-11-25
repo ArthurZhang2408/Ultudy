@@ -72,7 +72,7 @@ Use this checklist to ensure a smooth deployment to production.
 - [ ] Environment variables configured:
   - [ ] `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
   - [ ] `CLERK_SECRET_KEY`
-  - [ ] `NEXT_PUBLIC_API_URL`
+  - [ ] `NEXT_PUBLIC_BACKEND_URL`
   - [ ] Clerk redirect URLs
 - [ ] Frontend deployed successfully
 - [ ] Vercel URL accessible (e.g., `https://ultudy-xxx.vercel.app`)
