@@ -97,6 +97,56 @@ export function createApp(options = {}) {
       })
     );
 
+    // Public subscription endpoints (no auth required)
+    app.get('/subscriptions/tiers', (req, res) => {
+      const tiers = [
+        {
+          id: 'free',
+          name: 'Free',
+          price: 0,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            '1 PDF per month',
+            'Max 10 pages',
+            'All core learning features',
+            'Concept mastery tracking'
+          ]
+        },
+        {
+          id: 'tier1',
+          name: 'Student',
+          price: 17,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            'Unlimited PDFs',
+            'No page limit',
+            'Multiple courses',
+            'Full mastery tracking',
+            'Priority support'
+          ],
+          popular: true
+        },
+        {
+          id: 'tier2',
+          name: 'Pro',
+          price: 40,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            'All Student features',
+            'Multi-chapter PDFs',
+            'Multiple sources per chapter',
+            '100 chapters/month',
+            'Premium AI quality',
+            'Content deduplication'
+          ]
+        }
+      ];
+      res.json({ tiers });
+    });
+
     app.use(requireUser);
 
     app.use(
