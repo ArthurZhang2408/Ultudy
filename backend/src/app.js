@@ -9,6 +9,8 @@ import createStudyRouter from './routes/study.js';
 import createCoursesRouter from './routes/courses.js';
 import createJobsRouter from './routes/jobs.js';
 import createAdminRouter from './routes/admin.js';
+import subscriptionsRouter from './routes/subscriptions.js';
+import chaptersRouter from './routes/chapters.js';
 import setupWorkers from './jobs/worker.js';
 import { uploadQueue, lessonQueue } from './jobs/queue.js';
 import { createJobTracker } from './jobs/tracking.js';
@@ -145,6 +147,12 @@ export function createApp(options = {}) {
         jobTracker
       })
     );
+
+    // Subscription routes (test mode - no payment)
+    app.use('/subscriptions', subscriptionsRouter);
+
+    // Tier 2 chapter routes
+    app.use('/chapters', chaptersRouter);
   }
 
   return app;
