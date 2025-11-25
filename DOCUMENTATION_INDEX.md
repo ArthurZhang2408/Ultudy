@@ -55,6 +55,7 @@ When you open this repository:
 | **ASYNC_OPERATIONS.md** | Job queue and async processing | Current |
 | **PRICING_TIERS.md** | Tier structure, cost analysis, feature matrix | Current |
 | **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing technical design | Planning |
+| **SUBSCRIPTION_ARCHITECTURE.md** | Stripe integration, payment flow, tier enforcement | Planning |
 | **MARKDOWN_MIGRATION_CHANGELOG.md** | JSON to Markdown migration & UI/UX fixes | Current |
 
 ---
@@ -81,6 +82,7 @@ Files that represent the current state of the system:
 - `ASYNC_OPERATIONS.md` - Async job processing
 - `PRICING_TIERS.md` - Pricing strategy and cost analysis
 - `TIER_2_ARCHITECTURE.md` - Tier 2 multi-chapter technical design
+- `SUBSCRIPTION_ARCHITECTURE.md` - Stripe payment integration
 - `MARKDOWN_MIGRATION_CHANGELOG.md` - Recent migration documentation
 
 ### Archived/Historical Documentation
