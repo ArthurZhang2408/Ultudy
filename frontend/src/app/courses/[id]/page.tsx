@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import { useTier } from '@/contexts/TierContext';
 
@@ -91,6 +91,13 @@ export default function CoursePage() {
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isTier2UploadModalOpen, setIsTier2UploadModalOpen] = useState(false);
+  const [isChapterSelectionOpen, setIsChapterSelectionOpen] = useState(false);
+  const [chapterSelectionData, setChapterSelectionData] = useState<{
+    documentId: string;
+    documentName: string;
+    storageKey: string;
+    chapters: Array<{ number: number; title: string; pageStart: number; pageEnd: number }>;
+  } | null>(null);
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
@@ -148,8 +155,22 @@ export default function CoursePage() {
         console.log('[courses] Upload completed:', job);
         pollingJobsRef.current.delete(uploadJobId);
         removeProcessingJob(uploadJobId);
-        // Refresh course data to show the new document
-        fetchCourseData();
+
+        // Check if this is a tier 2 multi-chapter upload
+        if (job.result?.type === 'multi_chapter') {
+          console.log('[courses] Multi-chapter PDF detected:', job.result);
+          // Trigger chapter selection modal
+          setChapterSelectionData({
+            documentId: job.result.document_id,
+            documentName: job.result.title,
+            storageKey: job.result.storage_key,
+            chapters: job.result.chapters
+          });
+          setIsChapterSelectionOpen(true);
+        } else {
+          // Refresh course data to show the new document
+          fetchCourseData();
+        }
       },
       onError: (error: string) => {
         console.error('[courses] Upload job error:', error);
@@ -267,6 +288,24 @@ export default function CoursePage() {
               await fetchConceptsForCourse();
               console.log('[courses] Concepts refreshed, removing job from UI');
               removeProcessingJob(job.job_id);
+            } else if (job.type === 'upload') {
+              // Check if this is a tier 2 multi-chapter upload
+              if (jobData.result?.type === 'multi_chapter') {
+                console.log('[courses] Multi-chapter PDF detected:', jobData.result);
+                // Trigger chapter selection modal
+                setChapterSelectionData({
+                  documentId: jobData.result.document_id,
+                  documentName: jobData.result.title,
+                  storageKey: jobData.result.storage_key,
+                  chapters: jobData.result.chapters
+                });
+                setIsChapterSelectionOpen(true);
+                removeProcessingJob(job.job_id);
+              } else {
+                // Regular upload or single chapter - refresh page
+                removeProcessingJob(job.job_id);
+                fetchCourseData();
+              }
             } else {
               // For uploads, refresh everything
               removeProcessingJob(job.job_id);
@@ -1088,6 +1127,22 @@ export default function CoursePage() {
         onClose={() => setIsTier2UploadModalOpen(false)}
         preselectedCourseId={courseId}
       />
+
+      {/* Chapter Selection Modal (Tier 2 Multi-Chapter) */}
+      {chapterSelectionData && (
+        <ChapterSelectionModal
+          isOpen={isChapterSelectionOpen}
+          onClose={() => {
+            setIsChapterSelectionOpen(false);
+            setChapterSelectionData(null);
+          }}
+          documentId={chapterSelectionData.documentId}
+          documentName={chapterSelectionData.documentName}
+          storageKey={chapterSelectionData.storageKey}
+          courseId={courseId}
+          chapters={chapterSelectionData.chapters}
+        />
+      )}
     </div>
   );
 }
