@@ -3,14 +3,34 @@
  *
  * Handles PDF upload and extraction in the background
  * Works with both S3 and local filesystem storage
+ * Routes to tier-specific processors based on user subscription
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
+import { processTier2UploadJob } from './tier2Upload.processor.js';
+import { queryRead } from '../../db/index.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { StorageService } from '../../lib/storage.js';
+
+/**
+ * Get user's subscription tier
+ */
+async function getUserTier(ownerId) {
+  try {
+    const result = await queryRead(
+      'SELECT tier FROM subscriptions WHERE user_id = $1',
+      [ownerId]
+    );
+
+    return result.rows.length > 0 ? result.rows[0].tier : 'free';
+  } catch (error) {
+    console.warn(`[UploadProcessor] Failed to get user tier: ${error.message}, defaulting to 'free'`);
+    return 'free';
+  }
+}
 
 export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService }) {
   // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
@@ -19,6 +39,18 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
   console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
   console.log(`[UploadProcessor] Storage: ${storageKey ? 'using storage service' : 'using legacy pdfPath'}`);
+
+  // Check user tier and route accordingly
+  const userTier = await getUserTier(ownerId);
+  console.log(`[UploadProcessor] User tier: ${userTier}`);
+
+  if (userTier === 'tier2') {
+    console.log(`[UploadProcessor] Routing to Tier 2 processor`);
+    return await processTier2UploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService });
+  }
+
+  // Tier 1 / Free processing (existing logic)
+  console.log(`[UploadProcessor] Using Tier 1/Free processor`);
 
   let tempPdfPath = null;
 
