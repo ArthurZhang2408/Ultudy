@@ -203,7 +203,14 @@ export async function enforceChapterLimit(req, res, next) {
 
     // Only enforce for tier2
     if (userTier === 'tier2' && limits.chapters_per_month !== -1) {
-      const requestedChapters = req.body.chapter_count || 1;
+      // Derive requested count from chapter_numbers array (used by /chapters/extract)
+      // or fall back to chapter_count for other endpoints
+      let requestedChapters = 1;
+      if (req.body.chapter_numbers && Array.isArray(req.body.chapter_numbers)) {
+        requestedChapters = req.body.chapter_numbers.length;
+      } else if (req.body.chapter_count) {
+        requestedChapters = req.body.chapter_count;
+      }
 
       if (usage.chapters_generated + requestedChapters > limits.chapters_per_month) {
         return res.status(403).json({
