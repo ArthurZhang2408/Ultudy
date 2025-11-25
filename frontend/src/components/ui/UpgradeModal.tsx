@@ -31,6 +31,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [fetchingData, setFetchingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useModal(isOpen, 'upgrade-modal');
@@ -49,10 +50,15 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
   async function fetchTiers() {
     try {
       const res = await fetch('http://localhost:3001/subscriptions/tiers');
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
       const data = await res.json();
       setTiers(data.tiers);
-    } catch (error) {
+      setError(null);
+    } catch (error: any) {
       console.error('Failed to fetch tiers:', error);
+      setError(error.message || 'Failed to connect to backend. Is it running?');
     } finally {
       setFetchingData(false);
     }
@@ -127,6 +133,36 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
           <p className="text-neutral-600 dark:text-neutral-400">Loading plans...</p>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  if (error) {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] bg-white dark:bg-neutral-900 flex items-center justify-center">
+        <div className="max-w-md mx-auto p-8 text-center">
+          <div className="mb-4">
+            <svg className="w-16 h-16 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">
+            Backend Not Running
+          </h3>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+            {error}
+          </p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-500 mb-6">
+            Start the backend server with: <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">cd backend && npm run dev</code>
+          </p>
+          <button
+            onClick={onClose}
+            className="bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700 transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>,
       document.body
