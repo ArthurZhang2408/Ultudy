@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import { getBackendUrl } from '@/lib/api';
 
 interface Tier {
   id: string;
@@ -34,7 +35,7 @@ export default function PricingPage() {
 
   async function fetchTiers() {
     try {
-      const res = await fetch('http://localhost:3001/subscriptions/tiers');
+      const res = await fetch(`${getBackendUrl()}/subscriptions/tiers`);
       const data = await res.json();
       setTiers(data.tiers);
     } catch (error) {
@@ -48,7 +49,7 @@ export default function PricingPage() {
     if (!userId) return;
 
     try {
-      const res = await fetch('http://localhost:3001/subscriptions/current', {
+      const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
           'Authorization': `Bearer ${await getToken()}`
         }
@@ -75,7 +76,7 @@ export default function PricingPage() {
 
     try {
       // TEST MODE: Directly upgrade tier without payment
-      const res = await fetch('http://localhost:3001/subscriptions/upgrade', {
+      const res = await fetch(`${getBackendUrl()}/subscriptions/upgrade`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

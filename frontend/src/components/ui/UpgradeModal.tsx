@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useModal } from '@/contexts/ModalContext';
 import { useRouter } from 'next/navigation';
+import { getBackendUrl } from '@/lib/api';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
 
   async function fetchTiers() {
     try {
-      const res = await fetch('http://localhost:3001/subscriptions/tiers');
+      const res = await fetch(`${getBackendUrl()}/subscriptions/tiers`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
@@ -58,7 +59,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
       setError(null);
     } catch (error: any) {
       console.error('Failed to fetch tiers:', error);
-      setError(error.message || 'Failed to connect to backend. Is it running?');
+      setError(error.message || 'Failed to connect to backend. Check Railway deployment.');
     } finally {
       setFetchingData(false);
     }
@@ -66,7 +67,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
 
   async function fetchSubscription() {
     try {
-      const res = await fetch('http://localhost:3001/subscriptions/current', {
+      const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
           'Authorization': 'Bearer dev-token'
         }
@@ -83,7 +84,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
 
     try {
       // TEST MODE: Directly upgrade tier without payment
-      const res = await fetch('http://localhost:3001/subscriptions/upgrade', {
+      const res = await fetch(`${getBackendUrl()}/subscriptions/upgrade`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +156,7 @@ export default function UpgradeModal({ isOpen, onClose }: UpgradeModalProps) {
             {error}
           </p>
           <p className="text-sm text-neutral-500 dark:text-neutral-500 mb-6">
-            Start the backend server with: <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">cd backend && npm run dev</code>
+            Check your <code className="bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">NEXT_PUBLIC_API_URL</code> environment variable points to your Railway backend.
           </p>
           <button
             onClick={onClose}

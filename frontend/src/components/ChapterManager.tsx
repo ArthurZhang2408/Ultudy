@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { getBackendUrl } from '@/lib/api';
 
 interface Chapter {
   chapter_number: number;
@@ -24,7 +25,7 @@ export default function ChapterManager({ documentId, onChaptersExtracted }: Chap
   async function detectChapters() {
     setDetecting(true);
     try {
-      const res = await fetch('http://localhost:3001/chapters/detect', {
+      const res = await fetch(`${getBackendUrl()}/chapters/detect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -64,7 +65,7 @@ export default function ChapterManager({ documentId, onChaptersExtracted }: Chap
 
     setExtracting(true);
     try {
-      const res = await fetch('http://localhost:3001/chapters/extract', {
+      const res = await fetch(`${getBackendUrl()}/chapters/extract`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

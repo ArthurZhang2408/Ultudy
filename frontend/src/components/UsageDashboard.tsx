@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { getBackendUrl } from '@/lib/api';
 
 interface Usage {
   pdfs_uploaded: number;
@@ -35,7 +36,7 @@ export default function UsageDashboard() {
 
   async function fetchSubscriptionData() {
     try {
-      const res = await fetch('http://localhost:3001/subscriptions/current', {
+      const res = await fetch(`${getBackendUrl()}/subscriptions/current`, {
         headers: {
           'Authorization': 'Bearer dev-token' // Replace with actual token
         }
