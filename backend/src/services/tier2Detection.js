@@ -167,9 +167,7 @@ If MULTI-CHAPTER:
 
   console.log('[tier2Detection] Calling Gemini Vision API...');
 
-  const response = await provider.generateFromPDF(pdfPath, userPrompt, {
-    systemPrompt
-  });
+  const response = await provider.extractMarkdown(pdfPath, systemPrompt, userPrompt);
 
   console.log(`[tier2Detection] Received response (${response.length} chars)`);
 

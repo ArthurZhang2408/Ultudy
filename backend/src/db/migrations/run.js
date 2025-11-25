@@ -28,7 +28,8 @@ async function runMigrations() {
     // List of migration files to run in order
     const migrations = [
       '001_add_performance_indexes.sql',
-      '002_subscription_system.sql'
+      '002_subscription_system.sql',
+      '003_tier2_chapter_markdown.sql'
     ];
 
     // Run each migration

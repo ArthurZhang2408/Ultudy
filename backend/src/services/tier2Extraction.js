@@ -176,9 +176,7 @@ Then extract all content with proper formatting, replacing images with descripti
 
     console.log('[tier2Extraction] Calling Gemini Vision API...');
 
-    const response = await provider.generateFromPDF(tempPdfPath, userPrompt, {
-      systemPrompt
-    });
+    const response = await provider.extractMarkdown(tempPdfPath, systemPrompt, userPrompt);
 
     console.log(`[tier2Extraction] Received response (${response.length} chars)`);
 
