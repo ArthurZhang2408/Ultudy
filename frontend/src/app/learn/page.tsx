@@ -104,7 +104,7 @@ function LearnPageContent() {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showingExplanations, setShowingExplanations] = useState(false);
   const [hoveredOption, setHoveredOption] = useState<string | null>(null);
-  const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong'>>(new Map());
+  const [conceptProgress, setConceptProgress] = useState<Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'>>(new Map());
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [answerHistory, setAnswerHistory] = useState<Record<string, AnswerRecord>>({});
   const [storedProgress, setStoredProgress] = useState<StoredProgress | null>(null);
@@ -120,8 +120,31 @@ function LearnPageContent() {
   // Track active pollers to prevent duplicates
   const pollingJobsRef = useRef<Set<string>>(new Set());
 
+  // Track if generating next section
+  const [generatingNextSection, setGeneratingNextSection] = useState(false);
+
   function makeQuestionKey(conceptIndex: number, mcqIndex: number) {
     return `${conceptIndex}-${mcqIndex}`;
+  }
+
+  // Helper to find the next section after the current one
+  function getNextSection(): Section | null {
+    if (!selectedSection || sections.length === 0) {
+      return null;
+    }
+
+    // Sort sections by section_number
+    const sortedSections = [...sections].sort((a, b) => a.section_number - b.section_number);
+
+    // Find current section index
+    const currentIndex = sortedSections.findIndex(s => s.id === selectedSection.id);
+
+    // Return next section if it exists
+    if (currentIndex >= 0 && currentIndex < sortedSections.length - 1) {
+      return sortedSections[currentIndex + 1];
+    }
+
+    return null;
   }
 
   function getLessonStorageKey(lessonData: Lesson | null) {
@@ -132,7 +155,8 @@ function LearnPageContent() {
     // Use document_id, chapter, and section_id to ensure each section has separate progress
     const docId = lessonData.document_id || documentId;
     const chapterVal = lessonData.chapter || chapter;
-    const sectionId = lessonData.section_id || selectedSection?.id;
+    // Try lesson data first, then selectedSection, then URL parameter as fallback
+    const sectionId = lessonData.section_id || selectedSection?.id || urlSectionId;
 
     if (!docId) {
       return null;
@@ -246,7 +270,61 @@ function LearnPageContent() {
     });
   }, [documentId, sections]);
 
+  // Helper function to fetch and populate concepts for a section after generation
+  async function fetchAndPopulateSectionConcepts(sectionId: string) {
+    try {
+      const conceptsUrl = chapter
+        ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
+        : `/api/concepts/mastery?document_id=${documentId}`;
+
+      const conceptsRes = await fetch(conceptsUrl);
+
+      if (conceptsRes.ok) {
+        const conceptsData = await conceptsRes.json();
+        const allConcepts = conceptsData.concepts || [];
+
+        // Find concepts for this specific section
+        const sectionConcepts = allConcepts
+          .filter((c: any) => c.section_id === sectionId)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            concept_number: c.concept_number,
+            lesson_position: c.lesson_position,
+            mastery_level: c.mastery_level,
+            accuracy: c.accuracy
+          }));
+
+        console.log(`[learn] Fetched ${sectionConcepts.length} concepts for section ${sectionId}`);
+
+        // Update section with concepts
+        setSections(prev => prev.map(s =>
+          s.id === sectionId
+            ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
+            : s
+        ));
+      } else {
+        console.error('[learn] Concepts API error:', conceptsRes.status);
+        // Fallback: just mark as generated without concepts
+        setSections(prev => prev.map(s =>
+          s.id === sectionId
+            ? { ...s, generating: false, concepts_generated: true }
+            : s
+        ));
+      }
+    } catch (error) {
+      console.error('[learn] Failed to fetch concepts after generation:', error);
+      // Fallback: just mark as generated
+      setSections(prev => prev.map(s =>
+        s.id === sectionId
+          ? { ...s, generating: false, concepts_generated: true }
+          : s
+      ));
+    }
+  }
+
   // Helper function to resume polling for a lesson generation job
+  // Called when restoring jobs from sessionStorage after page reload
   function resumeLessonGenerationPolling(jobId: string, section: Section) {
     createJobPoller(jobId, {
       interval: 2000,
@@ -259,54 +337,10 @@ function LearnPageContent() {
         ));
       },
       onComplete: async (job: Job) => {
-        console.log('[learn] Generation completed:', job);
+        console.log('[learn] resumeLessonGenerationPolling: Generation completed:', job);
 
-        // Fetch the new concepts for this section
-        try {
-          const conceptsRes = await fetch(chapter
-            ? `/api/concepts/mastery?document_id=${documentId}&chapter=${encodeURIComponent(chapter)}`
-            : `/api/concepts/mastery?document_id=${documentId}`
-          );
-
-          if (conceptsRes.ok) {
-            const conceptsData = await conceptsRes.json();
-            const allConcepts = conceptsData.concepts || [];
-
-            // Find concepts for this specific section
-            const sectionConcepts = allConcepts
-              .filter((c: any) => c.section_id === section.id)
-              .map((c: any) => ({
-                id: c.id,
-                name: c.name,
-                concept_number: c.concept_number,
-                lesson_position: c.lesson_position,
-                mastery_level: c.mastery_level,
-                accuracy: c.accuracy
-              }));
-
-            // Update the section with new concepts
-            setSections(prev => prev.map(s =>
-              s.id === section.id
-                ? { ...s, generating: false, concepts_generated: true, concepts: sectionConcepts }
-                : s
-            ));
-          } else {
-            // Fallback: just mark as generated without concepts
-            setSections(prev => prev.map(s =>
-              s.id === section.id
-                ? { ...s, generating: false, concepts_generated: true }
-                : s
-            ));
-          }
-        } catch (error) {
-          console.error('[learn] Failed to fetch concepts after generation:', error);
-          // Fallback: just mark as generated
-          setSections(prev => prev.map(s =>
-            s.id === section.id
-              ? { ...s, generating: false, concepts_generated: true }
-              : s
-          ));
-        }
+        // Fetch and populate concepts for this section
+        await fetchAndPopulateSectionConcepts(section.id);
 
         // Remove from polling set and sessionStorage
         pollingJobsRef.current.delete(jobId);
@@ -396,6 +430,8 @@ function LearnPageContent() {
             ...section,
             concepts: conceptsBySectionId[section.id] || []
           }));
+
+          console.log(`[learn] Initial load - ${sectionsWithConcepts.length} sections loaded`);
 
           setSections(sectionsWithConcepts);
           setLoadingSections(false);
@@ -511,7 +547,8 @@ function LearnPageContent() {
     }
   }
 
-  // Load existing lesson or generate if not found (for grid navigation)
+  // Load existing lesson or generate if not found
+  // Called when navigating from course page (mastery grid) or from URL with concept_name parameter
   async function loadOrGenerateLesson(section: Section) {
     console.log('[learn] loadOrGenerateLesson called with targetConceptName:', targetConceptName);
     setSelectedSection(section);
@@ -597,13 +634,10 @@ function LearnPageContent() {
               ));
             },
             onComplete: async (job: Job) => {
-              console.log('[learn] Generation completed:', job);
-              // Mark section as ready - user can click to view it
-              setSections(prev => prev.map(s =>
-                s.id === section.id
-                  ? { ...s, generating: false, concepts_generated: true }
-                  : s
-              ));
+              console.log('[learn] loadOrGenerateLesson: Generation completed:', job);
+
+              // Fetch and populate concepts for this section
+              await fetchAndPopulateSectionConcepts(section.id);
             },
             onError: (error: string) => {
               console.error('[learn] Generation error:', error);
@@ -698,6 +732,8 @@ function LearnPageContent() {
 }
 
   // Generate lesson for a specific section
+  // Called when clicking a non-generated section in the sidebar
+  // Note: This doesn't set selectedSection - it only triggers generation and updates section state
   async function generateLessonForSection(section: Section) {
     // Don't set selectedSection here - we're only triggering generation/discovery,
     // not actually loading the lesson. Setting it would create state mismatch
@@ -761,13 +797,10 @@ function LearnPageContent() {
               ));
             },
             onComplete: async (job: Job) => {
-              console.log('[learn] Generation completed:', job);
-              // Mark section as ready - user can click to view it
-              setSections(prev => prev.map(s =>
-                s.id === section.id
-                  ? { ...s, generating: false, concepts_generated: true }
-                  : s
-              ));
+              console.log('[learn] generateLessonForSection: Generation completed:', job);
+
+              // Fetch and populate concepts for this section
+              await fetchAndPopulateSectionConcepts(section.id);
 
               // Remove from polling set and sessionStorage
               pollingJobsRef.current.delete(rawData.job_id);
@@ -861,21 +894,59 @@ function LearnPageContent() {
 
     try {
       const raw = window.localStorage.getItem(storageKey);
+      let restoredConceptProgress: Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'> = new Map();
 
       if (raw) {
         const parsed = JSON.parse(raw) as StoredProgress;
         setStoredProgress(parsed);
-        setConceptProgress(new Map(parsed.conceptProgress || []));
+        restoredConceptProgress = new Map(parsed.conceptProgress || []);
         setAnswerHistory(parsed.answerHistory || {});
         setCurrentConceptIndex(parsed.conceptIndex ?? 0);
         setCurrentMCQIndex(parsed.mcqIndex ?? 0);
       } else {
         setStoredProgress(null);
-        setConceptProgress(new Map());
         setAnswerHistory({});
         setCurrentConceptIndex(0);
         setCurrentMCQIndex(0);
       }
+
+      // If localStorage is empty or incomplete, restore conceptProgress from backend mastery data
+      // This ensures mastery line segments persist through deployments
+      if (lesson.concepts && restoredConceptProgress.size === 0 && selectedSection) {
+        const backendProgress = new Map<number, 'completed' | 'skipped' | 'wrong' | 'in_progress'>();
+
+        // Get the current section's concept metadata from sections state
+        const currentSection = sections.find(s => s.id === selectedSection.id);
+        if (currentSection?.concepts) {
+          // Map lesson concepts to their mastery status from section metadata
+          lesson.concepts.forEach((concept, index) => {
+            // Find matching concept in section metadata by name
+            const conceptMeta = currentSection.concepts?.find(
+              c => c.name.toLowerCase() === concept.name.toLowerCase()
+            );
+
+            if (conceptMeta?.mastery_level) {
+              const status: 'completed' | 'wrong' | 'in_progress' =
+                conceptMeta.mastery_level === 'completed' ? 'completed' :
+                conceptMeta.mastery_level === 'incorrect' ? 'wrong' :
+                conceptMeta.mastery_level === 'in_progress' ? 'in_progress' :
+                'in_progress'; // default for 'not_started'
+
+              // Only mark as completed/wrong/in_progress if there's actual mastery data
+              if (conceptMeta.mastery_level !== 'not_started') {
+                backendProgress.set(index, status);
+              }
+            }
+          });
+
+          if (backendProgress.size > 0) {
+            console.log(`[learn] Restored ${backendProgress.size} concept statuses from backend mastery data`);
+            restoredConceptProgress = backendProgress;
+          }
+        }
+      }
+
+      setConceptProgress(restoredConceptProgress);
     } catch (error) {
       console.error('Failed to restore lesson progress:', error);
       setStoredProgress(null);
@@ -884,7 +955,7 @@ function LearnPageContent() {
       setCurrentConceptIndex(0);
       setCurrentMCQIndex(0);
     }
-  }, [lesson]);
+  }, [lesson, sections, selectedSection]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -962,16 +1033,46 @@ function LearnPageContent() {
 
   // Helper function to scroll to top of page
   function scrollToTop() {
+    // Use smooth scrolling for animated transition when navigating between concepts
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // Scroll to top when navigating between concepts (but not between questions)
   useEffect(() => {
     if (showingSummary) {
       return;
     }
 
+    // Only scroll when concept changes, not when questions change within the same concept
+    // This prevents click misalignment and keeps the user's position during MCQ navigation
     scrollToTop();
-  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
+  }, [showingSummary, currentConceptIndex]); // Removed currentMCQIndex from dependencies
+
+  // Auto-navigate to next section when it finishes generating
+  useEffect(() => {
+    if (!generatingNextSection) return;
+
+    const nextSection = getNextSection();
+    if (nextSection && nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+      console.log('[learn] Next section generated, navigating to first concept');
+
+      // Clear current lesson progress
+      if (storageKeyRef.current && typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(storageKeyRef.current);
+        } catch (error) {
+          console.error('Failed to clear lesson progress cache:', error);
+        }
+      }
+
+      // Navigate to first concept of next section
+      const firstConcept = nextSection.concepts[0];
+      router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${nextSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+
+      // Reset generating state
+      setGeneratingNextSection(false);
+    }
+  }, [sections, generatingNextSection]);
 
   async function startStudySession(): Promise<string | null> {
     if (sessionId) {
@@ -1181,15 +1282,7 @@ function LearnPageContent() {
       }
     }));
 
-    if (!wasCorrect) {
-      setConceptProgress((prev) => {
-        const updated = new Map(prev);
-        updated.set(currentConceptIndex, 'wrong');
-        return updated;
-      });
-    }
-
-    // Update mastery in sidebar immediately after answering
+    // Calculate accuracy for this concept to update both progress bar and sidebar
     if (currentConcept && selectedSection) {
       const mcqs = currentConcept.check_ins || [];
       let correctCount = 0;
@@ -1214,6 +1307,18 @@ function LearnPageContent() {
         accuracy === 100 ? 'completed' :
         accuracy === 0 ? 'incorrect' :
         'in_progress';
+
+      // Update concept progress bar status based on accuracy
+      const progressStatus: 'completed' | 'wrong' | 'in_progress' =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'wrong' :
+        'in_progress';
+
+      setConceptProgress((prev) => {
+        const updated = new Map(prev);
+        updated.set(currentConceptIndex, progressStatus);
+        return updated;
+      });
 
       setSections(prev => prev.map(s => {
         if (s.id === selectedSection.id && s.concepts) {
@@ -1260,19 +1365,7 @@ function LearnPageContent() {
       return;
     }
 
-    setConceptProgress((prev) => {
-      const updated = new Map(prev);
-
-      if (!answered.correct) {
-        updated.set(currentConceptIndex, 'wrong');
-      } else if (!updated.has(currentConceptIndex) || updated.get(currentConceptIndex) !== 'wrong') {
-        updated.set(currentConceptIndex, 'completed');
-      }
-
-      return updated;
-    });
-
-    // Update mastery in sections state for real-time sidebar update
+    // Calculate accuracy after finishing last MCQ to update both progress bar and sidebar
     if (currentConcept && selectedSection) {
       // Calculate accuracy based on all questions for this concept
       const mcqs = currentConcept.check_ins || [];
@@ -1294,6 +1387,18 @@ function LearnPageContent() {
         accuracy === 100 ? 'completed' :
         accuracy === 0 ? 'incorrect' :
         'in_progress';
+
+      // Update concept progress bar status based on accuracy
+      const progressStatus: 'completed' | 'wrong' | 'in_progress' =
+        accuracy === 100 ? 'completed' :
+        accuracy === 0 ? 'wrong' :
+        'in_progress';
+
+      setConceptProgress((prev) => {
+        const updated = new Map(prev);
+        updated.set(currentConceptIndex, progressStatus);
+        return updated;
+      });
 
       setSections(prev => prev.map(s => {
         if (s.id === selectedSection.id && s.concepts) {
@@ -1322,22 +1427,59 @@ function LearnPageContent() {
         router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${selectedSection.id}&concept_name=${encodeURIComponent(nextConcept.name)}`);
       }
     } else {
-      if (storageKeyRef.current && typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem(storageKeyRef.current);
-        } catch (error) {
-          console.error('Failed to clear lesson progress cache:', error);
+      // Last concept finished - check if there's a next section
+      const nextSection = getNextSection();
+
+      if (nextSection) {
+        // There's a next section!
+        if (nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+          // Next section is already generated - navigate to its first concept
+          console.log('[learn] Navigating to first concept of next section:', nextSection.name);
+
+          // Clear current lesson progress
+          if (storageKeyRef.current && typeof window !== 'undefined') {
+            try {
+              window.localStorage.removeItem(storageKeyRef.current);
+            } catch (error) {
+              console.error('Failed to clear lesson progress cache:', error);
+            }
+          }
+
+          await completeStudySession();
+
+          // Navigate to first concept of next section
+          const firstConcept = nextSection.concepts[0];
+          router.push(`/learn?document_id=${documentId}${chapter ? `&chapter=${encodeURIComponent(chapter)}` : ''}&section_id=${nextSection.id}&concept_name=${encodeURIComponent(firstConcept.name)}`);
+        } else {
+          // Next section not generated - generate it
+          console.log('[learn] Generating next section:', nextSection.name);
+          setGeneratingNextSection(true);
+
+          // Generate the next section
+          await generateLessonForSection(nextSection);
+
+          // The generation completion handler will update sections state
+          // We'll navigate in a useEffect when generation completes
         }
-      }
-
-      await completeStudySession();
-
-      // Return to course page (sections list view eliminated)
-      const courseId = documentInfo?.course_id;
-      if (courseId) {
-        router.push(`/courses/${courseId}`);
       } else {
-        router.push('/'); // Home page shows all courses
+        // No next section - finish lesson and return to course page
+        if (storageKeyRef.current && typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem(storageKeyRef.current);
+          } catch (error) {
+            console.error('Failed to clear lesson progress cache:', error);
+          }
+        }
+
+        await completeStudySession();
+
+        // Return to course page (sections list view eliminated)
+        const courseId = documentInfo?.course_id;
+        if (courseId) {
+          router.push(`/courses/${courseId}`);
+        } else {
+          router.push('/'); // Home page shows all courses
+        }
       }
     }
   }
@@ -1685,8 +1827,8 @@ function LearnPageContent() {
             <div className="space-y-2">
               {lesson.concepts.map((concept, idx) => (
                 <div key={idx} className="flex items-start gap-2 text-blue-800 dark:text-blue-400">
-                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{idx + 1}.</span>
-                  <span>{concept.name}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold flex-shrink-0">{idx + 1}.</span>
+                  <div className="flex-1"><FormattedText>{concept.name}</FormattedText></div>
                 </div>
               ))}
             </div>
@@ -1759,7 +1901,7 @@ function LearnPageContent() {
                   setCurrentMCQIndex(0);
                   setShowingSummary(false);
                   setShowingSections(false);
-                  scrollToTop();
+                  // scrollToTop() is handled by useEffect when currentConceptIndex changes
                   return;
                 }
               }
@@ -1795,7 +1937,9 @@ function LearnPageContent() {
 
       {/* Concept Explanation */}
       <div ref={activeConceptRef} className="rounded-lg border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 p-8 shadow-sm space-y-4">
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-neutral-100">{currentConcept.name}</h2>
+        <div className="text-2xl font-bold text-slate-900 dark:text-neutral-100">
+          <FormattedText>{currentConcept.name}</FormattedText>
+        </div>
 
         <FormattedText className="text-slate-700 dark:text-neutral-300 text-base leading-relaxed">
           {currentConcept.explanation}
@@ -1826,16 +1970,16 @@ function LearnPageContent() {
         )}
 
         {currentConcept.formulas && currentConcept.formulas.length > 0 && (
-          <div className="rounded-lg bg-purple-50 p-4 space-y-3">
-            <div className="text-sm font-semibold uppercase tracking-wide text-purple-900">Formulas & Equations</div>
+          <div className="rounded-lg bg-purple-50 dark:bg-purple-950/30 p-4 space-y-3">
+            <div className="text-sm font-semibold uppercase tracking-wide text-purple-900 dark:text-purple-300">Formulas & Equations</div>
             {currentConcept.formulas.map((formulaObj, index) => (
               <div key={index} className="space-y-1">
-                <div className="text-purple-900 bg-white p-3 rounded border border-purple-200">
+                <div className="text-purple-900 dark:text-purple-100 bg-white dark:bg-purple-900/40 p-3 rounded border border-purple-200 dark:border-purple-700">
                   <FormattedText>
                     {formulaObj.formula}
                   </FormattedText>
                 </div>
-                <FormattedText className="text-xs text-purple-700 pl-3">
+                <FormattedText className="text-xs text-purple-700 dark:text-purple-400 pl-3">
                   {formulaObj.variables}
                 </FormattedText>
               </div>
@@ -1962,14 +2106,43 @@ function LearnPageContent() {
               onClick={() => {
                 void handleNextMCQ();
               }}
-              disabled={!showingExplanations}
+              disabled={!showingExplanations || generatingNextSection || (() => {
+                // Also disable if next section is already generating from sidebar
+                const nextSection = getNextSection();
+                return nextSection?.generating === true;
+              })()}
               className="rounded-md bg-slate-900 dark:bg-neutral-700 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {currentMCQIndex === totalMCQsInConcept - 1
-                ? currentConceptIndex === totalConcepts - 1
-                  ? 'Finish Lesson'
-                  : 'Next Concept'
-                : 'Next Question'}
+              {(() => {
+                // Not last MCQ - show "Next Question"
+                if (currentMCQIndex < totalMCQsInConcept - 1) {
+                  return 'Next Question';
+                }
+
+                // Last MCQ but not last concept - show "Next Concept"
+                if (currentConceptIndex < totalConcepts - 1) {
+                  return 'Next Concept';
+                }
+
+                // Last MCQ of last concept - check for next section
+                const nextSection = getNextSection();
+
+                // Check if next section is already generating (from sidebar or other source)
+                if (nextSection?.generating === true || generatingNextSection) {
+                  return 'Generating...';
+                }
+
+                if (nextSection) {
+                  if (nextSection.concepts_generated && nextSection.concepts && nextSection.concepts.length > 0) {
+                    return 'Next Section';
+                  } else {
+                    return 'Generate Next Section';
+                  }
+                }
+
+                // No next section - finish lesson
+                return 'Finish Lesson';
+              })()}
             </button>
           </div>
         </div>
@@ -1996,6 +2169,8 @@ function LearnPageContent() {
                     ? 'bg-yellow-500 dark:bg-yellow-600'
                     : status === 'completed'
                     ? 'bg-green-500 dark:bg-green-600'
+                    : status === 'in_progress'
+                    ? 'bg-yellow-500 dark:bg-yellow-600'
                     : status === 'wrong'
                     ? 'bg-red-500 dark:bg-red-600'
                     : status === 'skipped'
@@ -2007,8 +2182,10 @@ function LearnPageContent() {
                     ? 'Current / In Progress'
                     : status === 'completed'
                     ? 'All check-ins correct'
+                    : status === 'in_progress'
+                    ? 'Some check-ins correct'
                     : status === 'wrong'
-                    ? 'Incorrect answers'
+                    ? 'All check-ins incorrect'
                     : status === 'skipped'
                     ? 'Skipped'
                     : 'Not started'

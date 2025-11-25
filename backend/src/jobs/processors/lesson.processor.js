@@ -193,27 +193,71 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
       );
 
       // Step 4: Persist lesson to database (with optional section_id)
-      const { rows: insertedLesson } = await client.query(
-        `INSERT INTO lessons (owner_id, document_id, course_id, chapter, section_id, summary, explanation, examples, analogies, concepts)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id, created_at`,
-        [
-          ownerId,
-          document_id,
-          document.course_id,
-          chapter || document.doc_chapter,
-          section_id || null,
-          generatedLesson.summary || '',
-          generatedLesson.explanation || '',
-          JSON.stringify(generatedLesson.examples || []),
-          JSON.stringify(generatedLesson.analogies || []),
-          JSON.stringify(conceptsForStorage)
-        ]
-      );
+      // Use ON CONFLICT to handle race conditions where multiple requests try to create the same lesson
+      let lessonId;
+      let lessonCreatedAt;
 
-      const lessonId = insertedLesson[0].id;
+      try {
+        const { rows: insertedLesson } = await client.query(
+          `INSERT INTO lessons (owner_id, document_id, course_id, chapter, section_id, summary, explanation, examples, analogies, concepts)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (owner_id, section_id) WHERE section_id IS NOT NULL DO NOTHING
+           RETURNING id, created_at`,
+          [
+            ownerId,
+            document_id,
+            document.course_id,
+            chapter || document.doc_chapter,
+            section_id || null,
+            generatedLesson.summary || '',
+            generatedLesson.explanation || '',
+            JSON.stringify(generatedLesson.examples || []),
+            JSON.stringify(generatedLesson.analogies || []),
+            JSON.stringify(conceptsForStorage)
+          ]
+        );
 
-      console.log(`[LessonProcessor] ✅ Lesson ${lessonId} created for ${logTarget}`);
+        if (insertedLesson.length > 0) {
+          // Successfully inserted
+          lessonId = insertedLesson[0].id;
+          lessonCreatedAt = insertedLesson[0].created_at;
+          console.log(`[LessonProcessor] ✅ Lesson ${lessonId} created for ${logTarget}`);
+        } else {
+          // Conflict occurred, fetch existing lesson
+          console.log(`[LessonProcessor] Lesson already exists (race condition), fetching existing...`);
+          const { rows: existingRows } = await client.query(
+            `SELECT id, created_at FROM lessons WHERE section_id = $1 AND owner_id = $2`,
+            [section_id, ownerId]
+          );
+
+          if (existingRows.length === 0) {
+            throw new Error('Failed to insert lesson and could not find existing lesson');
+          }
+
+          lessonId = existingRows[0].id;
+          lessonCreatedAt = existingRows[0].created_at;
+          console.log(`[LessonProcessor] Using existing lesson ${lessonId} for ${logTarget}`);
+        }
+      } catch (error) {
+        // If it's a duplicate key error (shouldn't happen with ON CONFLICT, but just in case)
+        if (error.code === '23505' && error.constraint === 'lessons_owner_section_unique') {
+          console.log(`[LessonProcessor] Caught duplicate key error, fetching existing lesson...`);
+          const { rows: existingRows } = await client.query(
+            `SELECT id, created_at FROM lessons WHERE section_id = $1 AND owner_id = $2`,
+            [section_id, ownerId]
+          );
+
+          if (existingRows.length === 0) {
+            throw new Error('Duplicate key error but could not find existing lesson');
+          }
+
+          lessonId = existingRows[0].id;
+          lessonCreatedAt = existingRows[0].created_at;
+          console.log(`[LessonProcessor] Using existing lesson ${lessonId} after duplicate key error`);
+        } else {
+          throw error;
+        }
+      }
 
       // Update progress: 90% - Lesson saved
       await jobTracker.updateProgress(ownerId, jobId, 90);
@@ -262,7 +306,7 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
         examples: generatedLesson.examples,
         analogies: generatedLesson.analogies,
         concepts: conceptsForStorage,
-        created_at: insertedLesson[0].created_at
+        created_at: lessonCreatedAt
       };
 
       // Cache the lesson to Redis for cross-server performance
