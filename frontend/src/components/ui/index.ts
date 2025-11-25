@@ -28,3 +28,5 @@ export { default as UploadModal } from './UploadModal';
 export { default as Tier2UploadModal } from './Tier2UploadModal';
 export { default as ChapterSelectionModal } from './ChapterSelectionModal';
 export { default as CreateCourseModal } from './CreateCourseModal';
+export { default as MarkdownViewer } from './MarkdownViewer';
+export { default as MarkdownViewerModal } from './MarkdownViewerModal';

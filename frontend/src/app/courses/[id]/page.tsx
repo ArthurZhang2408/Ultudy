@@ -4,10 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import { useTier } from '@/contexts/TierContext';
 import { useFetchChapterSources } from '@/lib/hooks/useFetchChapterSources';
+import { useAuth } from '@clerk/nextjs';
+import { getBackendUrl } from '@/lib/api';
 
 type Course = {
   id: string;
@@ -82,6 +84,7 @@ export default function CoursePage() {
   const router = useRouter();
   const { tierData, isTier } = useTier();
   const { chapterSources } = useFetchChapterSources(courseId);
+  const { getToken } = useAuth();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,6 +103,9 @@ export default function CoursePage() {
     storageKey: string;
     chapters: Array<{ number: number; title: string; pageStart: number; pageEnd: number }>;
   } | null>(null);
+  const [isMarkdownViewerOpen, setIsMarkdownViewerOpen] = useState(false);
+  const [markdownContent, setMarkdownContent] = useState('');
+  const [markdownTitle, setMarkdownTitle] = useState('');
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
@@ -695,6 +701,34 @@ export default function CoursePage() {
     }
   }
 
+  async function handleViewMarkdown(chapterSourceId: string, documentTitle: string, chapterTitle: string) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${chapterSourceId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch markdown');
+      }
+
+      const data = await response.json();
+      setMarkdownContent(data.markdown_content || '');
+      setMarkdownTitle(`${documentTitle} - ${chapterTitle}`);
+      setIsMarkdownViewerOpen(true);
+    } catch (error) {
+      console.error('[CoursePage] Error fetching markdown:', error);
+      alert('Failed to load markdown content. Please try again.');
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -1142,7 +1176,7 @@ export default function CoursePage() {
                               </div>
                             </div>
                             <Button
-                              onClick={() => alert(`View markdown for ${source.id} - Coming soon!`)}
+                              onClick={() => handleViewMarkdown(source.id, source.documentTitle, source.chapterTitle)}
                               variant="primary"
                               size="sm"
                             >
@@ -1208,6 +1242,14 @@ export default function CoursePage() {
           chapters={chapterSelectionData.chapters}
         />
       )}
+
+      {/* Markdown Viewer Modal (Tier 2) */}
+      <MarkdownViewerModal
+        isOpen={isMarkdownViewerOpen}
+        onClose={() => setIsMarkdownViewerOpen(false)}
+        markdown={markdownContent}
+        title={markdownTitle}
+      />
     </div>
   );
 }
