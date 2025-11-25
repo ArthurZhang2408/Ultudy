@@ -36,6 +36,9 @@ export default function createUploadRouter(options = {}) {
       const materialType = req.body.material_type || null;
       const title = req.body.title || null;
 
+      console.log('[upload/pdf-structured] Upload initiated');
+      console.log('[upload/pdf-structured] User ID:', ownerId);
+      console.log('[upload/pdf-structured] Document ID:', documentId);
       console.log('[upload/pdf-structured] Saving PDF to storage...');
       console.log('[upload/pdf-structured] Storage type:', storageService.getType());
       console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });

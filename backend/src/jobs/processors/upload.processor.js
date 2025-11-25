@@ -20,14 +20,23 @@ import { StorageService } from '../../lib/storage.js';
  */
 async function getUserTier(ownerId) {
   try {
+    console.log(`[getUserTier] Querying subscription for user: ${ownerId}`);
     const result = await queryRead(
       'SELECT tier FROM subscriptions WHERE user_id = $1',
       [ownerId]
     );
 
-    return result.rows.length > 0 ? result.rows[0].tier : 'free';
+    if (result.rows.length > 0) {
+      console.log(`[getUserTier] Found subscription: tier=${result.rows[0].tier}`);
+      return result.rows[0].tier;
+    } else {
+      console.log(`[getUserTier] No subscription found for user ${ownerId}, defaulting to 'free'`);
+      return 'free';
+    }
   } catch (error) {
-    console.warn(`[UploadProcessor] Failed to get user tier: ${error.message}, defaulting to 'free'`);
+    console.error(`[getUserTier] ❌ Database error: ${error.message}`);
+    console.error(`[getUserTier] Stack:`, error.stack);
+    console.warn(`[getUserTier] Defaulting to 'free' due to error`);
     return 'free';
   }
 }
@@ -36,21 +45,24 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
   // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
   const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
+  console.log(`[UploadProcessor] ═══════════════════════════════════════`);
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
+  console.log(`[UploadProcessor] Owner ID: ${ownerId}`);
   console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
   console.log(`[UploadProcessor] Storage: ${storageKey ? 'using storage service' : 'using legacy pdfPath'}`);
 
   // Check user tier and route accordingly
+  console.log(`[UploadProcessor] Checking tier for user: ${ownerId}`);
   const userTier = await getUserTier(ownerId);
-  console.log(`[UploadProcessor] User tier: ${userTier}`);
+  console.log(`[UploadProcessor] ✓ User tier: ${userTier}`);
 
   if (userTier === 'tier2') {
-    console.log(`[UploadProcessor] Routing to Tier 2 processor`);
+    console.log(`[UploadProcessor] → Routing to Tier 2 processor`);
     return await processTier2UploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService });
   }
 
   // Tier 1 / Free processing (existing logic)
-  console.log(`[UploadProcessor] Using Tier 1/Free processor`);
+  console.log(`[UploadProcessor] → Using Tier 1/Free processor`);
 
   let tempPdfPath = null;
 

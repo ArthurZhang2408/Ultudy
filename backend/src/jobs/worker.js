@@ -46,12 +46,16 @@ export function setupWorkers(options = {}) {
   // Initialize storage service (uses S3 if configured, otherwise local filesystem)
   const storageService = new StorageService({ storageDir });
 
+  console.log(`\n╔════════════════════════════════════════════════════════╗`);
+  console.log(`║  WORKER STARTING: ${WORKER_ID.padEnd(35)}║`);
+  console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
   console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
 
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
-    console.log(`[Worker:${WORKER_ID}] Processing upload job ${job.id}`);
+    console.log(`\n[Worker:${WORKER_ID}] ▶ Picked up upload job ${job.id}`);
+    console.log(`[Worker:${WORKER_ID}] Job data:`, JSON.stringify(job.data, null, 2));
     return await processUploadJob(job, {
       tenantHelpers,
       jobTracker,
@@ -62,7 +66,7 @@ export function setupWorkers(options = {}) {
 
   // Lesson generation job processor - process up to LESSON_CONCURRENCY jobs in parallel
   lessonQueue.process(LESSON_CONCURRENCY, async (job) => {
-    console.log(`[Worker:${WORKER_ID}] Processing lesson job ${job.id}`);
+    console.log(`\n[Worker:${WORKER_ID}] ▶ Picked up lesson job ${job.id}`);
     return await processLessonJob(job, {
       tenantHelpers,
       jobTracker,
@@ -70,9 +74,10 @@ export function setupWorkers(options = {}) {
     });
   });
 
-  console.log(`[Worker:${WORKER_ID}] Job processors started`);
-  console.log(`[Worker:${WORKER_ID}] - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
-  console.log(`[Worker:${WORKER_ID}] - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
+  console.log(`\n✅ [Worker:${WORKER_ID}] Job processors started successfully`);
+  console.log(`   - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
+  console.log(`   - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
+  console.log(`   - Waiting for jobs...\n`);
 
   return {
     uploadQueue,
