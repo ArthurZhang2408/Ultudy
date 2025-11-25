@@ -91,6 +91,8 @@ export default function CoursePage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
   const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
+  const [conceptsByDocument, setConceptsByDocument] = useState<Record<string, ConceptWithMastery[]>>({});
+  const [sectionsByDocument, setSectionsByDocument] = useState<Record<string, SectionWithMastery[]>>({});
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
@@ -426,8 +428,10 @@ export default function CoursePage() {
       const results = await Promise.all(dataPromises);
       const conceptsMap: Record<string, ConceptWithMastery[]> = {};
       const sectionsMap: Record<string, SectionWithMastery[]> = {};
+      const conceptsByDocMap: Record<string, ConceptWithMastery[]> = {};
+      const sectionsByDocMap: Record<string, SectionWithMastery[]> = {};
 
-      // Deduplicate concepts and sections by ID
+      // Deduplicate concepts and sections by ID (for chapter-based view)
       const seenConceptIds = new Set<string>();
       const seenSectionIds = new Set<string>();
 
@@ -441,7 +445,11 @@ export default function CoursePage() {
             sectionsMap[result.chapterKey] = [];
           }
 
-          // Add unique concepts
+          // Initialize document arrays
+          conceptsByDocMap[result.documentId] = result.concepts;
+          sectionsByDocMap[result.documentId] = result.sections;
+
+          // Add unique concepts (for chapter-based view)
           for (const concept of result.concepts) {
             if (!seenConceptIds.has(concept.id)) {
               seenConceptIds.add(concept.id);
@@ -449,7 +457,7 @@ export default function CoursePage() {
             }
           }
 
-          // Add unique sections
+          // Add unique sections (for chapter-based view)
           for (const section of result.sections) {
             if (!seenSectionIds.has(section.id)) {
               seenSectionIds.add(section.id);
@@ -459,7 +467,7 @@ export default function CoursePage() {
         }
       }
 
-      // Map concepts to their parent sections for sidebar navigation
+      // Map concepts to their parent sections for chapter-based view
       for (const chapterKey in sectionsMap) {
         const chapterConcepts = conceptsMap[chapterKey] || [];
 
@@ -484,8 +492,35 @@ export default function CoursePage() {
         });
       }
 
+      // Map concepts to their parent sections for document-based view
+      for (const docId in sectionsByDocMap) {
+        const docConcepts = conceptsByDocMap[docId] || [];
+
+        sectionsByDocMap[docId] = sectionsByDocMap[docId].map(section => {
+          // Find all concepts belonging to this section
+          const sectionConcepts = docConcepts
+            .filter(c => c.section_id === section.id)
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              concept_number: c.concept_number,
+              lesson_position: c.lesson_position ?? 0,
+              mastery_level: c.mastery_level,
+              accuracy: c.accuracy
+            }))
+            .sort((a, b) => a.lesson_position - b.lesson_position);
+
+          return {
+            ...section,
+            concepts: sectionConcepts
+          };
+        });
+      }
+
       setConceptsByChapter(conceptsMap);
       setSectionsByChapter(sectionsMap);
+      setConceptsByDocument(conceptsByDocMap);
+      setSectionsByDocument(sectionsByDocMap);
     } catch (error) {
       console.error('Failed to fetch concepts and sections:', error);
     }
@@ -672,6 +707,115 @@ export default function CoursePage() {
   function openDeleteModal(documentId: string, title: string) {
     setDocumentToDelete({ id: documentId, title });
     setDeleteModalOpen(true);
+  }
+
+  // Helper function to render a document's study session (mastery grid)
+  function renderDocumentSession(doc: Document, chapter: string) {
+    const documentConcepts = conceptsByDocument[doc.id] || [];
+    const documentSections = sectionsByDocument[doc.id] || [];
+
+    const orderedConcepts = [...documentConcepts].sort((a, b) => {
+      const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
+      const sectionB = b.section_number ?? Number.MAX_SAFE_INTEGER;
+      if (sectionA !== sectionB) {
+        return sectionA - sectionB;
+      }
+
+      const conceptA = a.concept_number ?? Number.MAX_SAFE_INTEGER;
+      const conceptB = b.concept_number ?? Number.MAX_SAFE_INTEGER;
+      if (conceptA !== conceptB) {
+        return conceptA - conceptB;
+      }
+
+      const lessonPosA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
+      const lessonPosB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
+      if (lessonPosA !== lessonPosB) {
+        return lessonPosA - lessonPosB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+
+    const orderedSections = [...documentSections].sort((a, b) => a.section_number - b.section_number);
+
+    // Convert concepts to skills
+    const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => ({
+      id: concept.id,
+      name: concept.name,
+      masteryLevel: concept.mastery_level,
+      sectionNumber: concept.section_number || undefined,
+      sectionName: concept.section_name || undefined,
+      conceptNumber: concept.concept_number ?? undefined,
+      lessonPosition: typeof concept.lesson_position === 'number' ? concept.lesson_position : undefined,
+      description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
+      onClick: () => {
+        if (concept.section_id) {
+          router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
+        } else {
+          handleStartStudy(doc.id, doc.chapter);
+        }
+      }
+    }));
+
+    // Create section overview squares and add placeholders
+    const skillsWithOverviews: SkillSquare[] = [];
+
+    orderedSections.forEach((section) => {
+      const isGenerating = processingJobs.some(job =>
+        job.type === 'lesson' &&
+        job.section_id === section.id &&
+        (job.chapter || 'Uncategorized') === chapter &&
+        job.status !== 'completed'
+      );
+
+      skillsWithOverviews.push({
+        id: `overview-${section.id}`,
+        name: `${section.name} - Overview`,
+        masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
+        sectionNumber: section.section_number,
+        sectionName: section.name,
+        description: section.concepts_generated
+          ? (section.description || `Section ${section.section_number} Overview`)
+          : isGenerating
+          ? 'Generating concepts...'
+          : `Click to generate section ${section.section_number}`,
+        onClick: isGenerating ? undefined : () => {
+          if (section.concepts_generated) {
+            router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+          } else {
+            generateLessonForSection(section, doc.id, doc.chapter);
+          }
+        },
+        isOverview: true
+      });
+
+      if (isGenerating) {
+        const job = processingJobs.find(j => j.section_id === section.id);
+        const progress = job?.progress || 0;
+
+        Array.from({ length: placeholdersPerRow }, (_, index) => {
+          skillsWithOverviews.push({
+            id: `loading-${section.id}-${index}`,
+            name: section.name || 'Generating...',
+            masteryLevel: 'loading' as MasteryLevel,
+            sectionNumber: section.section_number,
+            sectionName: section.name,
+            description: `${section.name || 'Section'} - Generating... ${progress}%`,
+            onClick: () => {}
+          });
+        });
+      }
+
+      const sectionConcepts = conceptSkills.filter(
+        skill => skill.sectionNumber === section.section_number
+      );
+      skillsWithOverviews.push(...sectionConcepts);
+    });
+
+    const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
+    skillsWithOverviews.push(...conceptsWithoutSection);
+
+    return skillsWithOverviews;
   }
 
   async function handleDeleteDocument() {
@@ -875,132 +1019,8 @@ export default function CoursePage() {
       ) : (
         <div className="space-y-8">
           {chapters.map((chapter) => {
-            const chapterConcepts = conceptsByChapter[chapter] || [];
-            const chapterSections = sectionsByChapter[chapter] || [];
-
-            const orderedConcepts = [...chapterConcepts].sort((a, b) => {
-              const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
-              const sectionB = b.section_number ?? Number.MAX_SAFE_INTEGER;
-              if (sectionA !== sectionB) {
-                return sectionA - sectionB;
-              }
-
-              const conceptA = a.concept_number ?? Number.MAX_SAFE_INTEGER;
-              const conceptB = b.concept_number ?? Number.MAX_SAFE_INTEGER;
-              if (conceptA !== conceptB) {
-                return conceptA - conceptB;
-              }
-
-              const lessonPosA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
-              const lessonPosB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
-              if (lessonPosA !== lessonPosB) {
-                return lessonPosA - lessonPosB;
-              }
-
-              return a.name.localeCompare(b.name);
-            });
-
-            // Sort sections by section_number
-            const orderedSections = [...chapterSections].sort((a, b) => a.section_number - b.section_number);
-
-            // Convert concepts to skills for the mastery grid
-            const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
-              return {
-                id: concept.id,
-                name: concept.name,
-                masteryLevel: concept.mastery_level,
-                sectionNumber: concept.section_number || undefined,
-                sectionName: concept.section_name || undefined,
-                conceptNumber: concept.concept_number ?? undefined,
-                lessonPosition: typeof concept.lesson_position === 'number' ? concept.lesson_position : undefined,
-                description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
-                onClick: () => {
-                  // Find the document for this chapter
-                  const doc = documentsByChapter[chapter]?.[0];
-                  if (doc) {
-                    // Navigate to the specific concept using concept name (more robust than index)
-                    if (concept.section_id) {
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
-                    } else {
-                      handleStartStudy(doc.id, doc.chapter);
-                    }
-                  }
-                }
-              };
-            });
-
-            // Group concepts by section and create section overview squares
-            const skillsWithOverviews: SkillSquare[] = [];
-            const doc = documentsByChapter[chapter]?.[0];
-
-            // Add section overview squares before concepts, with loading placeholders if generating
-            orderedSections.forEach((section) => {
-              // Check if this section is currently generating
-              const isGenerating = processingJobs.some(job =>
-                job.type === 'lesson' &&
-                job.section_id === section.id &&
-                (job.chapter || 'Uncategorized') === chapter &&
-                job.status !== 'completed'
-              );
-
-              // Add section overview square FIRST
-              skillsWithOverviews.push({
-                id: `overview-${section.id}`,
-                name: `${section.name} - Overview`,
-                masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
-                sectionNumber: section.section_number,
-                sectionName: section.name,
-                description: section.concepts_generated
-                  ? (section.description || `Section ${section.section_number} Overview`)
-                  : isGenerating
-                  ? 'Generating concepts...'
-                  : `Click to generate section ${section.section_number}`,
-                onClick: isGenerating ? undefined : () => {
-                  if (doc) {
-                    if (section.concepts_generated) {
-                      // Navigate to overview page
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
-                    } else {
-                      // Generate lesson and stay on this page
-                      generateLessonForSection(section, doc.id, doc.chapter);
-                    }
-                  }
-                },
-                isOverview: true
-              });
-
-              // Add loading placeholders if generating (exactly one row dynamically calculated)
-              if (isGenerating) {
-                const job = processingJobs.find(j => j.section_id === section.id);
-                const progress = job?.progress || 0;
-
-                // Use dynamically calculated number of placeholders to fill exactly one row
-                Array.from({ length: placeholdersPerRow }, (_, index) => {
-                  skillsWithOverviews.push({
-                    id: `loading-${section.id}-${index}`,
-                    name: section.name || 'Generating...',
-                    masteryLevel: 'loading' as MasteryLevel,
-                    sectionNumber: section.section_number,
-                    sectionName: section.name,
-                    description: `${section.name || 'Section'} - Generating... ${progress}%`,
-                    onClick: () => {}
-                  });
-                });
-              }
-
-              // Add concepts for this section
-              const sectionConcepts = conceptSkills.filter(
-                skill => skill.sectionNumber === section.section_number
-              );
-              skillsWithOverviews.push(...sectionConcepts);
-            });
-
-            // Add any concepts without a section (fallback)
-            const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
-            skillsWithOverviews.push(...conceptsWithoutSection);
-
-            // Use skillsWithOverviews directly (loading placeholders are now integrated)
-            const skills: SkillSquare[] = skillsWithOverviews;
+            // Get all tier 1 documents in this chapter
+            const chapterDocs = documentsByChapter[chapter] || [];
 
             return (
               <div key={chapter} className="space-y-6">
@@ -1010,16 +1030,57 @@ export default function CoursePage() {
                   </h2>
                 </div>
 
-                {/* Concept Mastery Grid */}
-                <div ref={gridContainerRef}>
-                  <Card hover={false}>
-                    <MasteryGrid
-                      title="Concept Progress"
-                      skills={skills}
-                      showSectionDividers={true}
-                    />
-                  </Card>
-                </div>
+                {/* Tier 1: Document-Based Study Sessions */}
+                {chapterDocs.map((doc) => {
+                  const skills = renderDocumentSession(doc, chapter);
+
+                  // Skip rendering if document has no sections/concepts yet
+                  if (skills.length === 0) return null;
+
+                  return (
+                    <div key={doc.id} ref={gridContainerRef} className="space-y-3">
+                      {/* Document Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                              {doc.title}
+                            </h3>
+                            {doc.material_type && (
+                              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                                {doc.material_type} • {doc.pages} pages
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={() => openDeleteModal(doc.id, doc.title)}
+                          variant="danger"
+                          size="sm"
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </Button>
+                      </div>
+
+                      {/* Document Mastery Grid */}
+                      <Card hover={false}>
+                        <MasteryGrid
+                          title="Concept Progress"
+                          skills={skills}
+                          showSectionDividers={true}
+                        />
+                      </Card>
+                    </div>
+                  );
+                })}
 
                 {/* Documents List */}
                 <div className="space-y-4">
