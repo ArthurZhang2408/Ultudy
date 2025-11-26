@@ -108,6 +108,8 @@ export default function CoursePage() {
   const [isMarkdownViewerOpen, setIsMarkdownViewerOpen] = useState(false);
   const [markdownContent, setMarkdownContent] = useState('');
   const [markdownTitle, setMarkdownTitle] = useState('');
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
+  const [editingDocumentTitle, setEditingDocumentTitle] = useState('');
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
@@ -904,6 +906,46 @@ export default function CoursePage() {
     }
   }
 
+  async function handleRenameDocument(documentId: string, newTitle: string) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/documents/${documentId}/rename`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title: newTitle })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to rename document');
+      }
+
+      console.log(`[CoursePage] Successfully renamed document ${documentId}`);
+
+      // Update local state
+      setDocuments(prevDocs =>
+        prevDocs.map(doc =>
+          doc.id === documentId ? { ...doc, title: newTitle } : doc
+        )
+      );
+
+      // Clear editing state
+      setEditingDocumentId(null);
+      setEditingDocumentTitle('');
+    } catch (error) {
+      console.error('[CoursePage] Error renaming document:', error);
+      alert(error instanceof Error ? error.message : 'Failed to rename document. Please try again.');
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -1087,16 +1129,67 @@ export default function CoursePage() {
                     <div key={doc.id} ref={gridContainerRef} className="space-y-3">
                       {/* Document Header */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1">
                           <div className="flex-shrink-0 w-8 h-8 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
                             <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                             </svg>
                           </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                              {doc.title}
-                            </h3>
+                          <div className="flex-1 min-w-0">
+                            {editingDocumentId === doc.id ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={editingDocumentTitle}
+                                  onChange={(e) => setEditingDocumentTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleRenameDocument(doc.id, editingDocumentTitle);
+                                    } else if (e.key === 'Escape') {
+                                      setEditingDocumentId(null);
+                                      setEditingDocumentTitle('');
+                                    }
+                                  }}
+                                  className="px-2 py-1 border border-primary-500 rounded text-lg font-semibold text-neutral-900 dark:text-neutral-100 bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                  autoFocus
+                                />
+                                <Button
+                                  onClick={() => handleRenameDocument(doc.id, editingDocumentTitle)}
+                                  variant="primary"
+                                  size="sm"
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setEditingDocumentId(null);
+                                    setEditingDocumentTitle('');
+                                  }}
+                                  variant="secondary"
+                                  size="sm"
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                                  {doc.title}
+                                </h3>
+                                <button
+                                  onClick={() => {
+                                    setEditingDocumentId(doc.id);
+                                    setEditingDocumentTitle(doc.title);
+                                  }}
+                                  className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors flex-shrink-0"
+                                  title="Rename document"
+                                >
+                                  <svg className="w-4 h-4 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
                             {doc.material_type && (
                               <p className="text-sm text-neutral-600 dark:text-neutral-400">
                                 {doc.material_type} • {doc.pages} pages
