@@ -30,3 +30,4 @@ export { default as ChapterSelectionModal } from './ChapterSelectionModal';
 export { default as CreateCourseModal } from './CreateCourseModal';
 export { default as MarkdownViewer } from './MarkdownViewer';
 export { default as MarkdownViewerModal } from './MarkdownViewerModal';
+export { default as BackgroundTasksBanner } from './BackgroundTasksBanner';
