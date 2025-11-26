@@ -9,7 +9,7 @@ import { getBackendUrl } from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
 import { useModal } from '@/contexts/ModalContext';
 import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
-import { createJobPoller } from '@/lib/jobs';
+import { createJobPoller, Job } from '@/lib/jobs';
 
 interface Tier2UploadModalProps {
   isOpen: boolean;
@@ -145,14 +145,14 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
       });
 
       // Start polling job status
-      const poller = createJobPoller(job_id, {
-        onUpdate: (job) => {
+      createJobPoller(job_id, {
+        onProgress: (job: Job) => {
           updateTask(job_id, {
             status: 'processing',
             progress: job.progress || 0
           });
         },
-        onComplete: (job) => {
+        onComplete: (job: Job) => {
           updateTask(job_id, {
             status: 'completed',
             progress: 100,
@@ -161,15 +161,14 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
           // Refresh the page to show new content
           router.refresh();
         },
-        onError: (error) => {
+        onError: (error: string) => {
           updateTask(job_id, {
             status: 'failed',
-            error: error.message,
+            error: error,
             completedAt: new Date().toISOString()
           });
         }
       });
-      poller.start();
 
       // Reset form and close modal
       setFile(null);
