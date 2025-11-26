@@ -153,10 +153,54 @@ router.get('/chapter-markdown/:id', async (req, res) => {
 });
 
 /**
+ * PATCH /api/tier2/chapter-markdown/:id/reassign
+ *
+ * Reassign a tier 2 source to a different chapter
+ * Body: { chapterNumber: number | null }
+ */
+router.patch('/chapter-markdown/:id/reassign', async (req, res) => {
+  try {
+    const userId = req.userId || 'dev-user-001';
+    const { id } = req.params;
+    const { chapterNumber } = req.body;
+
+    if (chapterNumber !== null && (typeof chapterNumber !== 'number' || chapterNumber < 1)) {
+      return res.status(400).json({ error: 'Invalid chapter number. Must be a positive number or null.' });
+    }
+
+    console.log(`[tier2/reassign] Reassigning source ${id} to chapter ${chapterNumber}`);
+
+    // Verify ownership and update
+    const result = await queryWrite(
+      `UPDATE chapter_markdown
+       SET chapter_number = $1, updated_at = NOW()
+       WHERE id = $2 AND owner_id = $3
+       RETURNING *`,
+      [chapterNumber, id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Chapter markdown not found or access denied' });
+    }
+
+    console.log(`[tier2/reassign] Successfully reassigned source ${id} to chapter ${chapterNumber}`);
+
+    res.json({
+      success: true,
+      source: result.rows[0]
+    });
+  } catch (error) {
+    console.error('[tier2/reassign] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to reassign chapter' });
+  }
+});
+
+/**
  * GET /api/tier2/chapter-sources/:courseId
  *
  * Get all chapter sources for a course (grouped by chapter number)
  * Returns: { chapters: { [chapterNumber]: [{ id, documentId, documentTitle, chapterTitle, ... }] } }
+ * Note: Uncategorized sources (null chapter_number) are grouped under key "uncategorized"
  */
 router.get('/chapter-sources/:courseId', async (req, res) => {
   try {
@@ -176,14 +220,14 @@ router.get('/chapter-sources/:courseId', async (req, res) => {
        FROM chapter_markdown cm
        JOIN documents d ON cm.document_id = d.id
        WHERE cm.course_id = $1 AND cm.owner_id = $2
-       ORDER BY cm.chapter_number, cm.created_at`,
+       ORDER BY cm.chapter_number NULLS LAST, cm.created_at`,
       [courseId, userId]
     );
 
-    // Group by chapter number
+    // Group by chapter number (use "uncategorized" for null chapter numbers)
     const chapters = {};
     for (const row of result.rows) {
-      const chapterNum = row.chapter_number;
+      const chapterNum = row.chapter_number ?? 'uncategorized';
       if (!chapters[chapterNum]) {
         chapters[chapterNum] = [];
       }
@@ -192,6 +236,7 @@ router.get('/chapter-sources/:courseId', async (req, res) => {
         documentId: row.document_id,
         documentTitle: row.document_title,
         chapterTitle: row.chapter_title,
+        chapterNumber: row.chapter_number,
         pageStart: row.page_start,
         pageEnd: row.page_end,
         createdAt: row.created_at

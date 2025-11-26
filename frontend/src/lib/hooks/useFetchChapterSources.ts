@@ -11,13 +11,14 @@ export type ChapterSource = {
   documentId: string;
   documentTitle: string;
   chapterTitle: string;
+  chapterNumber: number | null;
   pageStart: number | null;
   pageEnd: number | null;
   createdAt: string;
 };
 
 export type ChapterSourcesData = {
-  [chapterNumber: number]: ChapterSource[];
+  [chapterNumber: number | string]: ChapterSource[];
 };
 
 export function useFetchChapterSources(courseId: string | null) {
