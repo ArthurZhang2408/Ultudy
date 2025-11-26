@@ -29,7 +29,8 @@ async function runMigrations() {
     const migrations = [
       '001_add_performance_indexes.sql',
       '002_subscription_system.sql',
-      '003_tier2_chapter_markdown.sql'
+      '003_tier2_chapter_markdown.sql',
+      '004_allow_null_chapter_number.sql'
     ];
 
     // Run each migration
