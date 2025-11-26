@@ -126,9 +126,85 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         }
       };
     } else {
-      // Multi-chapter - save document and wait for user selection
+      // Multi-chapter detected
       console.log(`[Tier2UploadProcessor] Multi-chapter detected: ${detection.chapters.length} chapters`);
 
+      // If only 1 chapter, treat as single chapter instead of multi-chapter
+      if (detection.chapters.length === 1) {
+        console.log(`[Tier2UploadProcessor] Only 1 chapter detected - treating as single chapter`);
+
+        const singleChapter = detection.chapters[0];
+
+        // Need to extract the chapter markdown since we only have metadata
+        const { extractSingleChapter } = await import('../../services/tier2Extraction.js');
+        const extraction = await extractSingleChapter(
+          processingPath,
+          singleChapter.number,
+          singleChapter.title,
+          singleChapter.pageStart,
+          singleChapter.pageEnd
+        );
+
+        await tenantHelpers.withTenant(ownerId, async (client) => {
+          // Insert document with chapter info
+          await client.query(
+            `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [documentId, documentTitle, 1, ownerId, courseId, String(singleChapter.number), materialType || 'textbook']
+          );
+
+          console.log(`[Tier2UploadProcessor] Document created: ${documentId}`);
+
+          // Update progress: 70% - Document created
+          await jobTracker.updateProgress(ownerId, jobId, 70);
+
+          // Insert chapter markdown
+          await client.query(
+            `INSERT INTO chapter_markdown
+             (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, page_start, page_end)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              ownerId,
+              documentId,
+              courseId,
+              extraction.chapterNumber,
+              extraction.chapterTitle,
+              extraction.markdown,
+              singleChapter.pageStart,
+              singleChapter.pageEnd
+            ]
+          );
+
+          console.log(`[Tier2UploadProcessor] Chapter markdown saved: Chapter ${extraction.chapterNumber}`);
+        });
+
+        // Update progress: 100% - Complete
+        await jobTracker.updateProgress(ownerId, jobId, 100);
+
+        console.log(`[Tier2UploadProcessor] ✅ Single chapter (from multi-detection) job ${jobId} complete`);
+
+        // Mark job as completed
+        await jobTracker.completeJob(ownerId, jobId, {
+          document_id: documentId,
+          title: documentTitle,
+          type: 'single_chapter',
+          chapter_number: singleChapter.number,
+          chapter_title: singleChapter.title,
+          course_id: courseId
+        });
+
+        return {
+          document_id: documentId,
+          title: documentTitle,
+          type: 'single_chapter',
+          chapter: {
+            number: singleChapter.number,
+            title: singleChapter.title
+          }
+        };
+      }
+
+      // True multi-chapter - save document and wait for user selection
       await tenantHelpers.withTenant(ownerId, async (client) => {
         // Insert document without chapter info
         await client.query(

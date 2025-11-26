@@ -38,7 +38,7 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
       {/* Background Tasks Banner */}
       <BackgroundTasksBanner />
 
-      <div className="flex min-h-screen pt-7">
+      <div className="flex min-h-screen">
         {/* Main Sidebar - hidden on learn page */}
         {!hideMainSidebar && (
           <MainSidebar

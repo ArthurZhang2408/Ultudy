@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
 import { useAuth } from '@clerk/nextjs';
 import { getBackendUrl } from '@/lib/api';
+import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 
 interface Chapter {
   number: number;
@@ -33,6 +35,8 @@ export default function ChapterSelectionModal({
   chapters: initialChapters
 }: ChapterSelectionModalProps) {
   const { getToken } = useAuth();
+  const router = useRouter();
+  const { addTask, updateTask } = useBackgroundTasks();
   const [selectedChapters, setSelectedChapters] = useState<Set<number>>(new Set());
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
@@ -100,10 +104,6 @@ export default function ChapterSelectionModal({
       return;
     }
 
-    setIsExtracting(true);
-    setError(null);
-    setProgress({ current: 0, total: selectedChapters.size });
-
     try {
       const token = await getToken();
       if (!token) {
@@ -115,41 +115,76 @@ export default function ChapterSelectionModal({
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
 
-      const response = await fetch(`${getBackendUrl()}/tier2/extract-chapters`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          documentId,
-          storageKey,
-          courseId,
-          chapters: chaptersToExtract
-        })
+      // Create a task ID for tracking
+      const taskId = `extract-${documentId}-${Date.now()}`;
+
+      // Add background task for tracking
+      addTask({
+        id: taskId,
+        type: 'extraction',
+        title: `Extracting ${chaptersToExtract.length} chapter${chaptersToExtract.length !== 1 ? 's' : ''} from ${documentName}`,
+        status: 'processing',
+        progress: 0,
+        courseId,
+        documentId
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to extract chapters');
-      }
+      // Close modal immediately
+      onClose();
 
-      const result = await response.json();
+      // Start extraction in background
+      (async () => {
+        try {
+          const response = await fetch(`${getBackendUrl()}/tier2/extract-chapters`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              documentId,
+              storageKey,
+              courseId,
+              chapters: chaptersToExtract
+            })
+          });
 
-      console.log(`[ChapterSelectionModal] Extraction complete: ${result.extracted}/${result.total} successful`);
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to extract chapters');
+          }
 
-      if (result.extracted === 0) {
-        throw new Error('All chapter extractions failed');
-      }
+          const result = await response.json();
 
-      // Success! Reload the page to show the new chapter sources
-      alert(`Successfully extracted ${result.extracted}/${result.total} chapters!`);
-      window.location.reload();
+          console.log(`[ChapterSelectionModal] Extraction complete: ${result.extracted}/${result.total} successful`);
+
+          if (result.extracted === 0) {
+            throw new Error('All chapter extractions failed');
+          }
+
+          // Update task as completed
+          updateTask(taskId, {
+            status: 'completed',
+            progress: 100,
+            completedAt: new Date().toISOString()
+          });
+
+          // Refresh the page to show new chapter sources
+          router.refresh();
+        } catch (err) {
+          console.error('[ChapterSelectionModal] Error:', err);
+
+          // Update task as failed
+          updateTask(taskId, {
+            status: 'failed',
+            error: err instanceof Error ? err.message : 'Failed to extract chapters',
+            completedAt: new Date().toISOString()
+          });
+        }
+      })();
     } catch (err) {
       console.error('[ChapterSelectionModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to extract chapters');
-      setIsExtracting(false);
-      setProgress(null);
     }
   };
 
