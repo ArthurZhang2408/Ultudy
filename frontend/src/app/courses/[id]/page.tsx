@@ -83,7 +83,7 @@ export default function CoursePage() {
   const courseId = params.id as string;
   const router = useRouter();
   const { tierData, isTier } = useTier();
-  const { chapterSources } = useFetchChapterSources(courseId);
+  const { chapterSources, refetch: refetchChapterSources } = useFetchChapterSources(courseId);
   const { getToken } = useAuth();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -873,6 +873,37 @@ export default function CoursePage() {
     }
   }
 
+  async function handleReassignChapter(sourceId: string, newChapterNumber: number | null) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${sourceId}/reassign`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ chapterNumber: newChapterNumber })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reassign chapter');
+      }
+
+      console.log(`[CoursePage] Successfully reassigned source ${sourceId} to chapter ${newChapterNumber}`);
+
+      // Refetch chapter sources to update UI
+      await refetchChapterSources();
+    } catch (error) {
+      console.error('[CoursePage] Error reassigning chapter:', error);
+      alert('Failed to reassign chapter. Please try again.');
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
@@ -1086,23 +1117,23 @@ export default function CoursePage() {
                 <div className="space-y-4">
                   {(() => {
                     // Extract chapter number from chapter string
-                    // Handle both "Chapter 1" format and plain "1" format
-                    let chapterNum: number | null = null;
+                    // Handle both "Chapter 1" format, plain "1" format, and "Uncategorized"
+                    let chapterKey: number | string | null = null;
                     if (chapter === 'Uncategorized') {
-                      chapterNum = null;
+                      chapterKey = 'uncategorized';
                     } else {
                       const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
                       if (chapterMatch) {
-                        chapterNum = parseInt(chapterMatch[1], 10);
+                        chapterKey = parseInt(chapterMatch[1], 10);
                       } else {
                         // Try parsing directly as number (for plain "1", "2", etc.)
                         const parsed = parseInt(chapter, 10);
                         if (!isNaN(parsed)) {
-                          chapterNum = parsed;
+                          chapterKey = parsed;
                         }
                       }
                     }
-                    const sources = chapterNum ? chapterSources[chapterNum] : [];
+                    const sources = chapterKey ? chapterSources[chapterKey] : [];
 
                     // Only show section if there are tier 2 sources
                     if (!sources || sources.length === 0) return null;
@@ -1113,7 +1144,7 @@ export default function CoursePage() {
                         <div className="grid gap-4">
                           {sources.map((source) => (
                         <Card key={source.id} padding="md" hover className="group border-2 border-purple-200 dark:border-purple-800/50">
-                          <div className="flex items-start justify-between">
+                          <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 space-y-2">
                               <div className="flex items-center gap-3">
                                 <div className="flex-shrink-0 w-10 h-10 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center">
@@ -1151,17 +1182,37 @@ export default function CoursePage() {
                                 </div>
                               </div>
                             </div>
-                            <Button
-                              onClick={() => handleViewMarkdown(source.id, source.documentTitle, source.chapterTitle)}
-                              variant="primary"
-                              size="sm"
-                            >
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              View Markdown
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              {/* Chapter Reassignment Dropdown */}
+                              <div className="flex flex-col gap-1">
+                                <label className="text-xs text-neutral-600 dark:text-neutral-400">Move to:</label>
+                                <select
+                                  value={source.chapterNumber ?? 'uncategorized'}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    const newChapter = value === 'uncategorized' ? null : parseInt(value, 10);
+                                    handleReassignChapter(source.id, newChapter);
+                                  }}
+                                  className="text-sm border border-neutral-300 dark:border-neutral-600 rounded-md px-2 py-1 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 hover:border-primary-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
+                                >
+                                  <option value="uncategorized">Uncategorized</option>
+                                  {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
+                                    <option key={num} value={num}>Chapter {num}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <Button
+                                onClick={() => handleViewMarkdown(source.id, source.documentTitle, source.chapterTitle)}
+                                variant="primary"
+                                size="sm"
+                              >
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                View Markdown
+                              </Button>
+                            </div>
                           </div>
                         </Card>
                           ))}
