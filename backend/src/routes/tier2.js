@@ -196,6 +196,42 @@ router.patch('/chapter-markdown/:id/reassign', async (req, res) => {
 });
 
 /**
+ * DELETE /api/tier2/chapter-markdown/:id
+ *
+ * Delete a tier 2 chapter markdown source
+ */
+router.delete('/chapter-markdown/:id', async (req, res) => {
+  try {
+    const userId = req.userId || 'dev-user-001';
+    const { id } = req.params;
+
+    console.log(`[tier2/delete] Deleting chapter markdown source ${id}`);
+
+    // Verify ownership and delete
+    const result = await queryWrite(
+      `DELETE FROM chapter_markdown
+       WHERE id = $1 AND owner_id = $2
+       RETURNING id`,
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Chapter markdown not found or access denied' });
+    }
+
+    console.log(`[tier2/delete] Successfully deleted chapter markdown source ${id}`);
+
+    res.json({
+      success: true,
+      deletedId: id
+    });
+  } catch (error) {
+    console.error('[tier2/delete] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete chapter markdown' });
+  }
+});
+
+/**
  * GET /api/tier2/chapter-sources/:courseId
  *
  * Get all chapter sources for a course (grouped by chapter number)

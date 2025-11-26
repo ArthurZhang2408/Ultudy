@@ -8,6 +8,7 @@ import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, Chapt
 import { createJobPoller, type Job } from '@/lib/jobs';
 import { useTier } from '@/contexts/TierContext';
 import { useFetchChapterSources } from '@/lib/hooks/useFetchChapterSources';
+import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 import { useAuth } from '@clerk/nextjs';
 import { getBackendUrl } from '@/lib/api';
 
@@ -85,6 +86,7 @@ export default function CoursePage() {
   const { tierData, isTier } = useTier();
   const { chapterSources, refetch: refetchChapterSources } = useFetchChapterSources(courseId);
   const { getToken } = useAuth();
+  const { addTask, updateTask } = useBackgroundTasks();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,6 +112,8 @@ export default function CoursePage() {
   const [markdownTitle, setMarkdownTitle] = useState('');
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const [editingDocumentTitle, setEditingDocumentTitle] = useState('');
+  const [deletingTier2SourceId, setDeletingTier2SourceId] = useState<string | null>(null);
+  const [tier2DeleteModalOpen, setTier2DeleteModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
@@ -578,60 +582,52 @@ export default function CoursePage() {
 
         // Check if it's a job (async generation) or existing lesson
         if (data.job_id) {
-          // Lesson is being generated - add to processing jobs
+          // Lesson is being generated - add to background tasks
           console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
 
-          // Store job in sessionStorage for persistence
-          if (typeof window !== 'undefined') {
-            const jobData = {
-              job_id: data.job_id,
-              document_id: documentId,
-              section_id: section.id,
-              section_name: section.name,
-              section_number: section.section_number,
-              chapter: chapter || null,
-              course_id: courseId
-            };
-            sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
-          }
-
-          // Add to processing jobs state
-          setProcessingJobs(prev => [...prev, {
-            job_id: data.job_id,
-            document_id: documentId,
-            section_id: section.id,
-            section_name: section.name,
-            section_number: section.section_number,
+          // Add to background tasks
+          addTask({
+            id: data.job_id,
             type: 'lesson',
+            title: `Generating lesson: ${section.name}`,
+            status: 'processing',
             progress: 0,
-            status: 'queued',
-            chapter: chapter || undefined
-          }]);
-
-          // Add to polling set to prevent duplicates
-          pollingJobsRef.current.add(data.job_id);
+            courseId,
+            documentId
+          });
 
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
-              updateJobProgress(data.job_id, job.progress, job.status);
+              updateTask(data.job_id, {
+                status: 'processing',
+                progress: job.progress || 0
+              });
             },
             onComplete: async (job: Job) => {
               console.log('[courses] Generation completed:', job);
 
+              // Update task status
+              updateTask(data.job_id, {
+                status: 'completed',
+                progress: 100,
+                completedAt: new Date().toISOString()
+              });
+
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
-
-              // Remove from processing jobs
-              pollingJobsRef.current.delete(data.job_id);
-              removeProcessingJob(data.job_id);
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
-              pollingJobsRef.current.delete(data.job_id);
-              removeProcessingJob(data.job_id);
+
+              // Update task as failed
+              updateTask(data.job_id, {
+                status: 'failed',
+                error: error,
+                completedAt: new Date().toISOString()
+              });
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');
@@ -903,6 +899,41 @@ export default function CoursePage() {
     } catch (error) {
       console.error('[CoursePage] Error reassigning chapter:', error);
       alert('Failed to reassign chapter. Please try again.');
+    }
+  }
+
+  async function handleDeleteTier2Source() {
+    if (!deletingTier2SourceId) return;
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${deletingTier2SourceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete tier 2 source');
+      }
+
+      console.log(`[CoursePage] Successfully deleted tier 2 source ${deletingTier2SourceId}`);
+
+      // Refetch chapter sources to update UI
+      await refetchChapterSources();
+
+      // Close modal and reset state
+      setTier2DeleteModalOpen(false);
+      setDeletingTier2SourceId(null);
+    } catch (error) {
+      console.error('[CoursePage] Error deleting tier 2 source:', error);
+      alert('Failed to delete tier 2 source. Please try again.');
     }
   }
 
@@ -1321,6 +1352,18 @@ export default function CoursePage() {
                                 </svg>
                                 View Markdown
                               </Button>
+                              <button
+                                onClick={() => {
+                                  setDeletingTier2SourceId(source.id);
+                                  setTier2DeleteModalOpen(true);
+                                }}
+                                className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Delete tier 2 source"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             </div>
                           </div>
                         </Card>
@@ -1347,6 +1390,21 @@ export default function CoursePage() {
         title="Delete Document"
         message={`Are you sure you want to delete "${documentToDelete?.title}"? This will permanently delete the document, all sections, all generated lessons, and the PDF file. This action cannot be undone.`}
         confirmText="Delete Document"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Tier 2 Source Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={tier2DeleteModalOpen}
+        onClose={() => {
+          setTier2DeleteModalOpen(false);
+          setDeletingTier2SourceId(null);
+        }}
+        onConfirm={handleDeleteTier2Source}
+        title="Delete Tier 2 Source"
+        message="Are you sure you want to delete this tier 2 source? This will permanently delete the extracted markdown content. This action cannot be undone."
+        confirmText="Delete Source"
         cancelText="Cancel"
         variant="danger"
       />

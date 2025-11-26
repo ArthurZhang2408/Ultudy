@@ -176,9 +176,12 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
       setIsUploading(false);
       onClose();
 
-      // Redirect to course page if not already there
+      // Redirect to course page with job_id so it can handle multi-chapter uploads
       if (!window.location.pathname.includes(`/courses/${courseId}`)) {
-        router.push(`/courses/${courseId}`);
+        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+      } else {
+        // Already on course page, add job_id to URL
+        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
       }
     } catch (err) {
       console.error('[Tier2UploadModal] Error:', err);

@@ -28,43 +28,45 @@ export default function BackgroundTasksBanner() {
   const banner = (
     <>
       {/* Compact Banner */}
-      <div className="fixed top-0 left-0 right-0 z-[9998] bg-primary-600 dark:bg-primary-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-[9998] bg-primary-600 dark:bg-primary-700 text-white shadow-md">
+        <div className="max-w-full mx-auto px-3 py-1.5">
+          <div className="flex items-center justify-between gap-2">
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-3 flex-1 hover:opacity-90 transition-opacity text-left"
+              className="flex items-center gap-2 flex-1 hover:opacity-90 transition-opacity text-left min-w-0"
             >
               {currentTask ? (
                 <>
-                  <CircularProgress value={currentTask.progress} size={24} strokeWidth={3} className="text-white" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{currentTask.title}</p>
-                    {remainingCount > 0 && (
-                      <p className="text-sm opacity-90">
-                        {remainingCount} more task{remainingCount !== 1 ? 's' : ''}
-                      </p>
-                    )}
+                  <div className="flex-shrink-0">
+                    <CircularProgress value={currentTask.progress} size={16} strokeWidth={2.5} className="text-white" />
                   </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{currentTask.title}</p>
+                  </div>
+                  {remainingCount > 0 && (
+                    <span className="flex-shrink-0 px-1.5 py-0.5 text-xs bg-white/20 rounded">
+                      +{remainingCount}
+                    </span>
+                  )}
                 </>
               ) : completedTasks.length > 0 ? (
                 <>
-                  <svg className="w-6 h-6 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-green-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <div className="flex-1">
-                    <p className="font-medium">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
                       {completedTasks.length} task{completedTasks.length !== 1 ? 's' : ''} completed
                     </p>
                   </div>
                 </>
               ) : failedTasks.length > 0 ? (
                 <>
-                  <svg className="w-6 h-6 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-red-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <div className="flex-1">
-                    <p className="font-medium">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
                       {failedTasks.length} task{failedTasks.length !== 1 ? 's' : ''} failed
                     </p>
                   </div>
@@ -72,14 +74,14 @@ export default function BackgroundTasksBanner() {
               ) : null}
             </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-shrink-0">
               {completedTasks.length > 0 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     clearCompleted();
                   }}
-                  className="px-3 py-1 text-sm bg-white/20 hover:bg-white/30 rounded transition-colors"
+                  className="px-2 py-0.5 text-xs bg-white/20 hover:bg-white/30 rounded transition-colors"
                 >
                   Clear
                 </button>
@@ -88,7 +90,7 @@ export default function BackgroundTasksBanner() {
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1 hover:bg-white/20 rounded transition-colors"
               >
-                <svg className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
