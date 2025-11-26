@@ -67,15 +67,15 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
         {viewMode === 'raw' ? (
-          <pre className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 overflow-x-auto">
+          <pre className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words">
             <code className="text-sm text-neutral-800 dark:text-neutral-200 font-mono">
               {markdown}
             </code>
           </pre>
         ) : (
-          <div className="prose prose-neutral dark:prose-invert max-w-none">
+          <div className="prose prose-neutral dark:prose-invert max-w-none overflow-x-auto">
             <ReactMarkdown
               remarkPlugins={[remarkMath, remarkGfm]}
               rehypePlugins={[rehypeKatex, rehypeSanitize]}
