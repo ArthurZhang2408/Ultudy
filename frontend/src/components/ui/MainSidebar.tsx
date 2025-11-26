@@ -116,7 +116,7 @@ export default function MainSidebar({ onUploadClick, onCollapseChange }: MainSid
   return (
     <>
     <div
-      className={`fixed left-0 top-[40px] h-[calc(100vh-40px)] bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-all duration-300 z-40 ${
+      className={`fixed left-0 top-0 h-full bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col transition-all duration-300 z-50 ${
         isCollapsed ? 'w-16' : 'w-64'
       }`}
       onMouseEnter={() => setIsHoveringCollapsed(true)}

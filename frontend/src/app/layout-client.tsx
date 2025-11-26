@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { MainSidebar, UploadModal, BackgroundTasksBanner } from '@/components/ui';
+import { MainSidebar, UploadModal } from '@/components/ui';
 
 export default function LayoutClient({ children }: { children: React.ReactNode }) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -35,9 +35,6 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
 
   return (
     <>
-      {/* Background Tasks Banner */}
-      <BackgroundTasksBanner />
-
       <div className="flex min-h-screen">
         {/* Main Sidebar - hidden on learn page */}
         {!hideMainSidebar && (

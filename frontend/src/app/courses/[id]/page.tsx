@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal, CustomSelect } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal, CustomSelect, BackgroundTasksBanner } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import { useTier } from '@/contexts/TierContext';
 import { useFetchChapterSources } from '@/lib/hooks/useFetchChapterSources';
@@ -1052,6 +1052,9 @@ export default function CoursePage() {
 
   return (
     <div className="space-y-8">
+      {/* Background Tasks Banner - Course Page Only */}
+      <BackgroundTasksBanner />
+
       <div className="flex items-start justify-between">
         <div>
           <div>
