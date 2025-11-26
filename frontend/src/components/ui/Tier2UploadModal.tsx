@@ -8,6 +8,8 @@ import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 import { getBackendUrl } from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
 import { useModal } from '@/contexts/ModalContext';
+import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
+import { createJobPoller } from '@/lib/jobs';
 
 interface Tier2UploadModalProps {
   isOpen: boolean;
@@ -19,6 +21,7 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
   const router = useRouter();
   const { getToken } = useAuth();
   const { courses } = useFetchCourses();
+  const { addTask, updateTask } = useBackgroundTasks();
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
   const [title, setTitle] = useState('');
@@ -129,18 +132,44 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
 
       console.log('[Tier2UploadModal] Upload successful:', { job_id, document_id });
 
-      // Store job in session storage
-      const processingJobs = JSON.parse(sessionStorage.getItem('processingJobs') || '[]');
-      processingJobs.push({
-        job_id,
-        document_id,
-        course_id: courseId,
-        chapter: null,
-        title: title || file.name.replace('.pdf', ''),
+      // Add background task
+      const taskTitle = title || file.name.replace('.pdf', '');
+      addTask({
+        id: job_id,
         type: 'upload',
-        started_at: new Date().toISOString()
+        title: `Extracting ${taskTitle}`,
+        status: 'processing',
+        progress: 0,
+        courseId,
+        documentId: document_id
       });
-      sessionStorage.setItem('processingJobs', JSON.stringify(processingJobs));
+
+      // Start polling job status
+      const poller = createJobPoller(job_id, {
+        onUpdate: (job) => {
+          updateTask(job_id, {
+            status: 'processing',
+            progress: job.progress || 0
+          });
+        },
+        onComplete: (job) => {
+          updateTask(job_id, {
+            status: 'completed',
+            progress: 100,
+            completedAt: new Date().toISOString()
+          });
+          // Refresh the page to show new content
+          router.refresh();
+        },
+        onError: (error) => {
+          updateTask(job_id, {
+            status: 'failed',
+            error: error.message,
+            completedAt: new Date().toISOString()
+          });
+        }
+      });
+      poller.start();
 
       // Reset form and close modal
       setFile(null);
@@ -148,8 +177,10 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
       setIsUploading(false);
       onClose();
 
-      // Redirect to course page
-      router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+      // Redirect to course page if not already there
+      if (!window.location.pathname.includes(`/courses/${courseId}`)) {
+        router.push(`/courses/${courseId}`);
+      }
     } catch (err) {
       console.error('[Tier2UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
