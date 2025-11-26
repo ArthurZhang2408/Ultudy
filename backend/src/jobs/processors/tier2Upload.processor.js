@@ -65,15 +65,15 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
     const documentTitle = title || originalFilename.replace('.pdf', '');
 
     if (detection.type === 'single') {
-      // Single chapter - save immediately
+      // Single chapter - save immediately with chapter number
       console.log(`[Tier2UploadProcessor] Single chapter detected: Chapter ${detection.chapterNumber} - ${detection.chapterTitle}`);
 
       await tenantHelpers.withTenant(ownerId, async (client) => {
-        // Insert document with chapter info
+        // Insert document with chapter info - use chapter number for proper grouping in UI
         await client.query(
           `INSERT INTO documents (id, title, pages, owner_id, course_id, chapter, material_type)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [documentId, documentTitle, 1, ownerId, courseId, null, materialType || 'textbook']
+          [documentId, documentTitle, 1, ownerId, courseId, String(detection.chapterNumber), materialType || 'textbook']
         );
 
         console.log(`[Tier2UploadProcessor] Document created: ${documentId}`);

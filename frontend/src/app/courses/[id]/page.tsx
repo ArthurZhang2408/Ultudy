@@ -1085,9 +1085,23 @@ export default function CoursePage() {
                 {/* Tier 2 Chapter Sources */}
                 <div className="space-y-4">
                   {(() => {
-                    // Extract chapter number from chapter string (e.g., "Chapter 1" → 1)
-                    const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
-                    const chapterNum = chapterMatch ? parseInt(chapterMatch[1], 10) : null;
+                    // Extract chapter number from chapter string
+                    // Handle both "Chapter 1" format and plain "1" format
+                    let chapterNum: number | null = null;
+                    if (chapter === 'Uncategorized') {
+                      chapterNum = null;
+                    } else {
+                      const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
+                      if (chapterMatch) {
+                        chapterNum = parseInt(chapterMatch[1], 10);
+                      } else {
+                        // Try parsing directly as number (for plain "1", "2", etc.)
+                        const parsed = parseInt(chapter, 10);
+                        if (!isNaN(parsed)) {
+                          chapterNum = parsed;
+                        }
+                      }
+                    }
                     const sources = chapterNum ? chapterSources[chapterNum] : [];
 
                     // Only show section if there are tier 2 sources
