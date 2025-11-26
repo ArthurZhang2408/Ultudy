@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal, CustomSelect } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import { useTier } from '@/contexts/TierContext';
 import { useFetchChapterSources } from '@/lib/hooks/useFetchChapterSources';
@@ -956,6 +956,21 @@ export default function CoursePage() {
     }
   });
 
+  // Include chapters from tier 2 sources even if no tier 1 documents exist
+  Object.keys(chapterSources).forEach(chapterKey => {
+    // Convert tier 2 chapter key to chapter string format
+    let chapterStr: string;
+    if (chapterKey === 'uncategorized') {
+      chapterStr = 'Uncategorized';
+    } else {
+      chapterStr = String(chapterKey);
+    }
+
+    if (!documentsByChapter[chapterStr]) {
+      documentsByChapter[chapterStr] = [];
+    }
+  });
+
   const chapters = Object.keys(documentsByChapter).sort((a, b) => {
     if (a === 'Uncategorized') return 1;
     if (b === 'Uncategorized') return -1;
@@ -1182,24 +1197,25 @@ export default function CoursePage() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                               {/* Chapter Reassignment Dropdown */}
-                              <div className="flex flex-col gap-1">
-                                <label className="text-xs text-neutral-600 dark:text-neutral-400">Move to:</label>
-                                <select
-                                  value={source.chapterNumber ?? 'uncategorized'}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
+                              <div className="min-w-[160px]">
+                                <CustomSelect
+                                  label="Move to:"
+                                  value={String(source.chapterNumber ?? 'uncategorized')}
+                                  onChange={(value) => {
                                     const newChapter = value === 'uncategorized' ? null : parseInt(value, 10);
                                     handleReassignChapter(source.id, newChapter);
                                   }}
-                                  className="text-sm border border-neutral-300 dark:border-neutral-600 rounded-md px-2 py-1 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 hover:border-primary-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors"
-                                >
-                                  <option value="uncategorized">Uncategorized</option>
-                                  {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
-                                    <option key={num} value={num}>Chapter {num}</option>
-                                  ))}
-                                </select>
+                                  options={[
+                                    { value: 'uncategorized', label: 'Uncategorized' },
+                                    ...Array.from({ length: 20 }, (_, i) => i + 1).map((num) => ({
+                                      value: String(num),
+                                      label: `Chapter ${num}`
+                                    }))
+                                  ]}
+                                  dropdownDirection="up"
+                                />
                               </div>
                               <Button
                                 onClick={() => handleViewMarkdown(source.id, source.documentTitle, source.chapterTitle)}
