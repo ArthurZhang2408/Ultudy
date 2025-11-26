@@ -40,7 +40,7 @@ export default function BackgroundTasksBanner() {
   return (
     <div className="relative">
       {/* Compact Banner - Pushes content down */}
-      <div className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-900 dark:to-neutral-800 border-b border-blue-200 dark:border-neutral-700">
+      <div className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-900 dark:to-neutral-800 border-b border-blue-200 dark:border-neutral-700 z-50">
         <div className="max-w-full mx-auto px-4 py-2.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -123,13 +123,9 @@ export default function BackgroundTasksBanner() {
         </div>
       </div>
 
-      {/* Expanded Dropdown - Slides down from banner */}
-      <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          isExpanded ? 'max-h-[500px]' : 'max-h-0'
-        }`}
-      >
-        <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700 shadow-lg">
+      {/* Expanded Dropdown - Overlays on top */}
+      {isExpanded && (
+        <div className="absolute top-full left-0 right-0 z-[9999] bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700 shadow-lg animate-in slide-in-from-top-2 duration-200">
           <div className="max-w-full mx-auto px-4 py-4 max-h-[500px] overflow-y-auto">
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 text-sm">
@@ -184,7 +180,7 @@ export default function BackgroundTasksBanner() {
             )}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
