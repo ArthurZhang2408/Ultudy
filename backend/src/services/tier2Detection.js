@@ -131,8 +131,15 @@ Return markdown with this EXACT format:
 - Extract full content as clean markdown
 - Include image descriptions where images appear: ![Tree structure with 5 nodes: root(A) connects to B and C, B connects to D and E]
 - Preserve equations, tables, code examples
-- Ignore page numbers, footers, headers, references, dates
 - Use LaTeX for math: inline $x^2$ and display $$E=mc^2$$
+
+**CONTENT TO EXCLUDE:**
+- Course information (course codes like "ECE356", instructor names, semester/term like "Fall 2025", lecture dates)
+- References, bibliographies, acknowledgments sections
+- Page numbers, headers, footers
+- Copyright notices, publication details
+- Table of contents (if present)
+- Anything not directly educational content
 
 **For MULTI-CHAPTER:**
 Return ONLY a list of chapters (pipe-separated), one per line:

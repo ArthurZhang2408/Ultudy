@@ -147,11 +147,14 @@ For diagrams, charts, graphs:
 - Use arrays/tables if helpful
 
 **Content to Exclude:**
+- Course information (course codes like "ECE356", instructor names, semester/term like "Fall 2025", lecture dates)
+- References, bibliographies, acknowledgments sections
 - Page numbers, headers, footers
 - Chapter/section numbers that appear in margins
-- References to other chapters
-- Copyright notices
+- Copyright notices, publication details
 - Running headers
+- Table of contents (if present)
+- Anything not directly educational content
 
 **Formatting:**
 - Use # for chapter title (already provided above)
