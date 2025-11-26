@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 import { createPortal } from 'react-dom';
-import { CircularProgress } from './Progress';
 
 export default function BackgroundTasksBanner() {
   const { activeTasks, completedTasks, failedTasks, tasks, updateTask, removeTask, clearCompleted } = useBackgroundTasks();
@@ -27,70 +26,72 @@ export default function BackgroundTasksBanner() {
 
   const banner = (
     <>
-      {/* Compact Banner */}
-      <div className="fixed top-0 left-0 right-0 z-[9998] bg-primary-600 dark:bg-primary-700 text-white shadow-md">
-        <div className="max-w-full mx-auto px-3 py-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-2 flex-1 hover:opacity-90 transition-opacity text-left min-w-0"
-            >
+      {/* Compact Banner - Vercel-style */}
+      <div className="fixed top-0 left-0 right-0 z-[9998] bg-neutral-900 dark:bg-black border-b border-neutral-800 dark:border-neutral-900">
+        <div className="max-w-full mx-auto px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-1 min-w-0">
               {currentTask ? (
                 <>
+                  {/* Animated spinner */}
                   <div className="flex-shrink-0">
-                    <CircularProgress value={currentTask.progress} size={16} strokeWidth={2.5} className="text-white" />
+                    <svg className="animate-spin h-3.5 w-3.5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{currentTask.title}</p>
+                    <p className="text-xs text-neutral-300 dark:text-neutral-400 truncate">{currentTask.title}</p>
                   </div>
                   {remainingCount > 0 && (
-                    <span className="flex-shrink-0 px-1.5 py-0.5 text-xs bg-white/20 rounded">
+                    <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] bg-neutral-800 dark:bg-neutral-900 text-neutral-400 rounded">
                       +{remainingCount}
                     </span>
                   )}
                 </>
               ) : completedTasks.length > 0 ? (
                 <>
-                  <svg className="w-4 h-4 text-green-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <p className="text-xs text-neutral-300 dark:text-neutral-400 truncate">
                       {completedTasks.length} task{completedTasks.length !== 1 ? 's' : ''} completed
                     </p>
                   </div>
                 </>
               ) : failedTasks.length > 0 ? (
                 <>
-                  <svg className="w-4 h-4 text-red-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="w-3.5 h-3.5 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <p className="text-xs text-neutral-300 dark:text-neutral-400 truncate">
                       {failedTasks.length} task{failedTasks.length !== 1 ? 's' : ''} failed
                     </p>
                   </div>
                 </>
               ) : null}
-            </button>
+            </div>
 
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               {completedTasks.length > 0 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     clearCompleted();
                   }}
-                  className="px-2 py-0.5 text-xs bg-white/20 hover:bg-white/30 rounded transition-colors"
+                  className="px-2 py-0.5 text-[10px] text-neutral-400 hover:text-neutral-300 transition-colors"
                 >
                   Clear
                 </button>
               )}
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1 hover:bg-white/20 rounded transition-colors"
+                className="p-1 hover:bg-neutral-800 dark:hover:bg-neutral-900 rounded transition-colors"
+                aria-label={isExpanded ? 'Collapse tasks' : 'Expand tasks'}
               >
-                <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className={`w-3.5 h-3.5 text-neutral-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
@@ -101,34 +102,34 @@ export default function BackgroundTasksBanner() {
 
       {/* Expanded Modal */}
       {isExpanded && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-20">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-12">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
             onClick={() => setIsExpanded(false)}
           />
 
           {/* Modal */}
-          <div className="relative w-full max-w-2xl max-h-[80vh] bg-white dark:bg-neutral-900 rounded-lg shadow-2xl overflow-hidden flex flex-col mx-4">
+          <div className="relative w-full max-w-2xl max-h-[85vh] bg-neutral-900 dark:bg-black border border-neutral-800 dark:border-neutral-900 rounded-lg shadow-2xl overflow-hidden flex flex-col mx-4 animate-in slide-in-from-top-4 duration-200">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700">
-              <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-neutral-800 dark:border-neutral-900">
+              <h2 className="text-sm font-semibold text-neutral-200 dark:text-neutral-300">
                 Background Tasks
               </h2>
               <button
                 onClick={() => setIsExpanded(false)}
-                className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
+                className="p-1.5 hover:bg-neutral-800 dark:hover:bg-neutral-900 rounded transition-colors"
               >
-                <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             {/* Task List */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {tasks.length === 0 ? (
-                <div className="text-center py-12 text-neutral-500">
+                <div className="text-center py-16 text-neutral-500 text-sm">
                   No tasks
                 </div>
               ) : (
@@ -136,7 +137,7 @@ export default function BackgroundTasksBanner() {
                   {/* Active Tasks */}
                   {activeTasks.length > 0 && (
                     <div className="space-y-2">
-                      <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 uppercase tracking-wide">
+                      <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-600 uppercase tracking-wider px-1">
                         Active ({activeTasks.length})
                       </h3>
                       {activeTasks.map(task => (
@@ -147,8 +148,8 @@ export default function BackgroundTasksBanner() {
 
                   {/* Failed Tasks */}
                   {failedTasks.length > 0 && (
-                    <div className="space-y-2 mt-6">
-                      <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 uppercase tracking-wide">
+                    <div className="space-y-2">
+                      <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-600 uppercase tracking-wider px-1">
                         Failed ({failedTasks.length})
                       </h3>
                       {failedTasks.map(task => (
@@ -159,14 +160,14 @@ export default function BackgroundTasksBanner() {
 
                   {/* Completed Tasks */}
                   {completedTasks.length > 0 && (
-                    <div className="space-y-2 mt-6">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 uppercase tracking-wide">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <h3 className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-600 uppercase tracking-wider">
                           Completed ({completedTasks.length})
                         </h3>
                         <button
                           onClick={clearCompleted}
-                          className="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+                          className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
                         >
                           Clear all
                         </button>
@@ -194,22 +195,27 @@ function TaskCard({ task, onRemove }: { task: any; onRemove: (id: string) => voi
     switch (task.status) {
       case 'queued':
         return (
-          <svg className="w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         );
       case 'processing':
-        return <CircularProgress value={task.progress} size={20} strokeWidth={2.5} className="text-primary-600" />;
+        return (
+          <svg className="animate-spin h-4 w-4 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        );
       case 'completed':
         return (
-          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         );
       case 'failed':
         return (
-          <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         );
     }
@@ -217,29 +223,24 @@ function TaskCard({ task, onRemove }: { task: any; onRemove: (id: string) => voi
 
   const getStatusColor = () => {
     switch (task.status) {
-      case 'queued': return 'border-neutral-200 dark:border-neutral-700';
-      case 'processing': return 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950';
-      case 'completed': return 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950';
-      case 'failed': return 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950';
+      case 'queued': return 'bg-neutral-800 dark:bg-neutral-950 border-neutral-700 dark:border-neutral-800';
+      case 'processing': return 'bg-neutral-800 dark:bg-neutral-950 border-blue-900/50';
+      case 'completed': return 'bg-neutral-800 dark:bg-neutral-950 border-green-900/50';
+      case 'failed': return 'bg-neutral-800 dark:bg-neutral-950 border-red-900/50';
     }
   };
 
   return (
-    <div className={`flex items-start gap-3 p-4 border rounded-lg ${getStatusColor()} transition-colors`}>
-      <div className="flex-shrink-0 mt-0.5">
+    <div className={`flex items-center gap-2.5 p-3 border rounded-lg ${getStatusColor()} transition-all duration-150`}>
+      <div className="flex-shrink-0">
         {getStatusIcon()}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
+        <p className="text-xs text-neutral-300 dark:text-neutral-400 truncate">
           {task.title}
         </p>
-        {task.status === 'processing' && (
-          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-            {task.progress}% complete
-          </p>
-        )}
         {task.status === 'failed' && task.error && (
-          <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+          <p className="text-[10px] text-red-400 mt-0.5 truncate">
             {task.error}
           </p>
         )}
@@ -247,10 +248,10 @@ function TaskCard({ task, onRemove }: { task: any; onRemove: (id: string) => voi
       {(task.status === 'completed' || task.status === 'failed') && (
         <button
           onClick={() => onRemove(task.id)}
-          className="flex-shrink-0 p-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+          className="flex-shrink-0 p-1 hover:bg-neutral-700 dark:hover:bg-neutral-900 rounded transition-colors"
           title="Remove task"
         >
-          <svg className="w-4 h-4 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3.5 h-3.5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>

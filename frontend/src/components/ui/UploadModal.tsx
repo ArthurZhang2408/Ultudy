@@ -155,11 +155,14 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
           });
         },
         onComplete: (job: Job) => {
+          console.log('[UploadModal] Job completed:', job);
+
           updateTask(job_id, {
             status: 'completed',
             progress: 100,
             completedAt: new Date().toISOString()
           });
+
           // Refresh the page to show new content
           router.refresh();
         },
@@ -179,13 +182,11 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       setIsUploading(false);
       onClose();
 
-      // Redirect to course page with job_id for proper handling
+      // If not on course page, redirect there
       if (!window.location.pathname.includes(`/courses/${courseId}`)) {
-        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
-      } else {
-        // Already on course page, add job_id to URL
-        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+        router.push(`/courses/${courseId}`);
       }
+      // If already on course page, just stay (banner will show progress)
     } catch (err) {
       console.error('[UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');

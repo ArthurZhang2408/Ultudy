@@ -153,13 +153,23 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
           });
         },
         onComplete: (job: Job) => {
+          console.log('[Tier2UploadModal] Job completed:', job);
+
           updateTask(job_id, {
             status: 'completed',
             progress: 100,
             completedAt: new Date().toISOString()
           });
-          // Refresh the page to show new content
-          router.refresh();
+
+          // Check if multi-chapter and needs chapter selection
+          if (job.result?.type === 'multi_chapter' && job.result?.chapters) {
+            console.log('[Tier2UploadModal] Multi-chapter detected, redirecting to course page for selection');
+            // Redirect to course page with job_id so it can handle chapter selection
+            router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+          } else {
+            // Single chapter or direct extraction - just refresh
+            router.refresh();
+          }
         },
         onError: (error: string) => {
           updateTask(job_id, {
@@ -176,13 +186,11 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
       setIsUploading(false);
       onClose();
 
-      // Redirect to course page with job_id so it can handle multi-chapter uploads
+      // If not on course page, redirect there
       if (!window.location.pathname.includes(`/courses/${courseId}`)) {
-        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
-      } else {
-        // Already on course page, add job_id to URL
-        router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+        router.push(`/courses/${courseId}`);
       }
+      // If already on course page, just stay (banner will show progress)
     } catch (err) {
       console.error('[Tier2UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
