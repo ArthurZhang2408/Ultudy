@@ -117,6 +117,7 @@ export default function CoursePage() {
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
+  const processedTasksRef = useRef<Set<string>>(new Set()); // Track processed task IDs
 
   useEffect(() => {
     if (courseId) {
@@ -211,10 +212,18 @@ export default function CoursePage() {
       task.status === 'completed'
     );
 
-    if (tier2Tasks.length > 0) {
-      console.log('[courses] Tier 2 task completed, refetching chapter sources and course data');
+    // Only process newly completed tasks (ones we haven't seen before)
+    const newlyCompletedTasks = tier2Tasks.filter(task => !processedTasksRef.current.has(task.id));
+
+    if (newlyCompletedTasks.length > 0) {
+      console.log('[courses] Tier 2 task(s) completed:', newlyCompletedTasks.map(t => t.id));
+
+      // Mark these tasks as processed
+      newlyCompletedTasks.forEach(task => processedTasksRef.current.add(task.id));
+
+      // Refresh data
       refetchChapterSources();
-      fetchCourseData(); // Also refresh documents
+      fetchCourseData();
     }
   }, [tasks, courseId, refetchChapterSources]);
 
