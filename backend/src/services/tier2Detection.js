@@ -7,6 +7,7 @@
  */
 
 import { createGeminiVisionProvider } from '../providers/llm/gemini_vision.js';
+import { cleanExtractedMarkdown } from './markdownCleaner.js';
 
 /**
  * Parse single chapter response from LLM
@@ -38,10 +39,13 @@ function parseSingleChapterMarkdown(markdown) {
         const contentLines = lines.slice(i + 1);
         const content = contentLines.join('\n').trim();
 
+        // Clean the markdown to remove metadata
+        const cleanedContent = cleanExtractedMarkdown(content);
+
         return {
           chapterNumber,
           chapterTitle,
-          markdown: content
+          markdown: cleanedContent
         };
       }
     }

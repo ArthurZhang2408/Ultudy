@@ -295,6 +295,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                         onClick={(e) => {
                           e.stopPropagation();
                           setFile(null);
+                          setTitle(''); // Clear title so next file can auto-fill
                         }}
                       >
                         Remove file

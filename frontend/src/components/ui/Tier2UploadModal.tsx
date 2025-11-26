@@ -292,6 +292,7 @@ export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId 
                         onClick={(e) => {
                           e.stopPropagation();
                           setFile(null);
+                          setTitle(''); // Clear title so next file can auto-fill
                         }}
                       >
                         Remove file

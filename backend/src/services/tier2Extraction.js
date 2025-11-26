@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { cleanExtractedMarkdown } from './markdownCleaner.js';
 
 /**
  * Parse single chapter markdown response
@@ -39,10 +40,13 @@ function parseChapterMarkdown(markdown) {
         const contentLines = lines.slice(i + 1);
         const content = contentLines.join('\n').trim();
 
+        // Clean the markdown to remove metadata
+        const cleanedContent = cleanExtractedMarkdown(content);
+
         return {
           chapterNumber,
           chapterTitle,
-          markdown: content
+          markdown: cleanedContent
         };
       }
     }
