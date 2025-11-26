@@ -202,14 +202,19 @@ export default function CoursePage() {
     };
   }, [searchParams]);
 
-  // Auto-refresh chapter sources when extraction tasks complete
+  // Auto-refresh chapter sources when tier 2 tasks complete (uploads or extractions)
   useEffect(() => {
-    const extractionTasks = tasks.filter(task => task.type === 'extraction' && task.courseId === courseId);
-    const justCompletedExtractions = extractionTasks.filter(task => task.status === 'completed');
+    // Watch for both upload and extraction tasks for this course
+    const tier2Tasks = tasks.filter(task =>
+      (task.type === 'extraction' || task.type === 'upload') &&
+      task.courseId === courseId &&
+      task.status === 'completed'
+    );
 
-    if (justCompletedExtractions.length > 0) {
-      console.log('[courses] Extraction task completed, refetching chapter sources');
+    if (tier2Tasks.length > 0) {
+      console.log('[courses] Tier 2 task completed, refetching chapter sources and course data');
       refetchChapterSources();
+      fetchCourseData(); // Also refresh documents
     }
   }, [tasks, courseId, refetchChapterSources]);
 
