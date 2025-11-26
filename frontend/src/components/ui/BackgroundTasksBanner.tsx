@@ -23,13 +23,36 @@ export default function BackgroundTasksBanner() {
   const currentTask = activeTasks[0];
   const remainingCount = activeTasks.length - 1;
 
-  // Status messages
+  // Status messages with granular progress stages
   const getDetailedStatus = (task: any) => {
     if (task.status === 'queued') return 'Queued';
     if (task.status === 'processing') {
-      if (task.type === 'upload') return 'Extracting';
-      if (task.type === 'lesson') return 'Generating';
-      if (task.type === 'extraction') return 'Extracting';
+      const progress = task.progress || 0;
+
+      if (task.type === 'upload') {
+        // Tier 2 upload stages based on actual backend progress
+        if (progress < 20) return 'Uploading to storage';
+        if (progress < 50) return 'Analyzing document';
+        if (progress < 100) return 'Extracting content';
+        return 'Extracting';
+      }
+
+      if (task.type === 'extraction') {
+        // Chapter extraction stages
+        if (progress < 30) return 'Preparing extraction';
+        if (progress < 70) return 'Extracting chapters';
+        if (progress < 100) return 'Saving content';
+        return 'Extracting';
+      }
+
+      if (task.type === 'lesson') {
+        // Lesson generation stages
+        if (progress < 30) return 'Analyzing content';
+        if (progress < 70) return 'Generating concepts';
+        if (progress < 100) return 'Finalizing lesson';
+        return 'Generating';
+      }
+
       return 'Processing';
     }
     if (task.status === 'completed') return 'Completed';
@@ -56,6 +79,11 @@ export default function BackgroundTasksBanner() {
                   <div className="flex-1 min-w-0 flex items-center gap-2">
                     <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
                       {getDetailedStatus(currentTask)}
+                      {currentTask.status === 'processing' && currentTask.progress > 0 && (
+                        <span className="ml-1 text-blue-600 dark:text-blue-400">
+                          {currentTask.progress}%
+                        </span>
+                      )}
                     </span>
                     <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
                       {currentTask.title}
@@ -234,6 +262,11 @@ function TaskCard({ task, onRemove, getDetailedStatus }: { task: any; onRemove: 
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
             {getDetailedStatus(task)}
+            {task.status === 'processing' && task.progress > 0 && (
+              <span className="ml-1 text-blue-600 dark:text-blue-400">
+                {task.progress}%
+              </span>
+            )}
           </span>
           <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
             {task.title}
