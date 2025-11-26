@@ -38,10 +38,10 @@ export default function BackgroundTasksBanner() {
   };
 
   return (
-    <div className="relative">
-      {/* Compact Banner - Pushes content down */}
-      <div className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-900 dark:to-neutral-800 border-b border-blue-200 dark:border-neutral-700 z-50">
-        <div className="max-w-full mx-auto px-4 py-2.5">
+    <div className="relative mb-4">
+      {/* Compact Banner - Capsule Shape */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-neutral-800 dark:to-neutral-700 border border-blue-200/60 dark:border-neutral-600/50 rounded-full shadow-sm">
+        <div className="px-5 py-2.5">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {currentTask ? (
@@ -54,15 +54,15 @@ export default function BackgroundTasksBanner() {
                     </svg>
                   </div>
                   <div className="flex-1 min-w-0 flex items-center gap-2">
-                    <span className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                    <span className="text-xs font-semibold text-blue-700 dark:text-blue-300">
                       {getDetailedStatus(currentTask)}
                     </span>
-                    <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
+                    <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
                       {currentTask.title}
                     </span>
                   </div>
                   {remainingCount > 0 && (
-                    <span className="flex-shrink-0 px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">
+                    <span className="flex-shrink-0 px-2.5 py-0.5 text-xs font-semibold bg-blue-600 dark:bg-blue-500 text-white rounded-full">
                       +{remainingCount}
                     </span>
                   )}
@@ -73,7 +73,7 @@ export default function BackgroundTasksBanner() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                    <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
                       {completedTasks.length} task{completedTasks.length !== 1 ? 's' : ''} completed
                     </span>
                   </div>
@@ -84,7 +84,7 @@ export default function BackgroundTasksBanner() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                    <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
                       {failedTasks.length} task{failedTasks.length !== 1 ? 's' : ''} failed
                     </span>
                   </div>
@@ -99,18 +99,18 @@ export default function BackgroundTasksBanner() {
                     e.stopPropagation();
                     clearCompleted();
                   }}
-                  className="px-2 py-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+                  className="px-2.5 py-1 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-neutral-200/50 dark:hover:bg-neutral-600/30 rounded-full transition-colors"
                 >
                   Clear
                 </button>
               )}
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 hover:bg-blue-100 dark:hover:bg-neutral-700 rounded-md transition-colors"
+                className="p-1.5 hover:bg-blue-200/50 dark:hover:bg-neutral-600/50 rounded-full transition-colors"
                 aria-label={isExpanded ? 'Collapse tasks' : 'Expand tasks'}
               >
                 <svg
-                  className={`w-4 h-4 text-neutral-600 dark:text-neutral-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-neutral-600 dark:text-neutral-300 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -123,10 +123,10 @@ export default function BackgroundTasksBanner() {
         </div>
       </div>
 
-      {/* Expanded Dropdown - Overlays on top */}
+      {/* Expanded Dropdown - Capsule Shape */}
       {isExpanded && (
-        <div className="absolute top-full left-0 right-0 z-[9999] bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-700 shadow-lg animate-in slide-in-from-top-2 duration-200">
-          <div className="max-w-full mx-auto px-4 py-4 max-h-[500px] overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-2 z-[9999] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600 rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200">
+          <div className="px-5 py-4 max-h-[500px] overflow-y-auto">
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-neutral-500 dark:text-neutral-400 text-sm">
                 No tasks
@@ -218,24 +218,24 @@ function TaskCard({ task, onRemove, getDetailedStatus }: { task: any; onRemove: 
 
   const getStatusColor = () => {
     switch (task.status) {
-      case 'queued': return 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700';
-      case 'processing': return 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/50';
-      case 'completed': return 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900/50';
-      case 'failed': return 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/50';
+      case 'queued': return 'bg-neutral-50 dark:bg-neutral-750 border-neutral-200/60 dark:border-neutral-600/40';
+      case 'processing': return 'bg-blue-50 dark:bg-blue-950/30 border-blue-200/60 dark:border-blue-800/40';
+      case 'completed': return 'bg-green-50 dark:bg-green-950/30 border-green-200/60 dark:border-green-800/40';
+      case 'failed': return 'bg-red-50 dark:bg-red-950/30 border-red-200/60 dark:border-red-800/40';
     }
   };
 
   return (
-    <div className={`flex items-center gap-3 p-3 border rounded-lg ${getStatusColor()} transition-all duration-150`}>
+    <div className={`flex items-center gap-3 px-4 py-2.5 border rounded-full ${getStatusColor()} transition-all duration-150`}>
       <div className="flex-shrink-0">
         {getStatusIcon()}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
+          <span className="text-xs font-semibold text-neutral-900 dark:text-neutral-100">
             {getDetailedStatus(task)}
           </span>
-          <span className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
+          <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
             {task.title}
           </span>
         </div>
@@ -248,7 +248,7 @@ function TaskCard({ task, onRemove, getDetailedStatus }: { task: any; onRemove: 
       {(task.status === 'completed' || task.status === 'failed') && (
         <button
           onClick={() => onRemove(task.id)}
-          className="flex-shrink-0 p-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors"
+          className="flex-shrink-0 p-1.5 hover:bg-neutral-200/60 dark:hover:bg-neutral-600/40 rounded-full transition-colors"
           title="Remove task"
         >
           <svg className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

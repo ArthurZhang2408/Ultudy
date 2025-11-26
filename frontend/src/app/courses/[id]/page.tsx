@@ -86,7 +86,7 @@ export default function CoursePage() {
   const { tierData, isTier } = useTier();
   const { chapterSources, refetch: refetchChapterSources } = useFetchChapterSources(courseId);
   const { getToken } = useAuth();
-  const { addTask, updateTask } = useBackgroundTasks();
+  const { addTask, updateTask, tasks } = useBackgroundTasks();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,6 +201,17 @@ export default function CoursePage() {
       pollingJobsRef.current.delete(uploadJobId);
     };
   }, [searchParams]);
+
+  // Auto-refresh chapter sources when extraction tasks complete
+  useEffect(() => {
+    const extractionTasks = tasks.filter(task => task.type === 'extraction' && task.courseId === courseId);
+    const justCompletedExtractions = extractionTasks.filter(task => task.status === 'completed');
+
+    if (justCompletedExtractions.length > 0) {
+      console.log('[courses] Extraction task completed, refetching chapter sources');
+      refetchChapterSources();
+    }
+  }, [tasks, courseId, refetchChapterSources]);
 
   // Calculate how many placeholder squares fit in one row dynamically
   useEffect(() => {
