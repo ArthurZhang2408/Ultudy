@@ -18,9 +18,9 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
   const [viewMode, setViewMode] = useState<'raw' | 'rendered'>('rendered');
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full max-h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 flex-shrink-0">
         <div className="flex items-center gap-4">
           {title && (
             <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
@@ -67,7 +67,7 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 min-h-0">
         {viewMode === 'raw' ? (
           <pre className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words">
             <code className="text-sm text-neutral-800 dark:text-neutral-200 font-mono">
@@ -75,7 +75,7 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
             </code>
           </pre>
         ) : (
-          <div className="prose prose-neutral dark:prose-invert max-w-none overflow-x-auto">
+          <div className="prose prose-neutral dark:prose-invert max-w-none">
             <ReactMarkdown
               remarkPlugins={[remarkMath, remarkGfm]}
               rehypePlugins={[rehypeKatex, rehypeSanitize]}
