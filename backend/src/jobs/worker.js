@@ -46,8 +46,13 @@ export function setupWorkers(options = {}) {
   // Initialize storage service (uses S3 if configured, otherwise local filesystem)
   const storageService = new StorageService({ storageDir });
 
+  const STARTUP_TIME = new Date().toISOString();
+  const RAILWAY_DEPLOYMENT_ID = process.env.RAILWAY_DEPLOYMENT_ID || 'local';
+
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
   console.log(`║  WORKER STARTING: ${WORKER_ID.padEnd(35)}║`);
+  console.log(`║  Deployment: ${RAILWAY_DEPLOYMENT_ID.substring(0, 44).padEnd(44)}║`);
+  console.log(`║  Started at: ${STARTUP_TIME.padEnd(44)}║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
   console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
