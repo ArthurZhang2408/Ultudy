@@ -147,14 +147,12 @@ For diagrams, charts, graphs:
 - Use arrays/tables if helpful
 
 **Content to Exclude:**
-- Course information (course codes like "ECE356", instructor names, semester/term like "Fall 2025", lecture dates)
-- References, bibliographies, acknowledgments sections
-- Page numbers, headers, footers
-- Chapter/section numbers that appear in margins
-- Copyright notices, publication details
-- Running headers
-- Table of contents (if present)
-- Anything not directly educational content
+- **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names (e.g., "Jeff Zarnett"), semester/term (e.g., "Fall 2025"), lecture dates/times (e.g., "2023-09-12"), university names
+- **References & Citations:** Bibliographies, reference lists, "References" sections (e.g., "[SKS11] Abraham Silberschatz..."), citation lists, "Further Reading" sections
+- **Non-content elements:** Page numbers, headers, footers, running headers, margin notes, chapter/section numbers in margins
+- **Administrative:** Copyright notices, ISBN numbers, publication details, acknowledgments, prefaces, author information
+- **Navigation:** Table of contents sections
+- **Anything not directly educational content**
 
 **Formatting:**
 - Use # for chapter title (already provided above)
@@ -175,7 +173,13 @@ For diagrams, charts, graphs:
 
 Start with: # Chapter_${chapterNumber}: ${chapterTitle}
 
-Then extract all content with proper formatting, replacing images with descriptions.`;
+Then extract all content with proper formatting, replacing images with descriptions.
+
+**IMPORTANT - EXCLUDE:**
+- Course metadata (course codes, instructor names, dates like "Fall 2025" or "2023-09-12")
+- References/bibliographies sections at the end
+- Page numbers, headers, footers
+- Any non-educational administrative content`;
 
     console.log('[tier2Extraction] Calling Gemini Vision API...');
 

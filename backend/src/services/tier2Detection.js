@@ -134,12 +134,12 @@ Return markdown with this EXACT format:
 - Use LaTeX for math: inline $x^2$ and display $$E=mc^2$$
 
 **CONTENT TO EXCLUDE:**
-- Course information (course codes like "ECE356", instructor names, semester/term like "Fall 2025", lecture dates)
-- References, bibliographies, acknowledgments sections
-- Page numbers, headers, footers
-- Copyright notices, publication details
-- Table of contents (if present)
-- Anything not directly educational content
+- **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names, semester/term (e.g., "Fall 2025"), lecture dates/times, university names
+- **References & Citations:** Bibliographies, reference lists, "References" sections, citation lists, "Further Reading" sections
+- **Non-content elements:** Page numbers, headers, footers, running headers, margin notes
+- **Administrative:** Copyright notices, ISBN numbers, publication details, acknowledgments, prefaces
+- **Navigation:** Table of contents sections
+- **Anything not directly educational content**
 
 **For MULTI-CHAPTER:**
 Return ONLY a list of chapters (pipe-separated), one per line:
@@ -166,6 +166,7 @@ If SINGLE CHAPTER:
 - Include all content with proper formatting
 - Replace images with detailed descriptions
 - Use LaTeX for equations
+- **EXCLUDE:** course metadata (codes, instructors, dates), references/bibliographies, page numbers, headers/footers
 
 If MULTI-CHAPTER:
 - List all chapters as: number|title|pageStart|pageEnd
