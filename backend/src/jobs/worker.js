@@ -48,11 +48,17 @@ export function setupWorkers(options = {}) {
 
   const STARTUP_TIME = new Date().toISOString();
   const RAILWAY_DEPLOYMENT_ID = process.env.RAILWAY_DEPLOYMENT_ID || 'local';
+  const RAILWAY_ENVIRONMENT = process.env.RAILWAY_ENVIRONMENT || 'local';
 
   console.log(`\n╔════════════════════════════════════════════════════════╗`);
-  console.log(`║  WORKER STARTING: ${WORKER_ID.padEnd(35)}║`);
+  console.log(`║  🚨 WORKER STARTING - SEARCH FOR THIS MESSAGE 🚨      ║`);
+  console.log(`║  Environment: ${RAILWAY_ENVIRONMENT.padEnd(44)}║`);
   console.log(`║  Deployment: ${RAILWAY_DEPLOYMENT_ID.substring(0, 44).padEnd(44)}║`);
+  console.log(`║  Worker ID: ${WORKER_ID.padEnd(46)}║`);
   console.log(`║  Started at: ${STARTUP_TIME.padEnd(44)}║`);
+  console.log(`║                                                        ║`);
+  console.log(`║  ⚠️  IF YOU SEE MULTIPLE WORKERS, YOU HAVE A PROBLEM   ║`);
+  console.log(`║  ⚠️  Only ONE worker should be running per environment ║`);
   console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
   console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
