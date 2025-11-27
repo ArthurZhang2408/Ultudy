@@ -18,11 +18,6 @@ import { StorageService } from '../../lib/storage.js';
 export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService }) {
   const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
-  // Generate unique process identifier to track which backend instance handles this job
-  const PROCESS_ID = `${process.env.RAILWAY_ENVIRONMENT || 'local'}-${process.env.RAILWAY_DEPLOYMENT_ID?.substring(0, 8) || 'dev'}-${process.pid}`;
-
-  console.log(`[Tier2UploadProcessor] ═══════════════════════════════════════`);
-  console.log(`[Tier2UploadProcessor] 🔍 PROCESS ID: ${PROCESS_ID}`);
   console.log(`[Tier2UploadProcessor] Starting tier 2 job ${jobId} for document ${documentId}`);
   console.log(`[Tier2UploadProcessor] Metadata: course=${courseId}, type=${materialType}`);
 
@@ -109,8 +104,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
       // Update progress: 100% - Complete
       await jobTracker.updateProgress(ownerId, jobId, 100);
 
-      console.log(`[Tier2UploadProcessor] ✅ Single chapter job ${jobId} complete (Tier 2 processing)`);
-      console.log(`[Tier2UploadProcessor] 🔍 Processed by: ${PROCESS_ID}`);
+      console.log(`[Tier2UploadProcessor] ✅ Single chapter job ${jobId} complete`);
 
       // Mark job as completed
       await jobTracker.completeJob(ownerId, jobId, {
@@ -119,9 +113,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         type: 'single_chapter',
         chapter_number: detection.chapterNumber,
         chapter_title: detection.chapterTitle,
-        course_id: courseId,
-        processed_by: PROCESS_ID,
-        processor_type: 'tier2'
+        course_id: courseId
       });
 
       return {
@@ -131,8 +123,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         chapter: {
           number: detection.chapterNumber,
           title: detection.chapterTitle
-        },
-        processed_by: PROCESS_ID
+        }
       };
     } else {
       // Multi-chapter detected
@@ -190,8 +181,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         // Update progress: 100% - Complete
         await jobTracker.updateProgress(ownerId, jobId, 100);
 
-        console.log(`[Tier2UploadProcessor] ✅ Single chapter (from multi-detection) job ${jobId} complete (Tier 2 processing)`);
-        console.log(`[Tier2UploadProcessor] 🔍 Processed by: ${PROCESS_ID}`);
+        console.log(`[Tier2UploadProcessor] ✅ Single chapter (from multi-detection) job ${jobId} complete`);
 
         // Mark job as completed
         await jobTracker.completeJob(ownerId, jobId, {
@@ -200,9 +190,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
           type: 'single_chapter',
           chapter_number: singleChapter.number,
           chapter_title: singleChapter.title,
-          course_id: courseId,
-          processed_by: PROCESS_ID,
-          processor_type: 'tier2'
+          course_id: courseId
         });
 
         return {
@@ -212,8 +200,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
           chapter: {
             number: singleChapter.number,
             title: singleChapter.title
-          },
-          processed_by: PROCESS_ID
+          }
         };
       }
 
@@ -232,8 +219,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
       // Update progress: 100% - Detection complete, waiting for user
       await jobTracker.updateProgress(ownerId, jobId, 100);
 
-      console.log(`[Tier2UploadProcessor] ✅ Multi-chapter detection job ${jobId} complete (Tier 2 processing)`);
-      console.log(`[Tier2UploadProcessor] 🔍 Processed by: ${PROCESS_ID}`);
+      console.log(`[Tier2UploadProcessor] ✅ Multi-chapter detection job ${jobId} complete`);
 
       // Mark job as completed with detection results
       await jobTracker.completeJob(ownerId, jobId, {
@@ -243,9 +229,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         chapters: detection.chapters,
         course_id: courseId,
         storage_key: storageKey || pdfPath, // Need this for later extraction
-        awaiting_user_selection: true,
-        processed_by: PROCESS_ID,
-        processor_type: 'tier2'
+        awaiting_user_selection: true
       });
 
       return {
@@ -253,8 +237,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         title: documentTitle,
         type: 'multi_chapter',
         chapters: detection.chapters,
-        storage_key: storageKey || pdfPath,
-        processed_by: PROCESS_ID
+        storage_key: storageKey || pdfPath
       };
     }
   } catch (error) {

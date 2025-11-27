@@ -46,30 +46,12 @@ export function setupWorkers(options = {}) {
   // Initialize storage service (uses S3 if configured, otherwise local filesystem)
   const storageService = new StorageService({ storageDir });
 
-  const STARTUP_TIME = new Date().toISOString();
-  const RAILWAY_DEPLOYMENT_ID = process.env.RAILWAY_DEPLOYMENT_ID || 'local';
-  const RAILWAY_ENVIRONMENT = process.env.RAILWAY_ENVIRONMENT || 'local';
-
-  console.log(`\n╔════════════════════════════════════════════════════════╗`);
-  console.log(`║  🚨 WORKER STARTING - SEARCH FOR THIS MESSAGE 🚨      ║`);
-  console.log(`║  Environment: ${RAILWAY_ENVIRONMENT.padEnd(44)}║`);
-  console.log(`║  Deployment: ${RAILWAY_DEPLOYMENT_ID.substring(0, 44).padEnd(44)}║`);
-  console.log(`║  Worker ID: ${WORKER_ID.padEnd(46)}║`);
-  console.log(`║  Started at: ${STARTUP_TIME.padEnd(44)}║`);
-  console.log(`║                                                        ║`);
-  console.log(`║  ⚠️  IF YOU SEE MULTIPLE WORKERS, YOU HAVE A PROBLEM   ║`);
-  console.log(`║  ⚠️  Only ONE worker should be running per environment ║`);
-  console.log(`╚════════════════════════════════════════════════════════╝\n`);
   console.log(`[Worker:${WORKER_ID}] Initializing job processors...`);
   console.log(`[Worker:${WORKER_ID}] Storage backend: ${storageService.getType()}`);
 
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
-    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`[Worker:${WORKER_ID}] ▶ PICKED UP UPLOAD JOB ${job.id}`);
-    console.log(`[Worker:${WORKER_ID}] Deployment: ${RAILWAY_DEPLOYMENT_ID.substring(0, 30)}...`);
-    console.log(`[Worker:${WORKER_ID}] Job data:`, JSON.stringify(job.data, null, 2));
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`\n[Worker:${WORKER_ID}] ▶ Picked up upload job ${job.id}`);
     return await processUploadJob(job, {
       tenantHelpers,
       jobTracker,

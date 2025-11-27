@@ -13,7 +13,7 @@ import subscriptionsRouter from './routes/subscriptions.js';
 import chaptersRouter from './routes/chapters.js';
 import tier2Router from './routes/tier2.js';
 import setupWorkers from './jobs/worker.js';
-import { uploadQueue, lessonQueue, queueInfo } from './jobs/queue.js';
+import { uploadQueue, lessonQueue } from './jobs/queue.js';
 import { createJobTracker } from './jobs/tracking.js';
 import { checkRateLimit } from './jobs/ratelimit.js';
 
@@ -160,8 +160,7 @@ export function createApp(options = {}) {
         extractOptions: options.extractOptions,
         tenantHelpers,
         jobTracker,
-        uploadQueue,
-        queueInfo
+        uploadQueue
       })
     );
 

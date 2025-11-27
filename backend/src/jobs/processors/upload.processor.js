@@ -55,11 +55,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
   // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
   const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
-  // Generate unique process identifier to track which backend instance handles this job
-  const PROCESS_ID = `${process.env.RAILWAY_ENVIRONMENT || 'local'}-${process.env.RAILWAY_DEPLOYMENT_ID?.substring(0, 8) || 'dev'}-${process.pid}`;
-
   console.log(`[UploadProcessor] ═══════════════════════════════════════`);
-  console.log(`[UploadProcessor] 🔍 PROCESS ID: ${PROCESS_ID}`);
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
   console.log(`[UploadProcessor] Owner ID: ${ownerId}`);
   console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
@@ -167,8 +163,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       }
     });
 
-    console.log(`[UploadProcessor] ✅ Job ${jobId} complete (Tier 1 processing)`);
-    console.log(`[UploadProcessor] 🔍 Processed by: ${PROCESS_ID}`);
+    console.log(`[UploadProcessor] ✅ Job ${jobId} complete`);
 
     // Mark job as completed
     await jobTracker.completeJob(ownerId, jobId, {
@@ -178,8 +173,6 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       course_id: courseId,
       chapter: chapter,
       material_type: materialType,
-      processed_by: PROCESS_ID,
-      processor_type: 'tier1',
       sections: extraction.sections.map((s, i) => ({
         section_number: i + 1,
         name: s.name,
@@ -193,8 +186,7 @@ export async function processUploadJob(job, { tenantHelpers, jobTracker, storage
       title: documentTitle,
       section_count: extraction.sections.length,
       course_id: courseId,
-      chapter: chapter,
-      processed_by: PROCESS_ID
+      chapter: chapter
     };
   } catch (error) {
     console.error(`[UploadProcessor] ❌ Job ${jobId} failed:`, error);

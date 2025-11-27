@@ -36,15 +36,6 @@ export default function createUploadRouter(options = {}) {
       const materialType = req.body.material_type || null;
       const title = req.body.title || null;
 
-      // Log backend instance info at request start
-      const DEPLOYMENT_ID = process.env.RAILWAY_DEPLOYMENT_ID?.substring(0, 8) || 'dev';
-      const ENVIRONMENT = process.env.RAILWAY_ENVIRONMENT || 'local';
-      const QUEUE_TYPE = options.queueInfo?.type || 'UNKNOWN';
-
-      console.log('[upload/pdf-structured] ╔════════════════════════════════════════════════════════╗');
-      console.log(`[upload/pdf-structured] ║ BACKEND: ${ENVIRONMENT}-${DEPLOYMENT_ID}`.padEnd(60) + '║');
-      console.log(`[upload/pdf-structured] ║ QUEUE: ${QUEUE_TYPE}`.padEnd(60) + '║');
-      console.log('[upload/pdf-structured] ╚════════════════════════════════════════════════════════╝');
       console.log('[upload/pdf-structured] Upload initiated');
       console.log('[upload/pdf-structured] User ID:', ownerId);
       console.log('[upload/pdf-structured] Document ID:', documentId);
@@ -94,10 +85,7 @@ export default function createUploadRouter(options = {}) {
         title
       });
 
-      // Log queue type to identify mock vs real queue
-      const queueType = options.queueInfo?.type || (options.uploadQueue.name === 'upload-processing' && !options.uploadQueue.client ? 'MOCK' : 'REDIS');
       console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId}`);
-      console.log(`[upload/pdf-structured] 🔧 Queue type: ${queueType}`);
 
       // Track PDF upload for usage limits
       await trackPdfUpload(ownerId, estimatedPages);
