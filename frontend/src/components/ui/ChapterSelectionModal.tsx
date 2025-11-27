@@ -7,6 +7,7 @@ import { Button } from '@/components/ui';
 import { useAuth } from '@clerk/nextjs';
 import { getBackendUrl } from '@/lib/api';
 import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
+import { pollMultipleJobs } from '@/lib/jobs';
 
 interface Chapter {
   number: number;
@@ -158,8 +159,36 @@ export default function ChapterSelectionModal({
             });
           });
 
-          // Refresh the page to show new chapter sources when all complete
-          // (The background tasks will trigger refresh automatically via useEffect in course page)
+          // Poll all chapter jobs for status updates
+          const jobIds = result.jobs.map((job: any) => job.jobId);
+          const stopPolling = pollMultipleJobs(jobIds, {
+            interval: 2000, // Poll every 2 seconds
+            onProgress: (jobId, job) => {
+              updateTask(jobId, {
+                status: job.status,
+                progress: job.progress
+              });
+            },
+            onComplete: (jobId, job) => {
+              updateTask(jobId, {
+                status: 'completed',
+                progress: 100,
+                completedAt: new Date().toISOString()
+              });
+              // Refresh to show this individual chapter immediately
+              router.refresh();
+            },
+            onError: (jobId, error) => {
+              updateTask(jobId, {
+                status: 'failed',
+                error
+              });
+            },
+            onAllComplete: () => {
+              // Final refresh when all chapters are done
+              router.refresh();
+            }
+          });
         } catch (err) {
           console.error('[ChapterSelectionModal] Error:', err);
 

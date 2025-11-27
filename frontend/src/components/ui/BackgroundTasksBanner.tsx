@@ -254,7 +254,7 @@ function TaskCard({ task, onRemove, getDetailedStatus }: { task: any; onRemove: 
 
   const getStatusColor = () => {
     switch (task.status) {
-      case 'queued': return 'bg-neutral-50 dark:bg-neutral-750 border-neutral-200/60 dark:border-neutral-600/40';
+      case 'queued': return 'bg-neutral-50 dark:bg-neutral-700 border-neutral-200/60 dark:border-neutral-600/40';
       case 'processing': return 'bg-blue-50 dark:bg-blue-950/30 border-blue-200/60 dark:border-blue-800/40';
       case 'completed': return 'bg-green-50 dark:bg-green-950/30 border-green-200/60 dark:border-green-800/40';
       case 'failed': return 'bg-red-50 dark:bg-red-950/30 border-red-200/60 dark:border-red-800/40';
