@@ -1036,8 +1036,19 @@ export default function CoursePage() {
     );
   }
 
+  // Get document IDs that have tier 2 chapter sources (multi-chapter containers)
+  const documentIdsWithTier2Sources = new Set<string>();
+  Object.values(chapterSources).forEach(sources => {
+    sources.forEach(source => {
+      documentIdsWithTier2Sources.add(source.documentId);
+    });
+  });
+
+  // Filter out multi-chapter parent documents (only show their extracted chapters)
+  const filteredDocuments = documents.filter(doc => !documentIdsWithTier2Sources.has(doc.id));
+
   // Group documents by chapter
-  const documentsByChapter = documents.reduce((acc, doc) => {
+  const documentsByChapter = filteredDocuments.reduce((acc, doc) => {
     const chapter = doc.chapter || 'Uncategorized';
     if (!acc[chapter]) {
       acc[chapter] = [];
@@ -1143,7 +1154,7 @@ export default function CoursePage() {
         </div>
       )}
 
-      {documents.length === 0 && processingJobs.length === 0 ? (
+      {documents.length === 0 && processingJobs.length === 0 && Object.keys(chapterSources).length === 0 ? (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
@@ -1168,6 +1179,31 @@ export default function CoursePage() {
           {chapters.map((chapter) => {
             // Get all tier 1 documents in this chapter
             const chapterDocs = documentsByChapter[chapter] || [];
+
+            // Check if this chapter has any content to show
+            const hasProcessingJobs = processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter);
+
+            // Get tier 2 sources for this chapter
+            let chapterKey: number | string | null = null;
+            if (chapter === 'Uncategorized') {
+              chapterKey = 'uncategorized';
+            } else {
+              const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
+              if (chapterMatch) {
+                chapterKey = parseInt(chapterMatch[1], 10);
+              } else {
+                const parsed = parseInt(chapter, 10);
+                if (!isNaN(parsed)) {
+                  chapterKey = parsed;
+                }
+              }
+            }
+            const hasTier2Sources = chapterKey && chapterSources[chapterKey] && chapterSources[chapterKey].length > 0;
+
+            // Skip empty chapters (no tier 1 docs, no processing jobs, no tier 2 sources)
+            if (chapterDocs.length === 0 && !hasProcessingJobs && !hasTier2Sources) {
+              return null;
+            }
 
             return (
               <div key={chapter} className="space-y-6">
