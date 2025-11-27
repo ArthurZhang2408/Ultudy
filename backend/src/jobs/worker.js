@@ -59,8 +59,11 @@ export function setupWorkers(options = {}) {
 
   // Upload job processor - process up to UPLOAD_CONCURRENCY jobs in parallel
   uploadQueue.process(UPLOAD_CONCURRENCY, async (job) => {
-    console.log(`\n[Worker:${WORKER_ID}] ▶ Picked up upload job ${job.id}`);
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`[Worker:${WORKER_ID}] ▶ PICKED UP UPLOAD JOB ${job.id}`);
+    console.log(`[Worker:${WORKER_ID}] Deployment: ${RAILWAY_DEPLOYMENT_ID.substring(0, 30)}...`);
     console.log(`[Worker:${WORKER_ID}] Job data:`, JSON.stringify(job.data, null, 2));
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     return await processUploadJob(job, {
       tenantHelpers,
       jobTracker,
