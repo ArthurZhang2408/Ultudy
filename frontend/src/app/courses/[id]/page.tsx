@@ -1154,7 +1154,7 @@ export default function CoursePage() {
         </div>
       )}
 
-      {documents.length === 0 && processingJobs.length === 0 && Object.keys(chapterSources).length === 0 ? (
+      {filteredDocuments.length === 0 && processingJobs.length === 0 && Object.keys(chapterSources).length === 0 ? (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
@@ -1177,16 +1177,10 @@ export default function CoursePage() {
       ) : (
         <div className="space-y-8">
           {chapters.map((chapter) => {
-            // Get all tier 1 documents in this chapter
+            // Get all tier 1 documents in this chapter (already filtered to exclude multi-chapter parents)
             const chapterDocs = documentsByChapter[chapter] || [];
 
-            // Check if any tier 1 docs in this chapter have actual sections/concepts
-            const docsWithContent = chapterDocs.filter(doc => {
-              const skills = renderDocumentSession(doc, chapter);
-              return skills.length > 0;
-            });
-
-            // Check if this chapter has any content to show
+            // Check if this chapter has processing jobs
             const hasProcessingJobs = processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter);
 
             // Get tier 2 sources for this chapter
@@ -1204,10 +1198,10 @@ export default function CoursePage() {
                 }
               }
             }
-            const hasTier2Sources = chapterKey && chapterSources[chapterKey] && chapterSources[chapterKey].length > 0;
+            const tier2Sources = chapterKey ? (chapterSources[chapterKey] || []) : [];
 
-            // Skip empty chapters (no docs with content, no processing jobs, no tier 2 sources)
-            if (docsWithContent.length === 0 && !hasProcessingJobs && !hasTier2Sources) {
+            // Skip empty chapters (no tier 1 docs, no processing jobs, no tier 2 sources)
+            if (chapterDocs.length === 0 && !hasProcessingJobs && tier2Sources.length === 0) {
               return null;
             }
 
@@ -1323,35 +1317,11 @@ export default function CoursePage() {
                 })}
 
                 {/* Tier 2 Chapter Sources */}
-                <div className="space-y-4">
-                  {(() => {
-                    // Extract chapter number from chapter string
-                    // Handle both "Chapter 1" format, plain "1" format, and "Uncategorized"
-                    let chapterKey: number | string | null = null;
-                    if (chapter === 'Uncategorized') {
-                      chapterKey = 'uncategorized';
-                    } else {
-                      const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
-                      if (chapterMatch) {
-                        chapterKey = parseInt(chapterMatch[1], 10);
-                      } else {
-                        // Try parsing directly as number (for plain "1", "2", etc.)
-                        const parsed = parseInt(chapter, 10);
-                        if (!isNaN(parsed)) {
-                          chapterKey = parsed;
-                        }
-                      }
-                    }
-                    const sources = chapterKey ? chapterSources[chapterKey] : [];
-
-                    // Only show section if there are tier 2 sources
-                    if (!sources || sources.length === 0) return null;
-
-                    return (
-                      <>
-                        <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Tier 2 Sources</h3>
-                        <div className="grid gap-4">
-                          {sources.map((source) => (
+                {tier2Sources.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Tier 2 Sources</h3>
+                    <div className="grid gap-4">
+                      {tier2Sources.map((source) => (
                         <Card key={source.id} padding="md" hover className="group border-2 border-purple-200 dark:border-purple-800/50">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 space-y-2">
@@ -1437,12 +1407,10 @@ export default function CoursePage() {
                             </div>
                           </div>
                         </Card>
-                          ))}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
