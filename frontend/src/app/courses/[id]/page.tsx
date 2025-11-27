@@ -1154,7 +1154,22 @@ export default function CoursePage() {
         </div>
       )}
 
-      {filteredDocuments.length === 0 && processingJobs.length === 0 && Object.keys(chapterSources).length === 0 ? (
+      {/* Check if there's any content to show */}
+      {(() => {
+        const hasAnyContent =
+          filteredDocuments.some(doc => {
+            const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+            return skills.length > 0;
+          }) ||
+          processingJobs.length > 0 ||
+          Object.keys(chapterSources).length > 0;
+
+        if (hasAnyContent) {
+          return null; // Content exists, will render chapters below
+        }
+
+        // No content - show empty state
+        return (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
@@ -1174,7 +1189,24 @@ export default function CoursePage() {
             </Button>
           </div>
         </Card>
-      ) : (
+        );
+      })()}
+
+      {/* Render chapters if there's any content */}
+      {(() => {
+        const hasAnyContent =
+          filteredDocuments.some(doc => {
+            const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+            return skills.length > 0;
+          }) ||
+          processingJobs.length > 0 ||
+          Object.keys(chapterSources).length > 0;
+
+        if (!hasAnyContent) {
+          return null; // Empty state already shown above
+        }
+
+        return (
         <div className="space-y-8">
           {chapters.map((chapter) => {
             // Get all tier 1 documents in this chapter (already filtered to exclude multi-chapter parents)
@@ -1421,7 +1453,8 @@ export default function CoursePage() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal
