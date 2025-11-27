@@ -1180,6 +1180,12 @@ export default function CoursePage() {
             // Get all tier 1 documents in this chapter
             const chapterDocs = documentsByChapter[chapter] || [];
 
+            // Check if any tier 1 docs in this chapter have actual sections/concepts
+            const docsWithContent = chapterDocs.filter(doc => {
+              const skills = renderDocumentSession(doc, chapter);
+              return skills.length > 0;
+            });
+
             // Check if this chapter has any content to show
             const hasProcessingJobs = processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter);
 
@@ -1200,8 +1206,8 @@ export default function CoursePage() {
             }
             const hasTier2Sources = chapterKey && chapterSources[chapterKey] && chapterSources[chapterKey].length > 0;
 
-            // Skip empty chapters (no tier 1 docs, no processing jobs, no tier 2 sources)
-            if (chapterDocs.length === 0 && !hasProcessingJobs && !hasTier2Sources) {
+            // Skip empty chapters (no docs with content, no processing jobs, no tier 2 sources)
+            if (docsWithContent.length === 0 && !hasProcessingJobs && !hasTier2Sources) {
               return null;
             }
 
