@@ -161,31 +161,30 @@ export default function ChapterSelectionModal({
 
           // Poll all chapter jobs for status updates
           const jobIds = result.jobs.map((job: any) => job.jobId);
-          const stopPolling = pollMultipleJobs(jobIds, {
+          pollMultipleJobs(jobIds, {
             interval: 2000, // Poll every 2 seconds
-            onProgress: (jobId, job) => {
-              updateTask(jobId, {
+            onProgress: (job) => {
+              // Update task status and progress for all jobs
+              updateTask(job.id, {
                 status: job.status,
                 progress: job.progress
               });
+
+              // Handle failed jobs here since onError doesn't provide jobId
+              if (job.status === 'failed') {
+                updateTask(job.id, {
+                  status: 'failed',
+                  error: job.error || 'Extraction failed'
+                });
+              }
             },
-            onComplete: (jobId, job) => {
-              updateTask(jobId, {
+            onComplete: (job) => {
+              updateTask(job.id, {
                 status: 'completed',
                 progress: 100,
                 completedAt: new Date().toISOString()
               });
               // Refresh to show this individual chapter immediately
-              router.refresh();
-            },
-            onError: (jobId, error) => {
-              updateTask(jobId, {
-                status: 'failed',
-                error
-              });
-            },
-            onAllComplete: () => {
-              // Final refresh when all chapters are done
               router.refresh();
             }
           });
