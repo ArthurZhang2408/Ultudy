@@ -38,6 +38,7 @@ const createRedisOptions = () => {
 
 let uploadQueue;
 let lessonQueue;
+let chapterExtractionQueue;
 let redisConnectionFailed = false;
 
 if (DISABLE_QUEUES) {
@@ -90,6 +91,7 @@ if (DISABLE_QUEUES) {
 
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
+  chapterExtractionQueue = createMockQueue('chapter-extraction');
 } else {
   console.log(`[Queue] Connecting to Redis at ${REDIS_URL.replace(/:[^:@]+@/, ':****@')}`);
 
@@ -123,9 +125,18 @@ if (DISABLE_QUEUES) {
       removeOnFail: false
     }
   });
+
+  chapterExtractionQueue = new Queue('chapter-extraction', {
+    redis: redisOpts,
+    defaultJobOptions: {
+      attempts: 1, // Retries handled in processor with better control
+      removeOnComplete: false,
+      removeOnFail: false
+    }
+  });
 }
 
-export { uploadQueue, lessonQueue };
+export { uploadQueue, lessonQueue, chapterExtractionQueue };
 
 // Only set up event handlers and cleanup for real queues (not in CI/test mode)
 if (!DISABLE_QUEUES) {

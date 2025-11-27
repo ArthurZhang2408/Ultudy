@@ -9,19 +9,22 @@
 
 import express from 'express';
 import { queryRead, queryWrite } from '../db/index.js';
-import { extractSingleChapter } from '../services/tier2Extraction.js';
-import { StorageService } from '../lib/storage.js';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { chapterExtractionQueue } from '../jobs/queue.js';
+import { createJobTracker } from '../jobs/tracking.js';
+import { createTenantHelpers } from '../db/tenant.js';
+import pool from '../db/index.js';
 
 const router = express.Router();
+
+// Initialize dependencies
+const tenantHelpers = createTenantHelpers(pool);
+const jobTracker = createJobTracker(tenantHelpers);
 
 /**
  * POST /api/tier2/extract-chapters
  *
- * Extract selected chapters from a multi-chapter PDF
+ * Queue chapter extraction jobs for selected chapters from a multi-chapter PDF
+ * Returns immediately with job IDs for tracking
  * Body: {
  *   documentId: string,
  *   storageKey: string,
@@ -40,89 +43,54 @@ router.post('/extract-chapters', async (req, res) => {
       });
     }
 
-    console.log(`[tier2/extract-chapters] Extracting ${chapters.length} chapters from document ${documentId}`);
+    console.log(`[tier2/extract-chapters] Queuing ${chapters.length} chapter extraction jobs for document ${documentId}`);
 
-    // Download PDF from storage
-    const storageService = new StorageService();
-    const pdfBuffer = await storageService.download(storageKey);
+    // Queue individual job for each chapter
+    const jobs = [];
+    for (let i = 0; i < chapters.length; i++) {
+      const chapter = chapters[i];
 
-    // Write to temp file
-    const tempPdfPath = path.join(os.tmpdir(), `${randomUUID()}.pdf`);
-    await fs.writeFile(tempPdfPath, pdfBuffer);
+      // Create job in database for tracking
+      const jobId = await jobTracker.createJob(userId, 'chapter_extraction', {
+        document_id: documentId,
+        course_id: courseId,
+        chapter_number: chapter.number,
+        chapter_title: chapter.title,
+        chapter_index: i + 1,
+        total_chapters: chapters.length
+      });
 
-    console.log(`[tier2/extract-chapters] PDF downloaded to: ${tempPdfPath}`);
+      // Queue the job
+      await chapterExtractionQueue.add({
+        jobId,
+        ownerId: userId,
+        documentId,
+        storageKey,
+        courseId,
+        chapter,
+        chapterIndex: i + 1,
+        totalChapters: chapters.length
+      });
 
-    // Extract each chapter
-    const results = [];
-    for (const chapter of chapters) {
-      try {
-        console.log(`[tier2/extract-chapters] Extracting Chapter ${chapter.number}: ${chapter.title}`);
+      console.log(`[tier2/extract-chapters] Queued Chapter ${chapter.number}: ${chapter.title} (job ${jobId})`);
 
-        const extraction = await extractSingleChapter(
-          tempPdfPath,
-          chapter.number,
-          chapter.title,
-          chapter.pageStart,
-          chapter.pageEnd
-        );
-
-        // Save to database
-        const result = await queryWrite(
-          `INSERT INTO chapter_markdown
-           (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, page_start, page_end)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-           RETURNING id`,
-          [
-            userId,
-            documentId,
-            courseId,
-            extraction.chapterNumber,
-            extraction.chapterTitle,
-            extraction.markdown,
-            chapter.pageStart,
-            chapter.pageEnd
-          ]
-        );
-
-        console.log(`[tier2/extract-chapters] Saved Chapter ${chapter.number} markdown (id: ${result.rows[0].id})`);
-
-        results.push({
-          chapter_number: extraction.chapterNumber,
-          chapter_title: extraction.chapterTitle,
-          id: result.rows[0].id,
-          success: true
-        });
-      } catch (error) {
-        console.error(`[tier2/extract-chapters] Failed to extract Chapter ${chapter.number}:`, error);
-        results.push({
-          chapter_number: chapter.number,
-          chapter_title: chapter.title,
-          success: false,
-          error: error.message
-        });
-      }
+      jobs.push({
+        jobId,
+        chapterNumber: chapter.number,
+        chapterTitle: chapter.title
+      });
     }
 
-    // Cleanup temp file
-    try {
-      await fs.rm(tempPdfPath, { force: true });
-      console.log(`[tier2/extract-chapters] Cleaned up temp file`);
-    } catch (err) {
-      console.warn(`[tier2/extract-chapters] Failed to cleanup temp file:`, err.message);
-    }
-
-    const successCount = results.filter(r => r.success).length;
-    console.log(`[tier2/extract-chapters] Extraction complete: ${successCount}/${chapters.length} successful`);
+    console.log(`[tier2/extract-chapters] Successfully queued ${jobs.length} chapter extraction jobs`);
 
     res.json({
       success: true,
-      extracted: successCount,
       total: chapters.length,
-      results
+      jobs
     });
   } catch (error) {
     console.error('[tier2/extract-chapters] Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to extract chapters' });
+    res.status(500).json({ error: error.message || 'Failed to queue chapter extraction jobs' });
   }
 });
 

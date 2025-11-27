@@ -5,9 +5,10 @@
  * It should be started alongside the main server.
  */
 
-import { uploadQueue, lessonQueue } from './queue.js';
+import { uploadQueue, lessonQueue, chapterExtractionQueue } from './queue.js';
 import { processUploadJob } from './processors/upload.processor.js';
 import { processLessonJob } from './processors/lesson.processor.js';
+import { processChapterExtractionJob } from './processors/chapterExtraction.processor.js';
 import { createJobTracker } from './tracking.js';
 import createStudyService from '../study/service.js';
 import { StorageService } from '../lib/storage.js';
@@ -21,6 +22,7 @@ const DEFAULT_STORAGE_DIR = path.resolve(__dirname, '..', '..', 'storage');
 // In production with multiple worker instances, each instance will process this many
 const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_QUEUE_CONCURRENCY || '5', 10);
 const LESSON_CONCURRENCY = parseInt(process.env.LESSON_QUEUE_CONCURRENCY || '3', 10);
+const CHAPTER_EXTRACTION_CONCURRENCY = parseInt(process.env.CHAPTER_EXTRACTION_CONCURRENCY || '3', 10);
 
 // Worker instance ID for logging (useful when running multiple workers)
 const WORKER_ID = process.env.WORKER_ID || `worker-${process.pid}`;
@@ -70,14 +72,26 @@ export function setupWorkers(options = {}) {
     });
   });
 
+  // Chapter extraction job processor - process up to CHAPTER_EXTRACTION_CONCURRENCY jobs in parallel
+  chapterExtractionQueue.process(CHAPTER_EXTRACTION_CONCURRENCY, async (job) => {
+    console.log(`\n[Worker:${WORKER_ID}] ▶ Picked up chapter extraction job ${job.id}`);
+    return await processChapterExtractionJob(job, {
+      tenantHelpers,
+      jobTracker,
+      storageService
+    });
+  });
+
   console.log(`\n✅ [Worker:${WORKER_ID}] Job processors started successfully`);
   console.log(`   - Upload queue ready (concurrency: ${UPLOAD_CONCURRENCY})`);
   console.log(`   - Lesson queue ready (concurrency: ${LESSON_CONCURRENCY})`);
+  console.log(`   - Chapter extraction queue ready (concurrency: ${CHAPTER_EXTRACTION_CONCURRENCY})`);
   console.log(`   - Waiting for jobs...\n`);
 
   return {
     uploadQueue,
     lessonQueue,
+    chapterExtractionQueue,
     jobTracker
   };
 }
