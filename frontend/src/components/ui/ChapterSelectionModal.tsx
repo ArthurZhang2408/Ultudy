@@ -69,7 +69,7 @@ export default function ChapterSelectionModal({
   // Close on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isExtracting) onClose();
+      if (e.key === 'Escape' && !isExtracting) handleClose();
     };
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
@@ -77,7 +77,7 @@ export default function ChapterSelectionModal({
         document.removeEventListener('keydown', handleEscape);
       };
     }
-  }, [isOpen, isExtracting, onClose]);
+  }, [isOpen, isExtracting]);
 
   const toggleChapter = (chapterNumber: number) => {
     const newSelected = new Set(selectedChapters);
@@ -99,12 +99,26 @@ export default function ChapterSelectionModal({
     }
   };
 
-  const handleExtract = async () => {
-    if (selectedChapters.size === 0) {
-      setError('Please select at least one chapter to extract');
-      return;
+  const handleClose = async () => {
+    // Delete the multi-chapter parent document when user cancels
+    try {
+      const token = await getToken();
+      if (token && documentId) {
+        console.log('[ChapterSelectionModal] Deleting multi-chapter parent document:', documentId);
+        await fetch(`${getBackendUrl()}/documents/${documentId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error('[ChapterSelectionModal] Failed to delete document:', error);
     }
+    onClose();
+  };
 
+  const handleExtract = async () => {
     try {
       const token = await getToken();
       if (!token) {
@@ -209,7 +223,7 @@ export default function ChapterSelectionModal({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
-        onClick={!isExtracting ? onClose : undefined}
+        onClick={!isExtracting ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -222,7 +236,7 @@ export default function ChapterSelectionModal({
           </div>
           {!isExtracting && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
               aria-label="Close"
             >
@@ -310,20 +324,22 @@ export default function ChapterSelectionModal({
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-700 shrink-0">
           <Button
-            onClick={onClose}
+            onClick={handleClose}
             variant="secondary"
             disabled={isExtracting}
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleExtract}
-            variant="primary"
-            disabled={isExtracting || selectedChapters.size === 0}
-            loading={isExtracting}
-          >
-            {isExtracting ? 'Extracting...' : `Extract ${selectedChapters.size} Chapter${selectedChapters.size !== 1 ? 's' : ''}`}
-          </Button>
+          {selectedChapters.size > 0 && (
+            <Button
+              onClick={handleExtract}
+              variant="primary"
+              disabled={isExtracting}
+              loading={isExtracting}
+            >
+              {isExtracting ? 'Extracting...' : `Extract ${selectedChapters.size} Chapter${selectedChapters.size !== 1 ? 's' : ''}`}
+            </Button>
+          )}
         </div>
       </div>
     </div>
