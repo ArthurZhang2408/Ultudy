@@ -115,20 +115,6 @@ export default function ChapterSelectionModal({
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
 
-      // Create a task ID for tracking
-      const taskId = `extract-${documentId}-${Date.now()}`;
-
-      // Add background task for tracking
-      addTask({
-        id: taskId,
-        type: 'extraction',
-        title: `Extracting ${chaptersToExtract.length} chapter${chaptersToExtract.length !== 1 ? 's' : ''} from ${documentName}`,
-        status: 'processing',
-        progress: 0,
-        courseId,
-        documentId
-      });
-
       // Close modal immediately
       onClose();
 
@@ -151,35 +137,34 @@ export default function ChapterSelectionModal({
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to extract chapters');
+            throw new Error(errorData.error || 'Failed to queue chapter extractions');
           }
 
           const result = await response.json();
 
-          console.log(`[ChapterSelectionModal] Extraction complete: ${result.extracted}/${result.total} successful`);
+          console.log(`[ChapterSelectionModal] Queued ${result.jobs.length} chapter extraction jobs`);
 
-          if (result.extracted === 0) {
-            throw new Error('All chapter extractions failed');
-          }
-
-          // Update task as completed
-          updateTask(taskId, {
-            status: 'completed',
-            progress: 100,
-            completedAt: new Date().toISOString()
+          // Create individual background tasks for each chapter
+          result.jobs.forEach((job: any) => {
+            addTask({
+              id: job.jobId,
+              type: 'chapter_extraction',
+              title: `Chapter ${job.chapterNumber}: ${job.chapterTitle}`,
+              subtitle: documentName,
+              status: 'queued',
+              progress: 0,
+              courseId,
+              documentId
+            });
           });
 
-          // Refresh the page to show new chapter sources
-          router.refresh();
+          // Refresh the page to show new chapter sources when all complete
+          // (The background tasks will trigger refresh automatically via useEffect in course page)
         } catch (err) {
           console.error('[ChapterSelectionModal] Error:', err);
 
-          // Update task as failed
-          updateTask(taskId, {
-            status: 'failed',
-            error: err instanceof Error ? err.message : 'Failed to extract chapters',
-            completedAt: new Date().toISOString()
-          });
+          // Show error to user (no specific task to update since we haven't created them yet)
+          alert(err instanceof Error ? err.message : 'Failed to start chapter extractions');
         }
       })();
     } catch (err) {

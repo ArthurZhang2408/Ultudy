@@ -38,10 +38,18 @@ export default function BackgroundTasksBanner() {
       }
 
       if (task.type === 'extraction') {
-        // Chapter extraction stages
+        // Multi-chapter extraction stages (bulk)
         if (progress < 30) return 'Preparing extraction';
         if (progress < 70) return 'Extracting chapters';
         if (progress < 100) return 'Saving content';
+        return 'Extracting';
+      }
+
+      if (task.type === 'chapter_extraction') {
+        // Individual chapter extraction stages
+        if (progress < 30) return 'Downloading PDF';
+        if (progress < 70) return 'Extracting chapter';
+        if (progress < 100) return 'Saving markdown';
         return 'Extracting';
       }
 
@@ -272,6 +280,11 @@ function TaskCard({ task, onRemove, getDetailedStatus }: { task: any; onRemove: 
             {task.title}
           </span>
         </div>
+        {task.subtitle && (
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
+            {task.subtitle}
+          </p>
+        )}
         {task.status === 'failed' && task.error && (
           <p className="text-xs text-red-600 dark:text-red-400 mt-1 truncate">
             {task.error}

@@ -6,8 +6,9 @@ export type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export type BackgroundTask = {
   id: string;
-  type: 'upload' | 'lesson' | 'extraction';
+  type: 'upload' | 'lesson' | 'extraction' | 'chapter_extraction';
   title: string;
+  subtitle?: string; // Optional subtitle for additional context (e.g., document name)
   status: TaskStatus;
   progress: number; // 0-100
   courseId?: string;
