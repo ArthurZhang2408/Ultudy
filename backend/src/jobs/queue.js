@@ -90,8 +90,11 @@ if (DISABLE_QUEUES) {
 
   uploadQueue = createMockQueue('upload-processing');
   lessonQueue = createMockQueue('lesson-generation');
+
+  console.warn('[Queue] ⚠️  WARNING: Using MOCK QUEUES - jobs will process synchronously in HTTP requests!');
+  console.warn('[Queue] ⚠️  This causes tier 1 processing because getUserTier happens before user tier is set!');
 } else {
-  console.log(`[Queue] Connecting to Redis at ${REDIS_URL.replace(/:[^:@]+@/, ':****@')}`);
+  console.log(`[Queue] ✅ Connecting to Redis at ${REDIS_URL.replace(/:[^:@]+@/, ':****@')}`);
 
   const redisOpts = createRedisOptions();
 
@@ -124,6 +127,15 @@ if (DISABLE_QUEUES) {
     }
   });
 }
+
+// Export queue type for debugging
+export const isUsingMockQueues = DISABLE_QUEUES;
+export const queueInfo = {
+  type: DISABLE_QUEUES ? 'MOCK' : 'REDIS',
+  redisConfigured: !!REDIS_URL,
+  disableQueuesEnv: process.env.DISABLE_QUEUES,
+  ciEnv: process.env.CI
+};
 
 export { uploadQueue, lessonQueue };
 
