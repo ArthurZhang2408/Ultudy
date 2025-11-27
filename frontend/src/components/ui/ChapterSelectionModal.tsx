@@ -7,7 +7,7 @@ import { Button } from '@/components/ui';
 import { useAuth } from '@clerk/nextjs';
 import { getBackendUrl } from '@/lib/api';
 import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
-import { pollMultipleJobs } from '@/lib/jobs';
+import { createJobPoller, type Job } from '@/lib/jobs';
 
 interface Chapter {
   number: number;
@@ -145,48 +145,49 @@ export default function ChapterSelectionModal({
 
           console.log(`[ChapterSelectionModal] Queued ${result.jobs.length} chapter extraction jobs`);
 
-          // Create individual background tasks for each chapter
+          // Create individual background tasks and start polling for each chapter
           result.jobs.forEach((job: any) => {
+            const taskTitle = `${documentName} - Chapter ${job.chapterNumber}: ${job.chapterTitle}`;
+
             addTask({
               id: job.jobId,
-              type: 'chapter_extraction',
-              title: `Chapter ${job.chapterNumber}: ${job.chapterTitle}`,
-              subtitle: documentName,
-              status: 'queued',
+              type: 'extraction',
+              title: `Extracting ${taskTitle}`,
+              status: 'processing',
               progress: 0,
               courseId,
               documentId
             });
-          });
 
-          // Poll all chapter jobs for status updates
-          const jobIds = result.jobs.map((job: any) => job.jobId);
-          pollMultipleJobs(jobIds, {
-            interval: 2000, // Poll every 2 seconds
-            onProgress: (job) => {
-              // Update task status and progress for all jobs
-              updateTask(job.id, {
-                status: job.status,
-                progress: job.progress
-              });
+            // Start polling this job (same pattern as single chapter extraction)
+            createJobPoller(job.jobId, {
+              interval: 2000,
+              onProgress: (jobData: Job) => {
+                updateTask(job.jobId, {
+                  status: 'processing',
+                  progress: jobData.progress || 0
+                });
+              },
+              onComplete: (jobData: Job) => {
+                console.log('[ChapterSelectionModal] Chapter extraction completed:', jobData);
 
-              // Handle failed jobs here since onError doesn't provide jobId
-              if (job.status === 'failed') {
-                updateTask(job.id, {
+                updateTask(job.jobId, {
+                  status: 'completed',
+                  progress: 100,
+                  completedAt: new Date().toISOString()
+                });
+
+                // Refresh immediately to show this chapter
+                router.refresh();
+              },
+              onError: (error: string) => {
+                updateTask(job.jobId, {
                   status: 'failed',
-                  error: job.error || 'Extraction failed'
+                  error: error,
+                  completedAt: new Date().toISOString()
                 });
               }
-            },
-            onComplete: (job) => {
-              updateTask(job.id, {
-                status: 'completed',
-                progress: 100,
-                completedAt: new Date().toISOString()
-              });
-              // Refresh to show this individual chapter immediately
-              router.refresh();
-            }
+            });
           });
         } catch (err) {
           console.error('[ChapterSelectionModal] Error:', err);

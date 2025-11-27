@@ -38,14 +38,6 @@ export default function BackgroundTasksBanner() {
       }
 
       if (task.type === 'extraction') {
-        // Multi-chapter extraction stages (bulk)
-        if (progress < 30) return 'Preparing extraction';
-        if (progress < 70) return 'Extracting chapters';
-        if (progress < 100) return 'Saving content';
-        return 'Extracting';
-      }
-
-      if (task.type === 'chapter_extraction') {
         // Individual chapter extraction stages
         if (progress < 30) return 'Downloading PDF';
         if (progress < 70) return 'Extracting chapter';
