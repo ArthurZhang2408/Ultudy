@@ -117,13 +117,13 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
 
     await jobTracker.updateProgress(ownerId, jobId, 70);
 
-    // Save to database
+    // Save to database (chapter_markdown with summary)
     console.log(`[ChapterExtractionProcessor] Saving Chapter ${chapter.number} to database`);
 
     const result = await queryWrite(
       `INSERT INTO chapter_markdown
-       (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, page_start, page_end)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, chapter_summary, page_start, page_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         ownerId,
@@ -132,12 +132,37 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
         extraction.chapterNumber,
         extraction.chapterTitle,
         extraction.markdown,
+        extraction.summary,
         chapter.pageStart,
         chapter.pageEnd
       ]
     );
 
-    console.log(`[ChapterExtractionProcessor] ✅ Chapter ${chapter.number} saved (id: ${result.rows[0].id})`);
+    const chapterMarkdownId = result.rows[0].id;
+    console.log(`[ChapterExtractionProcessor] ✅ Chapter ${chapter.number} saved (id: ${chapterMarkdownId})`);
+
+    // Save sections to tier2_sections table
+    if (extraction.sections && extraction.sections.length > 0) {
+      console.log(`[ChapterExtractionProcessor] Saving ${extraction.sections.length} sections for Chapter ${chapter.number}`);
+
+      for (const section of extraction.sections) {
+        await queryWrite(
+          `INSERT INTO tier2_sections
+           (chapter_markdown_id, section_number, section_name, section_description)
+           VALUES ($1, $2, $3, $4)`,
+          [
+            chapterMarkdownId,
+            section.sectionNumber,
+            section.sectionName,
+            section.sectionDescription
+          ]
+        );
+      }
+
+      console.log(`[ChapterExtractionProcessor] ✅ ${extraction.sections.length} sections saved`);
+    } else {
+      console.warn(`[ChapterExtractionProcessor] ⚠️ No sections extracted for Chapter ${chapter.number}`);
+    }
 
     await jobTracker.updateProgress(ownerId, jobId, 100);
 
@@ -145,15 +170,17 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
     await jobTracker.completeJob(ownerId, jobId, {
       chapter_number: extraction.chapterNumber,
       chapter_title: extraction.chapterTitle,
-      chapter_markdown_id: result.rows[0].id,
+      chapter_markdown_id: chapterMarkdownId,
       document_id: documentId,
-      course_id: courseId
+      course_id: courseId,
+      sections_count: extraction.sections?.length || 0
     });
 
     return {
       chapter_number: extraction.chapterNumber,
       chapter_title: extraction.chapterTitle,
-      id: result.rows[0].id,
+      id: chapterMarkdownId,
+      sections_count: extraction.sections?.length || 0,
       success: true
     };
   } catch (error) {
