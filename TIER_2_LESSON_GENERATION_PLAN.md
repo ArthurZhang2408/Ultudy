@@ -29,23 +29,38 @@
 
 ## System Overview
 
-### Tier 1 Lesson Generation (Current)
+### Tier 1 Lesson Generation (Current - To Be Optimized)
 
 **Input:** Single PDF file uploaded by user
 
-**Extraction Process:**
-1. PDF → Full markdown extraction (via Gemini Vision)
-2. Markdown → Section detection (LLM extracts 4-8 sections)
+**Current Process (INEFFICIENT - 2 LLM calls):**
+1. PDF → Full markdown extraction (via Gemini Vision) → Store in `documents.full_text`
+2. **Later:** Markdown → Section detection (LLM extracts 4-8 sections) ← SECOND LLM CALL!
 3. Each section → Split markdown by section boundaries
-4. Store: `documents.full_text` contains full markdown
+4. User selects section → Generate lesson
+
+**Optimized Process (1 LLM call):**
+1. PDF → LLM extracts markdown WITH section markers in one pass:
+   ```markdown
+   # SECTION: Introduction to Networks
+   [Content for introduction section...]
+
+   # SECTION: Network Protocols
+   [Content for protocols section...]
+
+   # SECTION: Data Link Layer
+   [Content for data link section...]
+   ```
+2. Post-process response:
+   - Store full markdown in `documents.full_text`
+   - Extract section list from `# SECTION:` markers
+   - Cache sections for quick access
+3. User selects section → Generate lesson (no additional LLM call for sections!)
 
 **Lesson Generation Process:**
 1. User selects a section from the course page
-2. Backend extracts that section's markdown text using `extractSectionText()`
-3. LLM (`generateFullContextLesson()`) receives:
-   - `full_text`: section-scoped markdown
-   - `section_name`: section title
-   - `section_description`: section overview
+2. Backend extracts that section's markdown using cached section boundaries
+3. LLM (`generateFullContextLesson()`) receives section-scoped markdown
 4. LLM generates 6-15 concepts in markdown format
 5. Concepts parsed and returned to frontend
 
@@ -144,13 +159,15 @@ chapter_markdown (
   - Supplement 2: Summary only (~500 words = 2,000 tokens)
   - **Total:** ~104,000 tokens (65% reduction!)
 
-#### Challenge 2: Section Extraction Timing
-- **Old Approach:** Extract sections during upload (complicates upload flow)
-- **New Approach:** Extract sections at lesson generation time
-  - Extraction: Just get markdown + summary (fast)
-  - Lesson generation: Combine sources → extract sections → display list
-  - **Benefit:** Reuses tier 1 section extraction logic directly
-  - **Benefit:** Sections based on combined context (primary + supplement summaries)
+#### Challenge 2: Section Extraction Efficiency
+- **Current Tier 1 (INEFFICIENT):** Two separate LLM calls
+  1. PDF → Markdown extraction
+  2. Markdown → Section extraction (why look at content twice?!)
+- **Optimized Approach:** ONE LLM call during extraction
+  - PDF → Markdown + Section markers in single pass
+  - Post-process to get both full markdown AND section list
+  - **Benefit:** 50% fewer LLM calls, faster, cheaper
+  - **Benefit:** Sections based on original PDF structure (more accurate)
 
 #### Challenge 3: Summary Quality
 - **Need:** High-quality summaries that capture key concepts
@@ -264,20 +281,27 @@ chapter_markdown (
 - **File:** `backend/src/services/tier2Extraction.js` (UPDATE)
 - **File:** `backend/src/services/tier2Detection.js` (UPDATE)
 
-**New Extraction Process:**
+**New Extraction Process (ONE LLM CALL):**
 
-**Step 1: Call LLM for extraction + summary**
+**Step 1: Call LLM for extraction + summary + section markers**
 ```
-System Prompt: "Extract this chapter as markdown AND provide a summary"
+System Prompt: "Extract this chapter as markdown with clear section boundaries, then provide a summary"
 
 User Prompt:
-"Extract Chapter 5 as clean markdown, then provide a 2-3 paragraph summary.
+"Extract Chapter 5 as clean markdown with section markers, then provide a summary.
 
 RESPONSE FORMAT (PURE MARKDOWN):
 
 # CHAPTER_CONTENT
 
-[Full markdown extraction here...]
+# SECTION: Introduction to Networks
+[Introduction content...]
+
+# SECTION: Network Protocols
+[Protocols content...]
+
+# SECTION: Data Link Layer
+[Data link content...]
 
 ---
 
@@ -288,17 +312,33 @@ RESPONSE FORMAT (PURE MARKDOWN):
 - Key concepts and definitions
 - Important formulas/algorithms
 - Real-world applications]
+
+---
+
+# SECTION_LIST
+
+1. Introduction to Networks - Basic network concepts and terminology
+2. Network Protocols - TCP/IP and protocol stacks
+3. Data Link Layer - MAC addresses and frame structure
 "
 ```
 
 **Step 2: Post-process LLM response**
 ```javascript
-// Parse the markdown response
-const sections = response.split('---');
-const markdownContent = extractSection(sections[0], 'CHAPTER_CONTENT');
-const chapterSummary = extractSection(sections[1], 'CHAPTER_SUMMARY');
+// Split by major delimiters
+const parts = response.split(/^---$/gm);
+const markdownContent = parts[0]; // Has section markers
+const chapterSummary = extractSection(parts[1], 'CHAPTER_SUMMARY');
+const sectionListText = extractSection(parts[2], 'SECTION_LIST');
 
-// Clean markdown formatting (remove extra headers, normalize)
+// Extract section list from numbered list
+const sections = parseSectionList(sectionListText);
+// Returns: [
+//   { section_number: 1, name: "Introduction to Networks", description: "..." },
+//   { section_number: 2, name: "Network Protocols", description: "..." }
+// ]
+
+// Clean markdown (keep section markers for later splitting)
 const cleanedMarkdown = postProcessMarkdown(markdownContent);
 const cleanedSummary = postProcessMarkdown(chapterSummary);
 
@@ -306,25 +346,40 @@ return {
   chapterNumber,
   chapterTitle,
   markdown: cleanedMarkdown,
-  summary: cleanedSummary  // NEW!
+  summary: cleanedSummary,
+  sections: sections  // NEW: Sections extracted in same pass!
 };
 ```
 
-**Step 3: Store both in database**
+**Step 3: Store in database**
 ```sql
+-- Store chapter markdown and summary
 INSERT INTO chapter_markdown (
   owner_id, document_id, course_id,
   chapter_number, chapter_title,
-  markdown_content,   -- Full extraction
-  chapter_summary     -- NEW: Summary
+  markdown_content,   -- Full extraction with section markers
+  chapter_summary     -- Summary
 ) VALUES (...);
+
+-- Store sections separately for quick access (cache)
+INSERT INTO tier2_sections (chapter_markdown_id, section_number, section_name, section_description)
+SELECT chapter_id, unnest(section_numbers), unnest(section_names), unnest(section_descriptions)
+FROM sections_data;
 ```
 
+**Note:** We DO cache sections from extraction (unlike our earlier "no caching" decision), because:
+- They're extracted from the original PDF (authoritative)
+- No dependency on source combination (single source extraction)
+- Speeds up lesson generation significantly (no LLM call needed)
+
 **Why This Approach?**
-- ✅ One LLM call (not two separate calls)
+- ✅ **One LLM call** for everything (not 2-3 separate calls!)
 - ✅ Summary is contextually aware of full content
+- ✅ **Sections extracted from original PDF structure** (more accurate than inferring from markdown later)
 - ✅ Post-processing ensures clean markdown (no JSON mixing)
-- ✅ Summaries cached for future lesson generations
+- ✅ Summaries AND sections cached for future lesson generations
+- ✅ **Faster:** No second LLM call needed when user wants to generate lesson
+- ✅ **Cheaper:** 50% reduction in LLM calls vs current tier 1 approach
 
 ---
 
@@ -343,11 +398,12 @@ INSERT INTO chapter_markdown (
 **Process:**
 1. Fetch primary source from chapter_markdown
 2. Fetch supplement sources
-3. Build combined markdown:
+3. Fetch cached sections from tier2_sections (primary source only)
+4. Build combined markdown:
    ```markdown
    # PRIMARY SOURCE: [Primary Chapter Title]
 
-   [Full markdown_content from primary source]
+   [Full markdown_content from primary source - includes section markers]
 
    ---
 
@@ -366,6 +422,7 @@ INSERT INTO chapter_markdown (
 ```javascript
 {
   combinedMarkdown: "...",   // Primary full + supplement summaries
+  sections: [...],           // Cached sections from primary source extraction
   sourceIds: ["uuid1", "uuid2", "uuid3"],
   primarySourceId: "uuid1"
 }
@@ -384,34 +441,37 @@ INSERT INTO chapter_markdown (
 
 ---
 
-### Module 2: Section Extraction (Direct Reuse!)
+### Module 2: Section Retrieval (No Extraction Needed!)
 
-**Purpose:** Extract sections from combined markdown
+**Purpose:** Get sections for lesson generation
 
 **Implementation:**
 ```javascript
 // backend/src/services/tier2Lesson.service.js
 
-import { extractSections } from '../study/section.service.js';
-
-export async function extractTier2Sections(combinedMarkdown, chapterTitle) {
-  // Pass combined markdown to existing tier 1 function!
-  const sections = await extractSections({
-    full_text: combinedMarkdown,
-    title: chapterTitle
-  });
+export async function getTier2Sections(primarySourceId) {
+  // Just fetch cached sections from database!
+  const sections = await queryRead(
+    `SELECT section_number, section_name, section_description
+     FROM tier2_sections
+     WHERE chapter_markdown_id = $1
+     ORDER BY section_number`,
+    [primarySourceId]
+  );
 
   return sections;
 }
 ```
 
-**That's it!** We literally just call the existing tier 1 section extraction function with the combined markdown. It:
-- Analyzes the combined text (primary + supplement summaries)
-- Extracts 4-8 sections
-- Returns pure markdown section list
-- Post-processes to get clean section metadata
+**That's it!** No LLM call needed - sections were already extracted during upload. We just:
+- Fetch from `tier2_sections` table (instant)
+- Return to frontend for display
 
-**No new extraction logic needed.**
+**Why This Works:**
+- Sections extracted from original PDF during upload (most accurate)
+- Cached in database for instant retrieval
+- Primary source dictates the section structure
+- Supplement summaries provide context within those sections
 
 ---
 
@@ -464,32 +524,46 @@ export async function generateTier2Lesson({
 **Old Plan:** 4 complex modules with custom merge strategies
 **New Plan:** 3 simple modules, mostly reusing tier 1 logic
 
-| Module | Complexity | New Code |
-|--------|------------|----------|
-| **Module 0:** Enhanced Extraction | Low | Update existing extraction prompts |
-| **Module 1:** Smart Aggregation | Very Low | Simple string concatenation |
-| **Module 2:** Section Extraction | Zero | Direct reuse of tier 1 |
-| **Module 3:** Lesson Generation | Zero | Direct reuse of tier 1 |
+| Module | Complexity | New Code | LLM Calls |
+|--------|------------|----------|-----------|
+| **Module 0:** Enhanced Extraction | Low | Update existing extraction prompts | 1 (does everything!) |
+| **Module 1:** Smart Aggregation | Very Low | Simple string concatenation | 0 |
+| **Module 2:** Section Retrieval | Zero | Database query only | 0 |
+| **Module 3:** Lesson Generation | Zero | Direct reuse of tier 1 | 1 (per section) |
 
 **Total New Code:** ~200 lines (vs 1000+ in old plan)
+**LLM Calls:** 1 for extraction + 1 per section lesson (vs 2 for extraction + 1 per section in old tier 1!)
 
 ---
 
 ### Database Schema Changes
 
-**Migration Required:**
+**Migrations Required:**
+
+**Migration 1: Add chapter_summary column**
 ```sql
--- Add chapter_summary column to chapter_markdown table
 ALTER TABLE chapter_markdown
 ADD COLUMN chapter_summary TEXT;
-
--- Optional: Add index if we filter by summary presence
-CREATE INDEX idx_chapter_markdown_has_summary
-ON chapter_markdown((chapter_summary IS NOT NULL));
 ```
 
-**Updated Table:**
+**Migration 2: Create tier2_sections table (cache sections from extraction)**
 ```sql
+CREATE TABLE tier2_sections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chapter_markdown_id UUID NOT NULL REFERENCES chapter_markdown(id) ON DELETE CASCADE,
+  section_number INTEGER NOT NULL,
+  section_name VARCHAR(500) NOT NULL,
+  section_description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_tier2_sections_chapter ON tier2_sections(chapter_markdown_id);
+CREATE UNIQUE INDEX idx_tier2_sections_unique ON tier2_sections(chapter_markdown_id, section_number);
+```
+
+**Updated Tables:**
+```sql
+-- Chapter markdown with summary
 chapter_markdown (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id TEXT NOT NULL,
@@ -497,14 +571,31 @@ chapter_markdown (
   course_id UUID NOT NULL,
   chapter_number INTEGER NOT NULL,
   chapter_title VARCHAR(500) NOT NULL,
-  markdown_content TEXT NOT NULL,     -- Full markdown extraction
+  markdown_content TEXT NOT NULL,     -- Full markdown with section markers
   chapter_summary TEXT,                -- NEW: 2-3 paragraph summary
   page_start INTEGER,
   page_end INTEGER,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Cached sections from extraction (NEW TABLE)
+tier2_sections (
+  id UUID PRIMARY KEY,
+  chapter_markdown_id UUID REFERENCES chapter_markdown(id) ON DELETE CASCADE,
+  section_number INTEGER,
+  section_name VARCHAR(500),
+  section_description TEXT,
+  created_at TIMESTAMP
+);
 ```
+
+**Why Cache Sections?**
+- **Before (bad idea):** "Re-extract sections every time" - wasted LLM calls
+- **Now (smart):** Extract once during upload from original PDF, cache in database
+- Instant section list for users (no waiting)
+- Sections from original PDF structure (most accurate)
+- For multi-source: Use primary's sections as structure, supplements provide context
 
 ---
 
@@ -531,14 +622,12 @@ chapter_markdown (
    - Single source, so combinedMarkdown = markdown_content
    - Output: { combinedMarkdown: "...", sourceIds: ["uuid1"] }
 
-3. Section Extraction (Module 2):
-   - Call extractSections({ full_text: combinedMarkdown, ... })
-   - Reuses tier 1 section extraction logic
-   - LLM returns 4-8 sections in PURE MARKDOWN
-   - Post-process to parse section list
+3. Section Retrieval (Module 2):
+   - Fetch sections from tier2_sections table (already extracted during upload!)
+   - No LLM call needed - instant retrieval
    - Output: sections = [...]
 
-4. Frontend displays section list
+4. Frontend displays section list (immediately!)
 
 5. User clicks on "Section 1: Introduction"
 
@@ -562,7 +651,7 @@ chapter_markdown (
 ```
 
 **Timeline:**
-- Section extraction (one-time): ~10-20 seconds
+- Section display: Instant! (already cached from upload)
 - Lesson generation per section: ~15-30 seconds
 
 ---
@@ -608,16 +697,14 @@ chapter_markdown (
      ```
    - Output: { combinedMarkdown: "...", sourceIds: [...], primarySourceId: "uuid1" }
 
-3. Section Extraction (Module 2):
-   - Call extractSections({ full_text: combinedMarkdown, ... })
-   - LLM sees:
-     * Full detail from primary source
-     * Summaries from supplements (for context)
-   - Extracts 4-8 sections based on combined context
-   - Post-process markdown to get section list
+3. Section Retrieval (Module 2):
+   - Fetch sections from tier2_sections table (primary source sections)
+   - No LLM call needed - instant!
    - Output: sections = [...]
+   - **Note:** Sections come from primary source structure
+   - Supplements provide context WITHIN those sections
 
-4. Frontend displays section list
+4. Frontend displays section list (immediately!)
 
 5. User clicks on "Section 1: Introduction"
 
@@ -645,7 +732,7 @@ chapter_markdown (
 ```
 
 **Timeline:**
-- Section extraction (one-time): ~10-20 seconds
+- Section display: Instant! (already cached from primary source upload)
 - Lesson generation per section: ~20-35 seconds (slightly longer due to more tokens)
 
 **Token Breakdown:**
@@ -721,14 +808,10 @@ chapter_markdown (
 ```
 
 **Implementation:**
-1. Fetch primary chapter_markdown (get full markdown_content)
-2. Fetch supplements (get chapter_summary only)
-3. Combine: primary full + supplement summaries
-4. Call `extractSections()` on combined markdown
-5. Parse markdown response to get section list
-6. Return sections
+1. Fetch cached sections from tier2_sections table (primary source)
+2. Return sections immediately
 
-**Timeline:** ~10-20 seconds (one LLM call)
+**Timeline:** ~50ms (database query only, no LLM call!)
 
 ---
 
@@ -787,15 +870,26 @@ ALTER TABLE chapter_markdown
 ADD COLUMN chapter_summary TEXT;
 ```
 
-**No New Tables Needed!**
-- No `tier2_sections` table (sections extracted on-demand, not cached)
-- Reuse existing `lessons` table for storage
+**Migration 2: Create tier2_sections Table**
+```sql
+CREATE TABLE tier2_sections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chapter_markdown_id UUID NOT NULL REFERENCES chapter_markdown(id) ON DELETE CASCADE,
+  section_number INTEGER NOT NULL,
+  section_name VARCHAR(500) NOT NULL,
+  section_description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-**Why No Caching?**
-- Section extraction is fast (~10-20 sec)
-- Sections depend on which supplements are selected
-- Different supplement combos = different sections
-- Cache would be complex to invalidate
+CREATE INDEX idx_tier2_sections_chapter ON tier2_sections(chapter_markdown_id);
+CREATE UNIQUE INDEX idx_tier2_sections_unique ON tier2_sections(chapter_markdown_id, section_number);
+```
+
+**Why Cache Sections?**
+- Extracted from original PDF during upload (most accurate!)
+- No additional LLM call when user wants to generate lesson
+- Instant section list display (~50ms vs 10-20 seconds)
+- For multi-source: Primary source sections = structure, supplements = context within those sections
 
 ---
 
@@ -829,16 +923,17 @@ ADD COLUMN chapter_summary TEXT;
 - ✅ Update extraction services to save both
 
 **Files Changed:**
-1. `backend/src/services/tier2Extraction.js` - Update `extractSingleChapter()`
+1. `backend/src/services/tier2Extraction.js` - Update `extractSingleChapter()` to request sections + summary
 2. `backend/src/services/tier2Detection.js` - Update single-chapter extraction
-3. `backend/src/db/migrations/` - Add migration for summary column
-4. `backend/src/jobs/processors/chapterExtraction.processor.js` - Save summary
+3. `backend/src/db/migrations/` - Add migrations for summary column + tier2_sections table
+4. `backend/src/jobs/processors/chapterExtraction.processor.js` - Save summary + sections
 
 **Success Criteria:**
 - Upload single-chapter PDF
-- Extraction saves both `markdown_content` and `chapter_summary`
+- Extraction saves: `markdown_content`, `chapter_summary`, AND sections in `tier2_sections`
 - Summary is 2-3 paragraphs
-- Check database: Both fields populated
+- Sections are 4-8 entries with names and descriptions
+- Check database: All fields populated
 
 **New Extraction Prompt:**
 ```markdown
@@ -857,39 +952,37 @@ RESPONSE FORMAT:
 
 **Why This First?**
 - Foundation for everything else
-- One-time cost per chapter
+- **One LLM call extracts everything:** markdown, summary, AND sections!
 - Summaries enable token-efficient multi-source
+- Cached sections enable instant lesson generation UI
 
 ---
 
 ### Phase 1: Single Source Section Extraction (2 days)
 
-**Goal:** Generate sections from single source, display list
+**Goal:** Display sections from single source (already extracted!)
 
 **Scope:**
-- ✅ Smart aggregation service (trivial for single source)
-- ✅ Section extraction (reuse tier 1 logic)
-- ✅ API: `POST /tier2/generate-lesson`
-- ✅ Frontend: "Generate Lesson" button, section list display
+- ✅ API: `GET /tier2/sections/:chapterId` - Fetch cached sections
+- ✅ Frontend: "View Sections" button, section list display
+- ✅ No LLM calls needed - instant retrieval!
 
 **Files Created:**
-1. `backend/src/services/tier2Aggregation.service.js`
-2. `backend/src/services/tier2Lesson.service.js`
-3. `backend/src/routes/tier2.js` - Add `generate-lesson` endpoint
-4. Frontend: Lesson generation button, section list component
+1. `backend/src/routes/tier2.js` - Add `GET /sections/:chapterId` endpoint
+2. Frontend: "View Sections" button, section list component
 
 **Success Criteria:**
-- User uploads chapter (with summary from Phase 0)
-- Clicks "Generate Lesson"
-- Sees 4-8 sections displayed
+- User uploads chapter (with summary + sections from Phase 0)
+- Clicks "View Sections"
+- Sees 4-8 sections displayed instantly
 - Sections are clean and accurate
 
-**Timeline:** ~10-20 seconds per generation
+**Timeline:** ~50ms (instant!)
 
 **Why Second?**
-- Proves section extraction works
-- No multi-source complexity
-- Immediate user value
+- Proves section caching works
+- Instant UX (no waiting for LLM)
+- Foundation for lesson generation
 
 ---
 
@@ -903,9 +996,9 @@ RESPONSE FORMAT:
 - ✅ API: `POST /tier2/generate-section-lesson`
 - ✅ Frontend: Click on section to generate lesson
 
-**Files Updated:**
-1. `backend/src/services/tier2Lesson.service.js` - Add `generateSectionLesson()`
-2. `backend/src/routes/tier2.js` - Add `generate-section-lesson` endpoint
+**Files Created:**
+1. `backend/src/services/tier2Lesson.service.js` - NEW: Lesson generation logic
+2. `backend/src/routes/tier2.js` - Add `POST /generate-section-lesson` endpoint
 3. Frontend: Section click handler, lesson display (reuse existing)
 
 **Success Criteria:**
@@ -933,17 +1026,17 @@ RESPONSE FORMAT:
 - ✅ Frontend: Source selection modal
 - ✅ Primary/supplement designation
 
-**Files Updated:**
-1. `backend/src/services/tier2Aggregation.service.js` - Multi-source logic
-2. `backend/src/routes/tier2.js` - Accept supplement source IDs
+**Files Created/Updated:**
+1. `backend/src/services/tier2Aggregation.service.js` - NEW: Multi-source aggregation
+2. `backend/src/routes/tier2.js` - UPDATE: Accept supplement source IDs in endpoints
 3. Frontend: Multi-source selection component
 4. `backend/src/db/migrations/` - Lessons table source tracking
 
 **Success Criteria:**
 - User has 3 chapters for same chapter number
 - Selects primary + 2 supplements
-- System combines: primary full + supplement summaries
-- Generates sections from combined context
+- System shows primary source's sections (instant!)
+- System combines: primary full + supplement summaries for lesson generation
 - Token count: ~104K (not 300K!)
 
 **Why Fourth?**
@@ -968,20 +1061,21 @@ RESPONSE FORMAT:
 3. Database: Store source attribution
 
 **Success Criteria:**
-- User generates sections from 3 sources
-- Sections reflect combined context
-- Clicks on section, generates lesson
+- User selects 3 sources
+- Sections displayed instantly (from primary source cache)
+- Clicks on section, generates lesson with all 3 sources
 - Lesson shows "Based on: Textbook (primary), Lecture Notes, Study Guide"
 - High quality concepts using all sources
 
 **Timeline:**
-- Section extraction: ~10-20 seconds
+- Section display: Instant (~50ms)
 - Lesson generation: ~20-35 seconds
 
 **Why Last?**
 - Completes the vision
 - Builds on all previous phases
 - Maximum value for tier 2 users
+- Demonstrates full power: multi-source + instant sections + high-quality lessons
 
 ---
 
@@ -990,15 +1084,21 @@ RESPONSE FORMAT:
 **Advanced Features (Can Add Later):**
 - LLM-based summary improvement (re-summarize poorly extracted summaries)
 - User-editable summaries (if auto-summary is poor)
-- Section caching (if performance becomes issue)
+- User-editable sections (if auto-section detection missed something)
 - A/B testing of different aggregation approaches
 - Source weight configuration (e.g., "primary 70%, supplement 1 20%, supplement 2 10%")
+- **Apply same optimization to Tier 1:** Update tier 1 extraction to also mark sections in one pass!
 
 **Total Implementation Time:** 7 days (vs 14-18 in old plan!)
 
 **Code Volume:** ~500 lines new code (vs 2000+ in old plan)
 
 **Reuse Factor:** 90% of lesson generation logic reused from tier 1
+
+**LLM Efficiency:**
+- **Old approach:** 2 LLM calls for extraction (markdown, then sections) + 1 per lesson
+- **New approach:** 1 LLM call for extraction (everything at once!) + 1 per lesson
+- **Savings:** 50% reduction in extraction LLM calls
 
 ---
 
@@ -1200,34 +1300,31 @@ describe('End-to-End Tier 2 Lesson Generation', () => {
 
 ---
 
-### 2. Section Extraction Caching
+### 2. Section Extraction Caching ✅ RESOLVED
 
 **Question:** Should we cache sections or re-extract every time?
 
-**Scenarios:**
-- User generates lesson → Sections extracted → User picks section
-- Later, user returns → Generates lesson again with SAME sources
-- Should we re-extract sections or cache?
+**ANSWER:** **Cache them!** Extract sections during upload (in the same LLM call as markdown extraction).
 
-**Analysis:**
-- Section extraction: ~10-20 seconds, ~$0.002
-- Caching saves time but adds complexity
-- Different supplement combos = different sections
+**Why This is Better:**
+- **No additional LLM call:** Sections extracted alongside markdown + summary
+- **Most accurate:** Sections from original PDF structure (not inferred from markdown later)
+- **Instant UX:** User clicks "View Sections" → sees list immediately
+- **Simple caching:** Store in `tier2_sections` table, tied to `chapter_markdown_id`
+- **No invalidation complexity:** Sections are immutable per chapter upload
 
-**Options:**
-- A) **No Caching:** Always re-extract
-  - Pros: Simple, always current, handles different source combos
-  - Cons: Slower, more LLM calls
+**Implementation:**
+```sql
+CREATE TABLE tier2_sections (
+  id UUID PRIMARY KEY,
+  chapter_markdown_id UUID REFERENCES chapter_markdown(id) ON DELETE CASCADE,
+  section_number INTEGER,
+  section_name VARCHAR(500),
+  section_description TEXT
+);
+```
 
-- B) **Cache by Source Combo:** Cache sections for each unique source combination
-  - Pros: Fast for repeated queries
-  - Cons: Complex cache key, invalidation logic
-
-- C) **Session Cache:** Cache only during active session
-  - Pros: Balanced - helps during exploration
-  - Cons: Lost on page refresh
-
-**Recommendation:** **Option A** for MVP. Section extraction is fast enough. Add caching if it becomes bottleneck.
+**For multi-source:** Primary source sections = structure, supplements provide context within those sections.
 
 ---
 
@@ -1367,25 +1464,29 @@ Add Option C if quality issues persist.
 
 ### Key Changes from Original Plan
 
-| Aspect | Original Plan | Revised Plan |
-|--------|--------------|-------------|
-| **Extraction** | Markdown only | Markdown + Summary (one LLM call) |
-| **Multi-Source Strategy** | Complex merge strategies (simple, LLM dedupe, structured) | Smart aggregation (primary full + supplement summaries) |
-| **Section Extraction** | Custom tier 2 section service | Direct reuse of tier 1 `extractSections()` |
-| **Lesson Generation** | Thin wrapper around tier 1 | Direct reuse of tier 1 `generateFullContextLesson()` |
-| **Section Caching** | Dedicated `tier2_sections` table | No caching (extract on-demand) |
-| **Token Count (3 sources)** | 300,000+ tokens | ~104,000 tokens (65% reduction!) |
-| **New Code Volume** | ~2,000 lines | ~500 lines |
-| **Implementation Time** | 14-18 days | 7 days |
-| **Reuse Factor** | 70% | 90% |
+| Aspect | Original Plan | Revised Plan | Final Optimized Plan |
+|--------|--------------|-------------|---------------------|
+| **Extraction** | Markdown only | Markdown + Summary (one LLM call) | **Markdown + Summary + Sections (ONE call!)** |
+| **Multi-Source Strategy** | Complex merge strategies | Smart aggregation | **Smart aggregation (same)** |
+| **Section Handling** | Custom tier 2 service | Re-extract on demand | **Cache from upload (instant!)** |
+| **Lesson Generation** | Thin wrapper | Direct reuse of tier 1 | **Direct reuse (same)** |
+| **Section Caching** | No table | No caching | **YES - tier2_sections table** |
+| **Token Count (3 sources)** | 300,000+ tokens | ~104,000 tokens (65% reduction!) | **~104,000 tokens (same)** |
+| **LLM Calls** | 2 for extraction | 2 for extraction | **1 for extraction! (50% reduction)** |
+| **Section Display Time** | N/A | 10-20 seconds | **Instant (~50ms)** |
+| **New Code Volume** | ~2,000 lines | ~500 lines | **~500 lines (same)** |
+| **Implementation Time** | 14-18 days | 7 days | **7 days (same)** |
+| **Reuse Factor** | 70% | 90% | **90% (same)** |
 
 ### Architecture Principles
 
 1. **NEVER markdown inside JSON** - All LLM responses are pure markdown or pure JSON
-2. **Smart Aggregation over Complex Merging** - Primary full text + supplement summaries
-3. **Maximum Reuse** - 90% of code is tier 1 logic, just called with combined markdown
-4. **Token Efficiency** - Summaries provide context without overwhelming token count
-5. **Simplicity** - Fewer modules, less complexity, faster implementation
+2. **ONE LLM call for extraction** - Extract markdown + summary + sections in single pass from PDF
+3. **Smart Aggregation over Complex Merging** - Primary full text + supplement summaries
+4. **Maximum Reuse** - 90% of code is tier 1 logic, just called with combined markdown
+5. **Token Efficiency** - Summaries provide context without overwhelming token count
+6. **Simplicity** - Fewer modules, less complexity, faster implementation
+7. **Cache What's Immutable** - Sections from upload are cached (instant UX)
 
 ### The Core Insight
 
@@ -1444,11 +1545,20 @@ Add Option C if quality issues persist.
 - Lesson display (reuse existing tier 1 component)
 
 **Database:**
-- One migration: Add `chapter_summary TEXT` column
-- Extend `lessons` table with `tier2_source_ids UUID[]` column
+- Migration 1: Add `chapter_summary TEXT` column to `chapter_markdown`
+- Migration 2: Create `tier2_sections` table for caching sections from extraction
+- Migration 3: Extend `lessons` table with `tier2_source_ids UUID[]` column
 
 ---
 
 **This is now a 7-day implementation instead of 14-18 days, with 75% less code to write!**
+
+**KEY OPTIMIZATION:** Extract everything (markdown + summary + sections) in ONE LLM call during upload, instead of tier 1's current two-pass approach!
+
+**Benefits:**
+- 50% fewer LLM calls for extraction
+- Instant section display (no waiting!)
+- More accurate sections (from original PDF, not inferred from markdown)
+- Same optimization should be applied to tier 1!
 
 Ready to start Phase 0?
