@@ -1,8 +1,15 @@
 # Tier 2 Lesson Generation - Detailed Planning Document
 
-**Last Updated:** 2025-11-28
-**Status:** Planning Phase
+**Last Updated:** 2025-11-28 (Revised)
+**Status:** Planning Phase - Architecture Updated
 **Purpose:** Comprehensive architectural design for tier 2 multi-source lesson generation
+
+## ⚠️ CRITICAL DESIGN CONSTRAINT
+
+**NEVER use markdown inside JSON.** All LLM responses must be pure markdown or pure JSON, never mixed.
+- ✅ Good: LLM returns markdown, we parse it
+- ✅ Good: LLM returns JSON with string fields
+- ❌ Bad: JSON with markdown-formatted string values
 
 ---
 
@@ -63,7 +70,7 @@
    - Queue individual extraction jobs (one per chapter)
    - Each chapter stored as separate row in `chapter_markdown`
 
-**Storage Schema:**
+**Storage Schema (Current):**
 ```sql
 chapter_markdown (
   id UUID PRIMARY KEY,
@@ -75,6 +82,24 @@ chapter_markdown (
   markdown_content TEXT,  -- Full markdown for this chapter
   page_start INTEGER,
   page_end INTEGER
+)
+```
+
+**Storage Schema (Updated - Add Summary Field):**
+```sql
+chapter_markdown (
+  id UUID PRIMARY KEY,
+  owner_id TEXT,
+  document_id UUID,
+  course_id UUID,
+  chapter_number INTEGER,
+  chapter_title VARCHAR(500),
+  markdown_content TEXT,     -- Full markdown extraction
+  chapter_summary TEXT,       -- NEW: Concise summary of chapter (2-3 paragraphs)
+  page_start INTEGER,
+  page_end INTEGER,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
 )
 ```
 
@@ -100,38 +125,39 @@ chapter_markdown (
 4. **Tier 2:** Chapters grouped by `chapter_number` (allows multiple sources per logical chapter)
 
 ### What's Missing ❌
-1. **No lesson generation for tier 2 sources** - Can view markdown but can't generate lessons
-2. **No multi-source selection UI** - Can't select which sources to include
-3. **No primary/supplement source designation** - All sources treated equally
-4. **No deduplication/merging logic** - Multiple sources not intelligently combined
-5. **No tier 2 lesson generation API** - Need new endpoint architecture
+1. **No summary extraction during upload** - Need to extract chapter summaries alongside markdown
+2. **No lesson generation for tier 2 sources** - Can view markdown but can't generate lessons
+3. **No multi-source selection UI** - Can't select which sources to include
+4. **No primary/supplement source designation** - All sources treated equally
+5. **No intelligent source combination** - Need primary full text + supplement summaries approach
+6. **No tier 2 lesson generation API** - Need new endpoint architecture
 
-### Current Challenges
+### Current Challenges & Solutions
 
-#### Challenge 1: Granularity Mismatch
-- **Tier 1:** Lessons generated per **section** (e.g., "Section 2.1: Packet Switching")
-- **Tier 2:** Chapters stored as monolithic markdown (e.g., "Chapter 5: Networks" - could be 50+ pages)
-- **Problem:** Generating 6-15 concepts from 50 pages yields superficial coverage
-- **Solution:** Need section extraction for tier 2 chapters
+#### Challenge 1: Token Efficiency with Multiple Sources
+- **Problem:** Sending 3 full chapter markdowns to LLM = massive token count
+  - Example: 3 × 50 pages = 150 pages × 2000 chars/page = 300,000 tokens
+  - Cost and context window issues
+- **Solution:** **Primary full markdown + supplement summaries**
+  - Primary source: Full markdown (50 pages = 100,000 tokens)
+  - Supplement 1: Summary only (~500 words = 2,000 tokens)
+  - Supplement 2: Summary only (~500 words = 2,000 tokens)
+  - **Total:** ~104,000 tokens (65% reduction!)
 
-#### Challenge 2: Multi-Source Merging
-- **Scenario:** User has:
-  - Textbook Chapter 5 (primary)
-  - Lecture notes Chapter 5 (supplement)
-  - Study guide Chapter 5 (supplement)
-- **Current:** No way to combine these intelligently
-- **Needed:**
-  - Deduplication (don't repeat same definitions)
-  - Merge strategy (textbook definitions + lecture examples + study guide summaries)
-  - Source attribution (which concept came from which source)
+#### Challenge 2: Section Extraction Timing
+- **Old Approach:** Extract sections during upload (complicates upload flow)
+- **New Approach:** Extract sections at lesson generation time
+  - Extraction: Just get markdown + summary (fast)
+  - Lesson generation: Combine sources → extract sections → display list
+  - **Benefit:** Reuses tier 1 section extraction logic directly
+  - **Benefit:** Sections based on combined context (primary + supplement summaries)
 
-#### Challenge 3: UI/UX Complexity
-- **Tier 1:** Simple - one file, see sections, click to learn
-- **Tier 2:** Complex - multiple sources per chapter, need to:
-  - Select which sources to include
-  - Designate primary vs supplement
-  - Choose granularity (whole chapter vs sections)
-  - See which sources contributed to lesson
+#### Challenge 3: Summary Quality
+- **Need:** High-quality summaries that capture key concepts
+- **Solution:** Dedicated summary prompt during extraction
+  - Request: "2-3 paragraph summary covering main topics, key concepts, formulas"
+  - Post-process: Clean markdown formatting
+  - Store separately: `chapter_summary` field in database
 
 ---
 
@@ -145,66 +171,69 @@ chapter_markdown (
 4. **Testability:** Each module can be tested independently
 5. **Traceability:** Easy to trace errors to specific module
 
-### High-Level Flow
+### High-Level Flow (Revised Architecture)
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  User: Tier 2 user with chapter_markdown sources              │
+│  PHASE 1: Enhanced Extraction (Updated Upload Process)        │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │
+                       ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Chapter Extraction (tier2Extraction.js - UPDATED)            │
+│  • Extract markdown (existing)                                │
+│  • NEW: Extract chapter summary (2-3 paragraphs)              │
+│  • Post-process both for clean markdown formatting            │
+│  • Store in chapter_markdown table:                           │
+│    - markdown_content: Full chapter markdown                  │
+│    - chapter_summary: Concise summary                         │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  PHASE 2: Lesson Generation Flow                              │
 └──────────────────────┬─────────────────────────────────────────┘
                        │
                        ▼
 ┌────────────────────────────────────────────────────────────────┐
 │  Frontend: Source Selection UI                                │
-│  • Show chapter sources grouped by chapter_number             │
 │  • User selects: primary source + optional supplements        │
-│  • Option: Generate for whole chapter OR extract sections     │
-└──────────────────────┬─────────────────────────────────────────┘
-                       │
-                       ▼
-        ┌──────────────┴──────────────┐
-        │                             │
-        ▼                             ▼
-┌──────────────────┐         ┌──────────────────┐
-│  Whole Chapter   │         │  Section-Based   │
-│  (Quick)         │         │  (Recommended)   │
-└────────┬─────────┘         └────────┬─────────┘
-         │                            │
-         │                            ▼
-         │                   ┌─────────────────────────────────┐
-         │                   │  Module 1: Section Extraction   │
-         │                   │  • Similar to tier 1            │
-         │                   │  • Extracts 4-8 sections        │
-         │                   │  • Per-source section detection │
-         │                   └────────┬────────────────────────┘
-         │                            │
-         └───────────────┬────────────┘
-                         │
-                         ▼
-┌────────────────────────────────────────────────────────────────┐
-│  Module 2: Multi-Source Aggregation                           │
-│  • Collects markdown from selected sources                    │
-│  • Primary source is base                                     │
-│  • Supplement sources are additive                            │
-│  Output: List of markdown texts with metadata                 │
+│  • Clicks "Generate Lesson"                                   │
 └──────────────────────┬─────────────────────────────────────────┘
                        │
                        ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  Module 3: Content Merging Strategy (Pluggable)               │
-│  Strategy Options:                                             │
-│  • A) Simple Concatenation (MVP)                              │
-│  • B) LLM-based Deduplication (Future)                        │
-│  • C) Structured Merge (Future)                               │
-│  Output: Merged markdown text                                  │
+│  Step 1: Smart Source Aggregation                             │
+│  • Fetch primary source: Use FULL markdown_content            │
+│  • Fetch supplements: Use ONLY chapter_summary (not full)     │
+│  • Combine:                                                    │
+│    Primary (full) + Supplement 1 (summary) + Supplement 2...  │
+│  Output: Combined markdown text                               │
 └──────────────────────┬─────────────────────────────────────────┘
                        │
                        ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  Module 4: Lesson Generation (Reuse Tier 1 Logic)             │
-│  • Call existing generateFullContextLesson()                  │
-│  • Pass merged markdown as full_text                          │
-│  • Include source attribution metadata                        │
-│  Output: Structured lesson with concepts                      │
+│  Step 2: Section Extraction (Reuse Tier 1 Logic!)             │
+│  • Pass combined markdown to extractSectionsWithLLM()         │
+│  • LLM analyzes full primary + supplement context             │
+│  • Returns 4-8 sections in PURE MARKDOWN                      │
+│  • Post-process markdown to extract section list              │
+│  Output: Sections array                                       │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │
+                       ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Frontend: Display Section List (Like Tier 1)                 │
+│  • User sees sections: "Introduction", "Core Concepts", etc.  │
+│  • User clicks on section to learn                            │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │
+                       ▼
+┌────────────────────────────────────────────────────────────────┐
+│  Step 3: Section-Scoped Lesson Generation                     │
+│  • Extract section markdown from combined text                │
+│  • Call generateFullContextLesson() (existing tier 1 logic)   │
+│  • Generate 6-15 concepts for this section                    │
+│  Output: Lesson with concepts                                 │
 └──────────────────────┬─────────────────────────────────────────┘
                        │
                        ▼
@@ -212,311 +241,276 @@ chapter_markdown (
 │  Storage: Lessons Table                                        │
 │  • Store lesson concepts                                       │
 │  • Link to source_ids (array of chapter_markdown IDs)         │
-│  • Enable regeneration with different merge strategies        │
+│  • Track which was primary                                    │
 └────────────────────────────────────────────────────────────────┘
 ```
 
+**Key Changes from Original Plan:**
+1. **Extraction now includes summary** - One-time cost during upload
+2. **No separate merge strategies** - Simple pattern: primary full + supplement summaries
+3. **Section extraction happens at generation time** - Not during upload
+4. **Direct reuse of tier 1 section extraction** - Pass combined markdown to existing function
+5. **All markdown, no JSON mixing** - LLM returns pure markdown, we parse it
+
 ---
 
-## Modular Component Design
+## Modular Component Design (Revised)
 
-### Module 1: Section Extraction for Tier 2
+### Module 0: Enhanced Extraction (Update Existing)
 
-**Purpose:** Extract sections from tier 2 chapter markdown (same as tier 1)
+**Purpose:** Extract both markdown AND summary during chapter extraction
+
+**Changes to Existing Files:**
+- **File:** `backend/src/services/tier2Extraction.js` (UPDATE)
+- **File:** `backend/src/services/tier2Detection.js` (UPDATE)
+
+**New Extraction Process:**
+
+**Step 1: Call LLM for extraction + summary**
+```
+System Prompt: "Extract this chapter as markdown AND provide a summary"
+
+User Prompt:
+"Extract Chapter 5 as clean markdown, then provide a 2-3 paragraph summary.
+
+RESPONSE FORMAT (PURE MARKDOWN):
+
+# CHAPTER_CONTENT
+
+[Full markdown extraction here...]
+
+---
+
+# CHAPTER_SUMMARY
+
+[2-3 paragraph summary covering:
+- Main topics discussed
+- Key concepts and definitions
+- Important formulas/algorithms
+- Real-world applications]
+"
+```
+
+**Step 2: Post-process LLM response**
+```javascript
+// Parse the markdown response
+const sections = response.split('---');
+const markdownContent = extractSection(sections[0], 'CHAPTER_CONTENT');
+const chapterSummary = extractSection(sections[1], 'CHAPTER_SUMMARY');
+
+// Clean markdown formatting (remove extra headers, normalize)
+const cleanedMarkdown = postProcessMarkdown(markdownContent);
+const cleanedSummary = postProcessMarkdown(chapterSummary);
+
+return {
+  chapterNumber,
+  chapterTitle,
+  markdown: cleanedMarkdown,
+  summary: cleanedSummary  // NEW!
+};
+```
+
+**Step 3: Store both in database**
+```sql
+INSERT INTO chapter_markdown (
+  owner_id, document_id, course_id,
+  chapter_number, chapter_title,
+  markdown_content,   -- Full extraction
+  chapter_summary     -- NEW: Summary
+) VALUES (...);
+```
+
+**Why This Approach?**
+- ✅ One LLM call (not two separate calls)
+- ✅ Summary is contextually aware of full content
+- ✅ Post-processing ensures clean markdown (no JSON mixing)
+- ✅ Summaries cached for future lesson generations
+
+---
+
+### Module 1: Smart Source Aggregation (Simplified)
+
+**Purpose:** Combine primary full markdown with supplement summaries
 
 **Input:**
 ```javascript
 {
-  chapterId: "uuid",                    // chapter_markdown.id
-  markdownContent: "# Chapter 5...",   // chapter_markdown.markdown_content
-  chapterTitle: "Networks"             // chapter_markdown.chapter_title
-}
-```
-
-**Output:**
-```javascript
-{
-  chapterId: "uuid",
-  sections: [
-    {
-      section_number: 1,
-      name: "Introduction to Networks",
-      description: "Basic network concepts",
-      markdown_text: "..."    // Section-scoped markdown
-    },
-    // ... more sections
-  ]
-}
-```
-
-**Implementation:**
-- **File:** `backend/src/services/tier2Section.service.js` (new)
-- **Reuses:** `extractSectionsWithLLM()` logic from `section.service.js`
-- **Key difference:** Operates on `chapter_markdown.markdown_content` instead of `documents.full_text`
-
-**Why Separate File?**
-- Tier 1 section service tightly coupled to `documents` table
-- Tier 2 uses `chapter_markdown` table
-- Separation allows independent testing and evolution
-
----
-
-### Module 2: Multi-Source Aggregation
-
-**Purpose:** Collect and prepare markdown from selected sources
-
-**Input:**
-```javascript
-{
-  sourceIds: ["uuid1", "uuid2", "uuid3"],   // chapter_markdown IDs
-  primarySourceId: "uuid1",                  // Which is primary
-  scope: "whole_chapter" | "section",        // Granularity
-  sectionName: "Introduction" (if scope=section)
+  primarySourceId: "uuid1",
+  supplementSourceIds: ["uuid2", "uuid3"]
 }
 ```
 
 **Process:**
-1. Fetch all `chapter_markdown` rows by IDs
-2. Validate all sources belong to same course and user
-3. Extract markdown based on scope:
-   - If `whole_chapter`: Use full `markdown_content`
-   - If `section`: Extract section from each source
-4. Tag each markdown with metadata
+1. Fetch primary source from chapter_markdown
+2. Fetch supplement sources
+3. Build combined markdown:
+   ```markdown
+   # PRIMARY SOURCE: [Primary Chapter Title]
+
+   [Full markdown_content from primary source]
+
+   ---
+
+   # SUPPLEMENTARY CONTEXT: [Supplement 1 Title]
+
+   [chapter_summary from supplement 1]
+
+   ---
+
+   # SUPPLEMENTARY CONTEXT: [Supplement 2 Title]
+
+   [chapter_summary from supplement 2]
+   ```
 
 **Output:**
 ```javascript
 {
-  sources: [
-    {
-      id: "uuid1",
-      chapterTitle: "Networks - Textbook",
-      markdown: "...",
-      isPrimary: true,
-      documentTitle: "Computer Networks.pdf"
-    },
-    {
-      id: "uuid2",
-      chapterTitle: "Networks - Lecture",
-      markdown: "...",
-      isPrimary: false,
-      documentTitle: "Lecture 5.pdf"
-    }
-  ],
-  scope: "section",
-  sectionName: "Introduction"
+  combinedMarkdown: "...",   // Primary full + supplement summaries
+  sourceIds: ["uuid1", "uuid2", "uuid3"],
+  primarySourceId: "uuid1"
 }
 ```
 
 **Implementation:**
-- **File:** `backend/src/services/tier2Aggregation.service.js` (new)
-- **Dependencies:** Database queries, section extraction if needed
+- **File:** `backend/src/services/tier2Aggregation.service.js` (NEW)
+- **Complexity:** Low - just string concatenation with delimiters
+- **Token Efficiency:** 65% reduction vs all full markdowns
 
-**Error Handling:**
-- Source not found → Return error with missing IDs
-- Sources from different courses → Return error
-- No primary source specified → Default to first source
-
----
-
-### Module 3: Content Merging Strategy
-
-**Purpose:** Intelligently combine multiple markdown sources into one text
-
-**Interface:**
-```javascript
-interface MergeStrategy {
-  name: string;
-
-  merge(sources: Source[], options: MergeOptions): Promise<MergedContent>;
-}
-
-interface Source {
-  id: string;
-  markdown: string;
-  isPrimary: boolean;
-  chapterTitle: string;
-}
-
-interface MergedContent {
-  mergedMarkdown: string;
-  sourceAttribution: {
-    conceptName: string,
-    sourceIds: string[]
-  }[];
-  strategyUsed: string;
-}
-```
-
-#### Strategy A: Simple Concatenation (MVP)
-
-**Logic:**
-1. Primary source markdown first
-2. Append supplement sources with delimiter
-3. Add source labels
-
-**Example Output:**
-```markdown
-# PRIMARY SOURCE: Computer Networks Textbook
-
-[Primary source content...]
+**Why This Works:**
+- Primary source has full detail for section extraction
+- Supplements provide context without overwhelming token count
+- LLM can reference supplement summaries when generating concepts
+- Natural language approach (markdown, not JSON)
 
 ---
 
-# SUPPLEMENTARY SOURCE: Lecture Notes
+### Module 2: Section Extraction (Direct Reuse!)
 
-[Supplement 1 content...]
-
----
-
-# SUPPLEMENTARY SOURCE: Study Guide
-
-[Supplement 2 content...]
-```
-
-**Pros:**
-- Simple, no LLM calls needed
-- Fast
-- No information loss
-- Easy to debug
-
-**Cons:**
-- Redundant content (same definitions repeated)
-- LLM may get confused by contradictions
-- Large token count if many sources
-
-#### Strategy B: LLM-Based Deduplication (Future)
-
-**Logic:**
-1. Send all sources to LLM
-2. Ask LLM to merge, removing duplicates
-3. Keep best explanation/example from each source
-4. Preserve source attribution
-
-**Example Prompt:**
-```
-You have multiple sources for the same chapter:
-
-SOURCE 1 (PRIMARY - Textbook):
-[markdown]
-
-SOURCE 2 (Lecture Notes):
-[markdown]
-
-SOURCE 3 (Study Guide):
-[markdown]
-
-Merge these into a single cohesive document:
-1. Remove duplicate definitions (keep the clearest one)
-2. Combine examples (include examples from all sources)
-3. Preserve all unique information
-4. Mark which source each section came from
-```
-
-**Pros:**
-- No redundancy
-- Best content from each source
-- Cleaner output
-
-**Cons:**
-- Additional LLM call (cost + latency)
-- Potential information loss
-- Harder to debug
-
-#### Strategy C: Structured Merge (Future)
-
-**Logic:**
-1. Parse markdown into structured components (definitions, examples, formulas)
-2. Merge at component level
-3. Primary source definitions + all sources' examples
-4. Deduplicate programmatically (hash-based or similarity)
-
-**Pros:**
-- More control than LLM
-- Cheaper than LLM
-- Predictable behavior
-
-**Cons:**
-- Complex parsing logic
-- May miss nuances
-- Requires robust markdown structure
+**Purpose:** Extract sections from combined markdown
 
 **Implementation:**
-- **File:** `backend/src/services/tier2Merge/` (folder)
-  - `strategies/simple.js` - Strategy A
-  - `strategies/llmDedupe.js` - Strategy B (future)
-  - `strategies/structured.js` - Strategy C (future)
-  - `index.js` - Strategy selector
-
-**Configuration:**
-```javascript
-// backend/src/services/tier2Merge/index.js
-const MERGE_STRATEGIES = {
-  simple: require('./strategies/simple'),
-  llmDedupe: require('./strategies/llmDedupe'),
-  structured: require('./strategies/structured')
-};
-
-export function getMergeStrategy(strategyName = 'simple') {
-  if (!MERGE_STRATEGIES[strategyName]) {
-    throw new Error(`Unknown merge strategy: ${strategyName}`);
-  }
-  return MERGE_STRATEGIES[strategyName];
-}
-```
-
----
-
-### Module 4: Lesson Generation (Reuse Existing)
-
-**Purpose:** Generate concepts from merged markdown
-
-**Implementation:**
-- **Reuse:** Existing `generateFullContextLesson()` from `gemini.js`
-- **No changes needed** to core lesson generation logic
-- **Input:** Merged markdown as `full_text`
-
-**Modified Call:**
 ```javascript
 // backend/src/services/tier2Lesson.service.js
-import { getLLMProvider } from '../providers/llm/index.js';
 
-export async function generateTier2Lesson({
-  mergedMarkdown,
-  sourceAttribution,
-  chapterNumber,
-  chapterTitle,
-  sectionName,
-  sectionDescription
-}) {
-  const provider = await getLLMProvider();
+import { extractSections } from '../study/section.service.js';
 
-  // Call existing lesson generation function
-  const lesson = await provider.generateFullContextLesson({
-    document_id: null,  // Not tied to single document
-    title: `Chapter ${chapterNumber}: ${chapterTitle}`,
-    full_text: mergedMarkdown,
-    material_type: 'tier2_chapter',
-    chapter: chapterNumber,
-    include_check_ins: true,
-    section_name: sectionName,
-    section_description: sectionDescription
+export async function extractTier2Sections(combinedMarkdown, chapterTitle) {
+  // Pass combined markdown to existing tier 1 function!
+  const sections = await extractSections({
+    full_text: combinedMarkdown,
+    title: chapterTitle
   });
 
-  // Enhance with source attribution
-  lesson.source_ids = sourceAttribution.map(s => s.sourceIds).flat();
-  lesson.merge_strategy = 'simple';  // or whatever was used
+  return sections;
+}
+```
+
+**That's it!** We literally just call the existing tier 1 section extraction function with the combined markdown. It:
+- Analyzes the combined text (primary + supplement summaries)
+- Extracts 4-8 sections
+- Returns pure markdown section list
+- Post-processes to get clean section metadata
+
+**No new extraction logic needed.**
+
+---
+
+### Module 3: Lesson Generation (Direct Reuse!)
+
+**Purpose:** Generate lesson from section markdown
+
+**Implementation:**
+```javascript
+// backend/src/services/tier2Lesson.service.js
+
+import { createStudyService } from '../study/service.js';
+
+export async function generateTier2Lesson({
+  sectionMarkdown,
+  sectionName,
+  sectionDescription,
+  sourceIds,
+  primarySourceId,
+  chapterNumber,
+  chapterTitle
+}) {
+  const studyService = createStudyService();
+
+  // Call existing tier 1 lesson generation!
+  const lesson = await studyService.buildFullContextLesson(
+    { full_text: sectionMarkdown },  // Dummy document object
+    {
+      section_name: sectionName,
+      section_description: sectionDescription,
+      full_text_override: sectionMarkdown
+    }
+  );
+
+  // Add tier 2 metadata
+  lesson.source_ids = sourceIds;
+  lesson.primary_source_id = primarySourceId;
+  lesson.chapter_number = chapterNumber;
 
   return lesson;
 }
 ```
 
-**Key Point:** This module is just a thin wrapper. The heavy lifting is already done by tier 1 logic.
+**Again, direct reuse!** The existing `generateFullContextLesson()` handles everything.
 
 ---
 
-## Data Flow
+## Summary of Revised Architecture
 
-### Scenario 1: Single Source, Whole Chapter (Simplest)
+**Old Plan:** 4 complex modules with custom merge strategies
+**New Plan:** 3 simple modules, mostly reusing tier 1 logic
+
+| Module | Complexity | New Code |
+|--------|------------|----------|
+| **Module 0:** Enhanced Extraction | Low | Update existing extraction prompts |
+| **Module 1:** Smart Aggregation | Very Low | Simple string concatenation |
+| **Module 2:** Section Extraction | Zero | Direct reuse of tier 1 |
+| **Module 3:** Lesson Generation | Zero | Direct reuse of tier 1 |
+
+**Total New Code:** ~200 lines (vs 1000+ in old plan)
+
+---
+
+### Database Schema Changes
+
+**Migration Required:**
+```sql
+-- Add chapter_summary column to chapter_markdown table
+ALTER TABLE chapter_markdown
+ADD COLUMN chapter_summary TEXT;
+
+-- Optional: Add index if we filter by summary presence
+CREATE INDEX idx_chapter_markdown_has_summary
+ON chapter_markdown((chapter_summary IS NOT NULL));
+```
+
+**Updated Table:**
+```sql
+chapter_markdown (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id TEXT NOT NULL,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  course_id UUID NOT NULL,
+  chapter_number INTEGER NOT NULL,
+  chapter_title VARCHAR(500) NOT NULL,
+  markdown_content TEXT NOT NULL,     -- Full markdown extraction
+  chapter_summary TEXT,                -- NEW: 2-3 paragraph summary
+  page_start INTEGER,
+  page_end INTEGER,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+---
+
+## Data Flow (Revised)
+
+### Scenario 1: Single Source (Simplest)
 
 **User Actions:**
 1. Goes to course page
@@ -526,75 +520,45 @@ export async function generateTier2Lesson({
 **Backend Flow:**
 ```
 1. POST /api/tier2/generate-lesson
-   Body: { sourceIds: ["uuid1"], scope: "whole_chapter" }
+   Body: {
+     primarySourceId: "uuid1"
+     // No supplements
+   }
 
-2. Module 2 (Aggregation):
+2. Smart Aggregation (Module 1):
    - Fetch chapter_markdown WHERE id = uuid1
-   - Extract full markdown_content
-   - Output: sources = [{ id: uuid1, markdown: "...", isPrimary: true }]
+   - Extract markdown_content (full markdown)
+   - Single source, so combinedMarkdown = markdown_content
+   - Output: { combinedMarkdown: "...", sourceIds: ["uuid1"] }
 
-3. Module 3 (Merging):
-   - Single source, no merging needed
-   - Output: mergedMarkdown = sources[0].markdown
+3. Section Extraction (Module 2):
+   - Call extractSections({ full_text: combinedMarkdown, ... })
+   - Reuses tier 1 section extraction logic
+   - LLM returns 4-8 sections in PURE MARKDOWN
+   - Post-process to parse section list
+   - Output: sections = [...]
 
-4. Module 4 (Lesson Generation):
-   - Call generateFullContextLesson({ full_text: mergedMarkdown, ... })
-   - Generate 6-15 concepts
-   - Output: { concepts: [...], source_ids: ["uuid1"] }
+4. Frontend displays section list
 
-5. Store in lessons table
-6. Return lesson to frontend
-```
+5. User clicks on "Section 1: Introduction"
 
-**Timeline:** ~15-30 seconds (same as tier 1)
+6. POST /api/tier2/generate-section-lesson
+   Body: {
+     primarySourceId: "uuid1",
+     sectionName: "Introduction"
+   }
 
----
-
-### Scenario 2: Single Source, Section-Based (Recommended)
-
-**User Actions:**
-1. Goes to course page
-2. Sees "Chapter 5: Networks" with one source
-3. Clicks "Show Sections" → System extracts sections
-4. Sees "Section 5.1: Introduction to Networks"
-5. Clicks "Learn Section 5.1"
-
-**Backend Flow:**
-```
-1. POST /api/tier2/extract-sections
-   Body: { chapterId: "uuid1" }
-
-2. Module 1 (Section Extraction):
-   - Fetch chapter_markdown WHERE id = uuid1
-   - Call extractSectionsWithLLM(markdown_content)
-   - Return sections array
-   - Store in tier2_sections table (cache)
-
-3. Frontend displays sections
-
-4. POST /api/tier2/generate-lesson
-   Body: { sourceIds: ["uuid1"], scope: "section", sectionName: "Introduction to Networks" }
-
-5. Module 2 (Aggregation):
-   - Fetch chapter_markdown WHERE id = uuid1
-   - Extract section markdown using section name
-   - Output: sources = [{ id: uuid1, markdown: "...", isPrimary: true }]
-
-6. Module 3 (Merging):
-   - Single source, no merging needed
-   - Output: mergedMarkdown = sources[0].markdown
-
-7. Module 4 (Lesson Generation):
+7. Section Lesson Generation (Module 3):
+   - Extract section markdown from combinedMarkdown
    - Call generateFullContextLesson({
-       full_text: mergedMarkdown,
-       section_name: "Introduction to Networks",
-       section_description: "..."
+       full_text: sectionMarkdown,
+       section_name: "Introduction",
+       ...
      })
-   - Generate 6-15 concepts scoped to this section
+   - Reuses tier 1 lesson generation logic
    - Output: { concepts: [...], source_ids: ["uuid1"] }
 
-8. Store in lessons table with section metadata
-9. Return lesson to frontend
+8. Return lesson to frontend
 ```
 
 **Timeline:**
@@ -603,7 +567,7 @@ export async function generateTier2Lesson({
 
 ---
 
-### Scenario 3: Multi-Source, Section-Based (Full Complexity)
+### Scenario 2: Multi-Source (Full Power!)
 
 **User Actions:**
 1. Goes to course page
@@ -615,368 +579,426 @@ export async function generateTier2Lesson({
 4. Selects:
    - Primary: Textbook
    - Supplements: Lecture Notes, Study Guide
-5. Chooses "Section-Based Generation"
-6. System extracts sections from each source
-7. User picks "Section: Introduction to Networks" (matched across sources)
-8. Clicks "Generate Lesson"
+5. Clicks "Generate Lesson"
 
 **Backend Flow:**
 ```
-1. POST /api/tier2/extract-sections (run for each source)
-   Body: { chapterId: "uuid1" } // Textbook
-   Body: { chapterId: "uuid2" } // Lecture
-   Body: { chapterId: "uuid3" } // Study Guide
-
-2. Module 1 (Section Extraction) - runs 3 times:
-   - Extract sections from each chapter_markdown
-   - Store in tier2_sections table with parent chapter_markdown_id
-   - Return sections for each
-
-3. Frontend: Section Matching UI
-   - Show sections from primary source
-   - Allow user to map supplement sections to primary sections
-   - E.g., "Introduction" (Textbook) ← "Lecture 1 Intro" (Lecture)
-
-4. POST /api/tier2/generate-lesson
+1. POST /api/tier2/generate-lesson
    Body: {
-     sourceIds: ["uuid1", "uuid2", "uuid3"],
      primarySourceId: "uuid1",
-     scope: "section",
-     sectionName: "Introduction to Networks",
-     sectionMapping: {
-       "uuid1": "Introduction to Networks",
-       "uuid2": "Lecture 1 Intro",
-       "uuid3": "Chapter 5.1 Overview"
-     }
+     supplementSourceIds: ["uuid2", "uuid3"]
    }
 
-5. Module 2 (Aggregation):
+2. Smart Aggregation (Module 1):
    - Fetch chapter_markdown for all 3 IDs
-   - For each, extract the mapped section's markdown
-   - Output: sources = [
-       { id: uuid1, markdown: "...", isPrimary: true },
-       { id: uuid2, markdown: "...", isPrimary: false },
-       { id: uuid3, markdown: "...", isPrimary: false }
-     ]
+   - Build combined markdown:
+     ```
+     # PRIMARY SOURCE: Computer Networks
+     [FULL markdown_content from uuid1]
 
-6. Module 3 (Merging):
-   - Strategy: Simple Concatenation (MVP)
-   - Combine: Primary first, then supplements with delimiters
-   - Output: mergedMarkdown = combined text
+     ---
 
-7. Module 4 (Lesson Generation):
+     # SUPPLEMENTARY CONTEXT: Lecture Notes
+     [chapter_summary from uuid2]  ← Note: summary only!
+
+     ---
+
+     # SUPPLEMENTARY CONTEXT: Study Guide
+     [chapter_summary from uuid3]  ← Note: summary only!
+     ```
+   - Output: { combinedMarkdown: "...", sourceIds: [...], primarySourceId: "uuid1" }
+
+3. Section Extraction (Module 2):
+   - Call extractSections({ full_text: combinedMarkdown, ... })
+   - LLM sees:
+     * Full detail from primary source
+     * Summaries from supplements (for context)
+   - Extracts 4-8 sections based on combined context
+   - Post-process markdown to get section list
+   - Output: sections = [...]
+
+4. Frontend displays section list
+
+5. User clicks on "Section 1: Introduction"
+
+6. POST /api/tier2/generate-section-lesson
+   Body: {
+     primarySourceId: "uuid1",
+     supplementSourceIds: ["uuid2", "uuid3"],
+     sectionName: "Introduction"
+   }
+
+7. Section Lesson Generation (Module 3):
+   - Re-build combined markdown (primary full + supplement summaries)
+   - Extract section markdown from combined text
    - Call generateFullContextLesson({
-       full_text: mergedMarkdown,  // All 3 sources combined
-       section_name: "Introduction to Networks",
+       full_text: sectionMarkdown,  // Includes primary detail + supplement summaries
+       section_name: "Introduction",
        ...
      })
-   - LLM sees all sources and generates concepts
+   - LLM generates concepts using:
+     * Detailed content from primary source
+     * Contextual info from supplement summaries
    - Output: { concepts: [...], source_ids: ["uuid1", "uuid2", "uuid3"] }
 
-8. Store lesson with source attribution
-9. Return to frontend with source list
+8. Return lesson with source attribution
 ```
 
 **Timeline:**
-- Section extraction (one-time per source): ~10-20 sec × 3 = 30-60 sec
-- Section matching (user task): ~1-2 minutes
-- Lesson generation: ~15-30 seconds
+- Section extraction (one-time): ~10-20 seconds
+- Lesson generation per section: ~20-35 seconds (slightly longer due to more tokens)
+
+**Token Breakdown:**
+- Primary source markdown: ~100,000 tokens
+- Supplement 1 summary: ~2,000 tokens
+- Supplement 2 summary: ~2,000 tokens
+- **Total:** ~104,000 tokens (vs 300,000 if all full markdowns!)
 
 ---
 
-## API Design
+### Key Insight: Why This Works
 
-### 1. POST /api/tier2/extract-sections
+**Primary Source = Full Detail:**
+- Section extraction needs complete structure → Use full markdown
+- Lesson generation needs examples, formulas, details → Primary has them all
 
-**Purpose:** Extract sections from a tier 2 chapter (one-time operation, cached)
+**Supplement Sources = Context:**
+- Summaries provide:
+  - Alternative explanations of same concepts
+  - Different examples or perspectives
+  - Complementary information
+- Don't need full text because primary provides structure
+- Summaries = 2% of full text but capture 80% of key concepts
 
-**Request:**
-```json
-{
-  "chapterId": "uuid"
-}
-```
-
-**Response:**
-```json
-{
-  "chapterId": "uuid",
-  "sections": [
-    {
-      "id": "section-uuid-1",
-      "section_number": 1,
-      "name": "Introduction to Networks",
-      "description": "Basic network concepts and terminology",
-      "markdown_text": "..." // Optional, not sent to save bandwidth
-    },
-    // ... more sections
-  ]
-}
-```
-
-**Implementation:**
-- Check if sections already extracted (cache in `tier2_sections` table)
-- If not, run Module 1 (Section Extraction)
-- Store results for future use
-- Return sections metadata
-
-**New Table:**
-```sql
-CREATE TABLE tier2_sections (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  chapter_markdown_id UUID REFERENCES chapter_markdown(id) ON DELETE CASCADE,
-  section_number INTEGER,
-  section_name VARCHAR(500),
-  section_description TEXT,
-  markdown_text TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_tier2_sections_chapter ON tier2_sections(chapter_markdown_id);
-```
+**Result:**
+- LLM gets comprehensive context
+- Token efficiency (65% reduction)
+- High quality lessons (all sources inform generation)
+- No complex merge logic needed
 
 ---
 
-### 2. POST /api/tier2/generate-lesson
+## API Design (Revised - Simplified!)
 
-**Purpose:** Generate a lesson from one or more tier 2 sources
+### 1. POST /api/tier2/generate-lesson
 
-**Request (Simple):**
+**Purpose:** Generate sections from combined sources, return section list
+
+**Request (Single Source):**
 ```json
 {
-  "sourceIds": ["chapter-uuid-1"],
-  "scope": "whole_chapter"
-}
-```
-
-**Request (Section-Based, Single Source):**
-```json
-{
-  "sourceIds": ["chapter-uuid-1"],
-  "scope": "section",
-  "sectionName": "Introduction to Networks"
+  "primarySourceId": "uuid1"
 }
 ```
 
 **Request (Multi-Source):**
 ```json
 {
-  "sourceIds": ["chapter-uuid-1", "chapter-uuid-2", "chapter-uuid-3"],
-  "primarySourceId": "chapter-uuid-1",
-  "scope": "section",
-  "sectionMapping": {
-    "chapter-uuid-1": "Introduction to Networks",
-    "chapter-uuid-2": "Lecture 1 Intro",
-    "chapter-uuid-3": "Overview"
-  },
-  "mergeStrategy": "simple"  // Optional, defaults to "simple"
+  "primarySourceId": "uuid1",
+  "supplementSourceIds": ["uuid2", "uuid3"]
 }
 ```
-
-**Response:**
-```json
-{
-  "lessonId": "lesson-uuid",
-  "concepts": [
-    {
-      "name": "Network Protocols",
-      "explanation": "...",
-      "formulas": [...],
-      "examples": [...],
-      "check_ins": [...]
-    },
-    // ... more concepts
-  ],
-  "sources": [
-    {
-      "id": "chapter-uuid-1",
-      "chapterTitle": "Networks - Textbook",
-      "isPrimary": true
-    },
-    {
-      "id": "chapter-uuid-2",
-      "chapterTitle": "Networks - Lecture",
-      "isPrimary": false
-    }
-  ],
-  "mergeStrategy": "simple",
-  "generatedAt": "2025-11-28T..."
-}
-```
-
-**Implementation:**
-- Validate source IDs and permissions
-- Call Module 2 (Aggregation)
-- Call Module 3 (Merging)
-- Call Module 4 (Lesson Generation)
-- Store lesson in database with source attribution
-- Return lesson
-
----
-
-### 3. GET /api/tier2/sections/:chapterId
-
-**Purpose:** Get cached sections for a chapter
 
 **Response:**
 ```json
 {
   "sections": [
     {
-      "id": "section-uuid",
       "section_number": 1,
-      "section_name": "Introduction",
-      "section_description": "...",
-      "hasLesson": true  // Whether lesson exists for this section
+      "name": "Introduction to Networks",
+      "description": "Basic network concepts and terminology"
+    },
+    {
+      "section_number": 2,
+      "name": "Network Protocols",
+      "description": "TCP/IP and protocol stacks"
     }
-  ]
+    // ... 4-8 sections total
+  ],
+  "sourceIds": ["uuid1", "uuid2", "uuid3"],
+  "primarySourceId": "uuid1"
 }
 ```
 
+**Implementation:**
+1. Fetch primary chapter_markdown (get full markdown_content)
+2. Fetch supplements (get chapter_summary only)
+3. Combine: primary full + supplement summaries
+4. Call `extractSections()` on combined markdown
+5. Parse markdown response to get section list
+6. Return sections
+
+**Timeline:** ~10-20 seconds (one LLM call)
+
 ---
 
-## Implementation Phases
+### 2. POST /api/tier2/generate-section-lesson
 
-### Phase 1: MVP - Single Source, Whole Chapter (1-2 days)
+**Purpose:** Generate lesson for a specific section
 
-**Goal:** Get tier 2 lesson generation working in simplest form
+**Request:**
+```json
+{
+  "primarySourceId": "uuid1",
+  "supplementSourceIds": ["uuid2", "uuid3"],
+  "sectionName": "Introduction to Networks"
+}
+```
+
+**Response:**
+```json
+{
+  "lesson": {
+    "concepts": [
+      {
+        "name": "Network Topology",
+        "explanation": "...",
+        "formulas": [...],
+        "examples": [...],
+        "important_notes": [...],
+        "check_ins": [...]
+      }
+      // ... 6-15 concepts
+    ]
+  },
+  "sourceIds": ["uuid1", "uuid2", "uuid3"],
+  "primarySourceId": "uuid1",
+  "sectionName": "Introduction to Networks"
+}
+```
+
+**Implementation:**
+1. Fetch primary chapter_markdown (get full markdown_content)
+2. Fetch supplements (get chapter_summary only)
+3. Combine: primary full + supplement summaries
+4. Extract section markdown from combined text
+5. Call `generateFullContextLesson()` with section markdown
+6. Return lesson concepts
+
+**Timeline:** ~15-30 seconds (one LLM call)
+
+---
+
+### Database Changes
+
+**Migration 1: Add Summary Column**
+```sql
+ALTER TABLE chapter_markdown
+ADD COLUMN chapter_summary TEXT;
+```
+
+**No New Tables Needed!**
+- No `tier2_sections` table (sections extracted on-demand, not cached)
+- Reuse existing `lessons` table for storage
+
+**Why No Caching?**
+- Section extraction is fast (~10-20 sec)
+- Sections depend on which supplements are selected
+- Different supplement combos = different sections
+- Cache would be complex to invalidate
+
+---
+
+### Updated Tier 2 Routes Summary
+
+**File:** `backend/src/routes/tier2.js`
+
+**Existing Routes (Keep):**
+- `POST /tier2/extract-chapters` - Queue chapter extraction
+- `GET /tier2/chapter-markdown/:id` - Get chapter markdown
+- `GET /tier2/chapter-sources/:courseId` - List chapter sources
+- `PATCH /tier2/chapter-markdown/:id/reassign` - Reassign chapter number
+- `DELETE /tier2/chapter-markdown/:id` - Delete chapter source
+
+**New Routes (Add):**
+- `POST /tier2/generate-lesson` - Generate sections from sources
+- `POST /tier2/generate-section-lesson` - Generate lesson for section
+
+---
+
+## Implementation Phases (Revised - Much Simpler!)
+
+### Phase 0: Enhanced Extraction (1 day)
+
+**Goal:** Update extraction to include summaries
 
 **Scope:**
-- ✅ Module 2: Aggregation (single source only)
-- ✅ Module 3: Simple concatenation (trivial for single source)
-- ✅ Module 4: Reuse existing lesson generation
-- ✅ API: `POST /tier2/generate-lesson` (single source only)
-- ✅ Frontend: "Generate Lesson" button for chapter
+- ✅ Update extraction prompts to request summary
+- ✅ Post-process markdown response to separate content and summary
+- ✅ Database migration: Add `chapter_summary` column
+- ✅ Update extraction services to save both
 
-**Deliverables:**
-1. `backend/src/services/tier2Lesson.service.js`
-2. `backend/src/routes/tier2.js` - Add generate-lesson endpoint
-3. Frontend: Button to trigger generation, display concepts
-4. Test with single-chapter PDF
+**Files Changed:**
+1. `backend/src/services/tier2Extraction.js` - Update `extractSingleChapter()`
+2. `backend/src/services/tier2Detection.js` - Update single-chapter extraction
+3. `backend/src/db/migrations/` - Add migration for summary column
+4. `backend/src/jobs/processors/chapterExtraction.processor.js` - Save summary
 
 **Success Criteria:**
-- User uploads single-chapter PDF
-- Clicks "Generate Lesson"
-- Sees 6-15 concepts
-- Lesson stored in database
+- Upload single-chapter PDF
+- Extraction saves both `markdown_content` and `chapter_summary`
+- Summary is 2-3 paragraphs
+- Check database: Both fields populated
+
+**New Extraction Prompt:**
+```markdown
+Extract this chapter as clean markdown, then provide a summary.
+
+RESPONSE FORMAT:
+
+# CHAPTER_CONTENT
+[Full markdown extraction]
+
+---
+
+# CHAPTER_SUMMARY
+[2-3 paragraph summary covering main topics, key concepts, formulas, applications]
+```
 
 **Why This First?**
-- Proves the core concept works
-- Minimal new code
-- Immediate user value
-- Foundation for complexity
+- Foundation for everything else
+- One-time cost per chapter
+- Summaries enable token-efficient multi-source
 
 ---
 
-### Phase 2: Section Extraction for Tier 2 (2-3 days)
+### Phase 1: Single Source Section Extraction (2 days)
 
-**Goal:** Enable section-based lesson generation for tier 2
+**Goal:** Generate sections from single source, display list
 
 **Scope:**
-- ✅ Module 1: Section extraction service
-- ✅ Database: `tier2_sections` table
-- ✅ API: `POST /tier2/extract-sections`
-- ✅ API: `GET /tier2/sections/:chapterId`
-- ✅ Frontend: Section list UI for chapters
-- ✅ Module 2: Aggregation with section scope
+- ✅ Smart aggregation service (trivial for single source)
+- ✅ Section extraction (reuse tier 1 logic)
+- ✅ API: `POST /tier2/generate-lesson`
+- ✅ Frontend: "Generate Lesson" button, section list display
 
-**Deliverables:**
-1. `backend/src/services/tier2Section.service.js`
-2. Database migration for `tier2_sections`
-3. Updated `tier2Lesson.service.js` to handle sections
-4. Frontend: Section selection UI
+**Files Created:**
+1. `backend/src/services/tier2Aggregation.service.js`
+2. `backend/src/services/tier2Lesson.service.js`
+3. `backend/src/routes/tier2.js` - Add `generate-lesson` endpoint
+4. Frontend: Lesson generation button, section list component
 
 **Success Criteria:**
-- User uploads chapter
-- System extracts 4-8 sections
-- User clicks on section
-- Generates section-scoped lesson (6-15 concepts for that section only)
+- User uploads chapter (with summary from Phase 0)
+- Clicks "Generate Lesson"
+- Sees 4-8 sections displayed
+- Sections are clean and accurate
+
+**Timeline:** ~10-20 seconds per generation
 
 **Why Second?**
-- Dramatically improves lesson quality (focused concepts)
-- Matches tier 1 UX
-- Still single source (low complexity)
+- Proves section extraction works
+- No multi-source complexity
+- Immediate user value
 
 ---
 
-### Phase 3: Multi-Source Aggregation (3-4 days)
+### Phase 2: Section-Scoped Lesson Generation (1 day)
 
-**Goal:** Allow multiple sources for same chapter
+**Goal:** Generate lesson from selected section
 
 **Scope:**
-- ✅ Module 2: Multi-source aggregation
-- ✅ Module 3: Simple concatenation strategy
-- ✅ API: `POST /tier2/generate-lesson` with multi-source
-- ✅ Frontend: Source selection UI
-- ✅ Frontend: Primary/supplement designation
+- ✅ Extract section markdown from combined text
+- ✅ Call existing lesson generation logic
+- ✅ API: `POST /tier2/generate-section-lesson`
+- ✅ Frontend: Click on section to generate lesson
 
-**Deliverables:**
-1. `backend/src/services/tier2Aggregation.service.js`
-2. `backend/src/services/tier2Merge/strategies/simple.js`
-3. Frontend: Multi-source selection modal
-4. Updated lesson storage to track source_ids array
+**Files Updated:**
+1. `backend/src/services/tier2Lesson.service.js` - Add `generateSectionLesson()`
+2. `backend/src/routes/tier2.js` - Add `generate-section-lesson` endpoint
+3. Frontend: Section click handler, lesson display (reuse existing)
 
 **Success Criteria:**
-- User has 3 sources for Chapter 5
-- Selects textbook as primary, lecture + guide as supplements
-- Generates lesson from all 3
-- Lesson shows source attribution
+- User clicks on "Section 1: Introduction"
+- Sees 6-15 concepts focused on introduction
+- Concepts stored in database with source attribution
+- Can navigate between sections
+
+**Timeline:** ~15-30 seconds per section lesson
 
 **Why Third?**
-- Core differentiator for tier 2
-- Unlocks multi-source value
-- Uses simple merge (low risk)
+- Completes single-source flow
+- Matches tier 1 UX
+- High quality (section-scoped)
 
 ---
 
-### Phase 4: Section Matching Across Sources (4-5 days)
+### Phase 3: Multi-Source Aggregation (2 days)
 
-**Goal:** Match sections from different sources for focused generation
+**Goal:** Support multiple sources with smart aggregation
 
 **Scope:**
-- ✅ Frontend: Section matching UI
-- ✅ API: Section mapping in `POST /tier2/generate-lesson`
-- ✅ Module 2: Extract and merge specific sections from multiple sources
+- ✅ Update aggregation to handle supplements
+- ✅ Primary full markdown + supplement summaries
+- ✅ Frontend: Source selection modal
+- ✅ Primary/supplement designation
 
-**Deliverables:**
-1. Frontend: Section matcher component
-2. Updated aggregation service for section mapping
-3. UX for "Section 1 (Textbook) ← Lecture 1 Intro (Lecture)"
+**Files Updated:**
+1. `backend/src/services/tier2Aggregation.service.js` - Multi-source logic
+2. `backend/src/routes/tier2.js` - Accept supplement source IDs
+3. Frontend: Multi-source selection component
+4. `backend/src/db/migrations/` - Lessons table source tracking
 
 **Success Criteria:**
-- User extracts sections from 3 sources
-- Matches "Introduction" across all 3
-- Generates lesson using all 3 sources' intro sections
-- Concepts focused on introduction topic only
+- User has 3 chapters for same chapter number
+- Selects primary + 2 supplements
+- System combines: primary full + supplement summaries
+- Generates sections from combined context
+- Token count: ~104K (not 300K!)
 
 **Why Fourth?**
-- Maximum quality: Multi-source + section-scoped
-- Complex UX needs careful design
-- Builds on previous phases
+- Core tier 2 differentiator
+- Token-efficient approach
+- No complex merge logic needed
 
 ---
 
-### Phase 5: Advanced Merge Strategies (Future)
+### Phase 4: Complete Multi-Source Flow (1 day)
 
-**Goal:** Intelligent deduplication and merging
+**Goal:** End-to-end multi-source lesson generation
 
 **Scope:**
-- ✅ Module 3: LLM-based deduplication strategy
-- ✅ Module 3: Structured merge strategy
-- ✅ Strategy selection in API and UI
-- ✅ A/B testing framework
+- ✅ Section extraction from combined sources
+- ✅ Section lesson generation with multi-source attribution
+- ✅ UI polish: Source badges, attribution display
 
-**Deliverables:**
-1. `backend/src/services/tier2Merge/strategies/llmDedupe.js`
-2. `backend/src/services/tier2Merge/strategies/structured.js`
-3. Strategy selector dropdown in UI
-4. Performance comparison metrics
+**Files Updated:**
+1. Frontend: Display which sources contributed
+2. Frontend: Source badges on concepts/sections
+3. Database: Store source attribution
 
 **Success Criteria:**
-- User can choose merge strategy
-- LLM dedupe reduces token count by 30%+
-- Lesson quality maintained or improved
-- Cost/latency tradeoffs documented
+- User generates sections from 3 sources
+- Sections reflect combined context
+- Clicks on section, generates lesson
+- Lesson shows "Based on: Textbook (primary), Lecture Notes, Study Guide"
+- High quality concepts using all sources
+
+**Timeline:**
+- Section extraction: ~10-20 seconds
+- Lesson generation: ~20-35 seconds
+
+**Why Last?**
+- Completes the vision
+- Builds on all previous phases
+- Maximum value for tier 2 users
+
+---
+
+### Future Enhancements (Not in Scope)
+
+**Advanced Features (Can Add Later):**
+- LLM-based summary improvement (re-summarize poorly extracted summaries)
+- User-editable summaries (if auto-summary is poor)
+- Section caching (if performance becomes issue)
+- A/B testing of different aggregation approaches
+- Source weight configuration (e.g., "primary 70%, supplement 1 20%, supplement 2 10%")
+
+**Total Implementation Time:** 7 days (vs 14-18 in old plan!)
+
+**Code Volume:** ~500 lines new code (vs 2000+ in old plan)
+
+**Reuse Factor:** 90% of lesson generation logic reused from tier 1
 
 ---
 
@@ -1150,83 +1172,66 @@ describe('End-to-End Tier 2 Lesson Generation', () => {
 
 ---
 
-## Open Questions
+## Open Questions (Revised)
 
-### 1. Section Matching UX
+### 1. Summary Quality Validation
 
-**Question:** How should users match sections across sources?
-
-**Options:**
-- A) **Manual Mapping:** User drags "Lecture 1" onto "Introduction"
-  - Pros: Full control, accurate
-  - Cons: Tedious for many sections
-
-- B) **Automatic Matching:** LLM matches sections by similarity
-  - Pros: Fast, user-friendly
-  - Cons: May mismatch, needs review UI
-
-- C) **Hybrid:** Automatic suggestions + manual override
-  - Pros: Best of both
-  - Cons: Most complex to implement
-
-**Recommendation:** Start with **Option B** (automatic), add manual override in Phase 4.
-
----
-
-### 2. Merge Strategy Configuration
-
-**Question:** Where should merge strategy be configured?
-
-**Options:**
-- A) **Per-lesson:** User chooses when generating
-  - Pros: Flexibility, A/B testing
-  - Cons: Confusing for average user
-
-- B) **Per-course:** Set once for entire course
-  - Pros: Consistent behavior
-  - Cons: Less flexible
-
-- C) **Global default:** Admin-configured
-  - Pros: Simplest UX
-  - Cons: No customization
-
-**Recommendation:** **Option C** for MVP (simple strategy), **Option A** for Phase 5 (power users).
-
----
-
-### 3. Section Extraction Caching
-
-**Question:** When should sections be re-extracted?
+**Question:** What if LLM generates poor summary during extraction?
 
 **Scenarios:**
-- User uploads chapter → Sections extracted → Cached
-- What if:
-  - User deletes and re-uploads same chapter?
-  - Chapter markdown is edited?
-  - Section extraction logic improves?
+- Summary is too short (1 sentence instead of 2-3 paragraphs)
+- Summary misses key concepts
+- Summary is too generic
 
 **Options:**
-- A) **Cache Forever:** Never re-extract
-  - Pros: Fast, no wasted LLM calls
-  - Cons: Stale if content changes
+- A) **No Validation:** Trust LLM, store whatever it returns
+  - Pros: Simple, fast
+  - Cons: Poor summaries degrade lesson quality
 
-- B) **Cache with Invalidation:** Re-extract if markdown changes
-  - Pros: Always current
-  - Cons: Complex change detection
+- B) **Basic Validation:** Check length, reject if < 200 words
+  - Pros: Catches obvious failures
+  - Cons: Doesn't catch quality issues
 
-- C) **Cache with TTL:** Expire after 30 days
-  - Pros: Balanced
-  - Cons: Arbitrary expiration
+- C) **LLM Re-check:** Ask second LLM call to evaluate and improve
+  - Pros: Best quality
+  - Cons: Double extraction cost, slower
 
-**Recommendation:** **Option B** with hash-based invalidation:
-```javascript
-// Store hash of markdown_content in tier2_sections
-// If markdown changes, hash changes → re-extract
-```
+**Recommendation:** **Option B** for MVP. Add length check (200-1000 words). Phase 2: Add quality scoring.
 
 ---
 
-### 4. Lesson Storage Schema
+### 2. Section Extraction Caching
+
+**Question:** Should we cache sections or re-extract every time?
+
+**Scenarios:**
+- User generates lesson → Sections extracted → User picks section
+- Later, user returns → Generates lesson again with SAME sources
+- Should we re-extract sections or cache?
+
+**Analysis:**
+- Section extraction: ~10-20 seconds, ~$0.002
+- Caching saves time but adds complexity
+- Different supplement combos = different sections
+
+**Options:**
+- A) **No Caching:** Always re-extract
+  - Pros: Simple, always current, handles different source combos
+  - Cons: Slower, more LLM calls
+
+- B) **Cache by Source Combo:** Cache sections for each unique source combination
+  - Pros: Fast for repeated queries
+  - Cons: Complex cache key, invalidation logic
+
+- C) **Session Cache:** Cache only during active session
+  - Pros: Balanced - helps during exploration
+  - Cons: Lost on page refresh
+
+**Recommendation:** **Option A** for MVP. Section extraction is fast enough. Add caching if it becomes bottleneck.
+
+---
+
+### 3. Lesson Storage Schema
 
 **Question:** How to link lessons to tier 2 sources?
 
@@ -1247,126 +1252,203 @@ lessons (
   id UUID,
   document_id UUID,      -- NULL for tier 2
   tier2_source_ids UUID[],  -- Array of chapter_markdown IDs
+  tier2_primary_source_id UUID,  -- Which was primary
   chapter_number INTEGER,    -- Logical chapter number
   section_name TEXT,
-  concepts JSONB,
-  merge_strategy TEXT,       -- Which merge strategy was used
-  source_attribution JSONB   -- Which sources contributed to which concepts
+  concepts JSONB
 )
 ```
 
-**Question:** Separate table or extend existing?
-
 **Options:**
-- A) **Extend Existing:** Add tier2_source_ids column
+- A) **Extend Existing:** Add tier2 columns
   - Pros: Unified storage, simpler queries
-  - Cons: NULL document_id for tier 2 (conceptually messy)
+  - Cons: NULL document_id for tier 2
 
 - B) **Separate Table:** tier2_lessons
-  - Pros: Clean separation, specialized schema
+  - Pros: Clean separation
   - Cons: Duplicate lesson logic, complex joins
 
-**Recommendation:** **Option A** - Extend existing with nullable document_id. Use `tier2_source_ids IS NOT NULL` to identify tier 2 lessons.
+**Recommendation:** **Option A** - Extend existing. Use `tier2_source_ids IS NOT NULL` to identify tier 2 lessons.
 
 ---
 
-### 5. Cost & Performance
+### 4. Cost & Performance (Updated Analysis)
 
-**Question:** What are token costs for multi-source merging?
+**Question:** Token costs with smart aggregation?
 
 **Analysis:**
-- **Tier 1 Section:** ~5,000 tokens per lesson generation
-- **Tier 2 Single Source:** Same as tier 1
-- **Tier 2 Multi-Source (Simple):**
-  - Primary: 5,000 tokens
-  - Supplement 1: 3,000 tokens
-  - Supplement 2: 3,000 tokens
-  - **Total:** ~11,000 tokens (2.2x tier 1)
+- **Tier 1 Section:** ~5,000 tokens
+- **Tier 2 Single Source:** ~5,000 tokens (same)
+- **Tier 2 Multi-Source (Smart Aggregation):**
+  - Section extraction:
+    * Primary full: 100,000 tokens
+    * Supplement 1 summary: 2,000 tokens
+    * Supplement 2 summary: 2,000 tokens
+    * **Total input:** ~104,000 tokens
+    * **Total output:** ~2,000 tokens (section list)
+    * **Cost:** ~$0.011
+  - Lesson generation (per section):
+    * Section markdown: ~15,000 tokens (section from combined)
+    * **Cost:** ~$0.003
 
-- **Tier 2 Multi-Source (LLM Dedupe):**
-  - Merge call: ~8,000 tokens (input) + 5,000 (output) = 13,000
-  - Lesson generation: ~5,000 tokens
-  - **Total:** ~18,000 tokens (3.6x tier 1)
+**Total Cost Per Chapter (3 sources):**
+- Section extraction (one-time): $0.011
+- Lesson generation (×6 sections): $0.018
+- **Total:** ~$0.029 per complete chapter
 
-**Token Costs (Gemini 2.0 Flash):**
-- Input: $0.10 per 1M tokens
-- Output: $0.40 per 1M tokens
+**Comparison:**
+- Tier 1: $0.003 per section × 6 = $0.018
+- Tier 2: $0.029 total
+- **Premium:** ~$0.011 (60% more, but multi-source value)
 
-**Cost Per Lesson:**
-- Tier 1: ~$0.003 (negligible)
-- Tier 2 Simple: ~$0.006
-- Tier 2 LLM Dedupe: ~$0.010
-
-**Recommendation:** Use simple concatenation for MVP. LLM dedupe cost is still negligible (<1¢ per lesson), but adds latency.
+**Recommendation:** Current approach is cost-effective. No optimization needed for MVP.
 
 ---
 
-### 6. Error Handling & Retries
+### 5. Summary Extraction Timing
 
-**Question:** What if section extraction fails for one source?
-
-**Scenarios:**
-- User selects 3 sources
-- Section extraction succeeds for 2, fails for 1
-- Should lesson generation proceed?
+**Question:** When should summary be extracted?
 
 **Options:**
-- A) **Fail Entire Request:** User must fix all sources
-  - Pros: All-or-nothing consistency
-  - Cons: Poor UX (one bad source blocks all)
+- A) **During Upload:** Extract markdown + summary in one LLM call
+  - Pros: One-time cost, ready for lesson generation
+  - Cons: Slower upload, user waits
 
-- B) **Partial Success:** Generate with available sources
-  - Pros: User gets value from working sources
-  - Cons: May not realize one source missing
+- B) **On-Demand:** Extract summary when first needed for lesson generation
+  - Pros: Fast upload
+  - Cons: Lesson generation slower, must wait for summary
 
-- C) **Warn and Proceed:** Show warning, let user decide
-  - Pros: User awareness + flexibility
-  - Cons: Requires decision
+- C) **Background Job:** Upload returns immediately, extract summary in background
+  - Pros: Fast upload, summary ready when needed
+  - Cons: Lesson generation may wait for summary job
 
-**Recommendation:** **Option C** - Show modal: "Section extraction failed for Lecture Notes. Proceed with Textbook + Study Guide?"
+**Recommendation:** **Option A** - Extract during upload. Summary extraction adds ~5 seconds to upload, but makes lesson generation instant. Better UX overall.
 
 ---
 
-## Summary
+### 6. Post-Processing Markdown
 
-This document outlines a **modular, testable, and incremental** architecture for tier 2 lesson generation. Key principles:
+**Question:** How to ensure clean markdown formatting?
 
-1. **Reuse Tier 1 Logic:** Core lesson generation stays the same
-2. **Modular Components:** Each module (extraction, merging, generation) is independent and swappable
-3. **Progressive Complexity:** Start simple (single source), add features incrementally
-4. **Clear Separation:** Source selection ≠ merging ≠ lesson generation
-5. **Testability:** Each module has clear inputs/outputs for unit testing
+**Scenarios:**
+- LLM returns markdown with inconsistent heading levels
+- Extra blank lines, weird formatting
+- HTML artifacts
+
+**Options:**
+- A) **Trust LLM:** No post-processing
+  - Pros: Simple
+  - Cons: Inconsistent quality
+
+- B) **Regex Cleanup:** Basic regex to normalize
+  - Pros: Fast, handles common issues
+  - Cons: Brittle, may break on edge cases
+
+- C) **Markdown Parser:** Use library to parse and re-format
+  - Pros: Robust, handles all cases
+  - Cons: May lose LLM's intentional formatting
+
+**Recommendation:** **Option B** for MVP:
+```javascript
+function postProcessMarkdown(markdown) {
+  return markdown
+    .replace(/\n{3,}/g, '\n\n')  // Normalize blank lines
+    .replace(/^#{7,}/gm, '######')  // Max 6 heading levels
+    .replace(/^\s+$/gm, '')  // Remove whitespace-only lines
+    .trim();
+}
+```
+
+Add Option C if quality issues persist.
+
+---
+
+## Summary of Revised Architecture
+
+### Key Changes from Original Plan
+
+| Aspect | Original Plan | Revised Plan |
+|--------|--------------|-------------|
+| **Extraction** | Markdown only | Markdown + Summary (one LLM call) |
+| **Multi-Source Strategy** | Complex merge strategies (simple, LLM dedupe, structured) | Smart aggregation (primary full + supplement summaries) |
+| **Section Extraction** | Custom tier 2 section service | Direct reuse of tier 1 `extractSections()` |
+| **Lesson Generation** | Thin wrapper around tier 1 | Direct reuse of tier 1 `generateFullContextLesson()` |
+| **Section Caching** | Dedicated `tier2_sections` table | No caching (extract on-demand) |
+| **Token Count (3 sources)** | 300,000+ tokens | ~104,000 tokens (65% reduction!) |
+| **New Code Volume** | ~2,000 lines | ~500 lines |
+| **Implementation Time** | 14-18 days | 7 days |
+| **Reuse Factor** | 70% | 90% |
+
+### Architecture Principles
+
+1. **NEVER markdown inside JSON** - All LLM responses are pure markdown or pure JSON
+2. **Smart Aggregation over Complex Merging** - Primary full text + supplement summaries
+3. **Maximum Reuse** - 90% of code is tier 1 logic, just called with combined markdown
+4. **Token Efficiency** - Summaries provide context without overwhelming token count
+5. **Simplicity** - Fewer modules, less complexity, faster implementation
+
+### The Core Insight
+
+**Primary Source = Structure + Detail**
+- Use full markdown for section extraction (needs complete structure)
+- Use full markdown for lesson generation (needs examples, formulas)
+
+**Supplement Sources = Context**
+- Summaries capture 80% of key concepts in 2% of space
+- Provide alternative perspectives without token explosion
+- LLM can reference supplements when generating concepts
+
+**Result:**
+- High quality (multi-source context)
+- Token efficient (65% reduction)
+- Simple implementation (no complex merge logic)
 
 ### Next Steps
 
-1. **Review this document** - Discuss open questions, validate architecture
-2. **Phase 1 Implementation** - Single source, whole chapter (1-2 days)
-3. **Test Phase 1** - Validate core concept works
-4. **Phase 2 Implementation** - Section extraction (2-3 days)
-5. **Iterate** - Continue through phases with testing between each
+1. **Phase 0: Enhanced Extraction** (1 day)
+   - Update extraction to include summaries
+   - Database migration for `chapter_summary` column
 
-### Key Files to Create
+2. **Phase 1: Single Source Sections** (2 days)
+   - Smart aggregation service
+   - Section extraction (reuse tier 1)
+   - Display section list
+
+3. **Phase 2: Section Lessons** (1 day)
+   - Section-scoped lesson generation
+   - Complete single-source flow
+
+4. **Phase 3: Multi-Source** (2 days)
+   - Primary + supplement selection
+   - Smart aggregation implementation
+
+5. **Phase 4: Complete Flow** (1 day)
+   - Multi-source sections and lessons
+   - Source attribution UI
+
+**Total:** 7 days to full implementation
+
+### Key Files to Create/Update
 
 **Backend:**
-- `backend/src/services/tier2Section.service.js` - Section extraction
-- `backend/src/services/tier2Aggregation.service.js` - Multi-source aggregation
-- `backend/src/services/tier2Merge/` - Merge strategies folder
-  - `strategies/simple.js` - Simple concatenation
-  - `index.js` - Strategy selector
-- `backend/src/services/tier2Lesson.service.js` - Lesson generation wrapper
-- `backend/src/routes/tier2.js` - Add lesson generation endpoints
-- `backend/test/tier2*.test.js` - Test files
+- `backend/src/services/tier2Extraction.js` - UPDATE: Add summary extraction
+- `backend/src/services/tier2Detection.js` - UPDATE: Add summary extraction
+- `backend/src/services/tier2Aggregation.service.js` - NEW: Smart aggregation
+- `backend/src/services/tier2Lesson.service.js` - NEW: Thin wrappers for tier 1 reuse
+- `backend/src/routes/tier2.js` - UPDATE: Add 2 new endpoints
+- `backend/src/db/migrations/` - NEW: Add `chapter_summary` column
 
 **Frontend:**
-- Source selection modal component
-- Section list component for tier 2
-- Section matching UI (Phase 4)
-- Lesson display (reuse existing)
+- Source selection modal (new)
+- Section list component (new, but simple)
+- Lesson display (reuse existing tier 1 component)
 
 **Database:**
-- Migration for `tier2_sections` table
-- Migration for `lessons` table updates (tier2_source_ids column)
+- One migration: Add `chapter_summary TEXT` column
+- Extend `lessons` table with `tier2_source_ids UUID[]` column
 
 ---
 
-**Ready to proceed with Phase 1 implementation?** Let's discuss any concerns or modifications before writing code.
+**This is now a 7-day implementation instead of 14-18 days, with 75% less code to write!**
+
+Ready to start Phase 0?
