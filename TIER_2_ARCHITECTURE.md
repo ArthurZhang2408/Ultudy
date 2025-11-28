@@ -1,7 +1,7 @@
 # Tier 2 Architecture: Multi-Chapter PDF Processing
 
-**Last Updated:** 2025-11-25
-**Status:** Implemented (Backend Complete, Frontend In Progress)
+**Last Updated:** 2025-11-28
+**Status:** Implemented (Document Extraction Complete)
 **Purpose:** Technical architecture for Tier 2 multi-chapter PDF processing, chapter detection, and extraction
 
 ---
@@ -12,8 +12,9 @@ Tier 2 introduces advanced PDF processing capabilities that allow users to:
 1. Upload multi-chapter PDFs (textbooks, comprehensive notes)
 2. Automatically detect single vs multi-chapter structure
 3. Extract individual chapters with faithful markdown conversion
-4. View extracted markdown with image descriptions
-5. Support multi-source chapter merging (future enhancement)
+4. Track individual chapter extraction progress with retry logic
+5. View extracted markdown with image descriptions
+6. Switch between tiers in test mode for development
 
 This document outlines the implemented architecture and remaining work.
 
@@ -21,20 +22,26 @@ This document outlines the implemented architecture and remaining work.
 
 ## Implementation Status
 
-### ✅ Completed
+### ✅ Completed (Document Extraction)
 - Database schema (`chapter_markdown` table)
 - Chapter detection service (single vs multi)
-- Chapter extraction service (by page range)
+- Chapter extraction service (by page range) with retry logic for 503 errors
 - Upload processor routing by tier
 - Tier 2 API endpoints
-- ChapterSelectionModal component
-
-### 🚧 In Progress
-- Job polling to trigger modal
+- ChapterSelectionModal component with UX improvements
+- Job polling and real-time status updates
 - Chapter source display in course page
 - Markdown viewer with raw/rendered toggle
+- Individual chapter extraction tracking (one job per chapter)
+- Auto-refresh when individual chapters complete
+- Multi-chapter parent document cleanup on cancel
+- Enhanced prompts to exclude metadata and references
+- Test mode tier switching for development
+- Multi-chapter parent document filtering in UI
 
-### 📋 Future Enhancements
+### 🚧 Future Enhancements
+- Lesson generation for tier 2 chapter sources
+- Real Stripe integration for tier management
 - Multi-source merging for same chapter
 - Conflict detection and deduplication
 - Source attribution in merged content
@@ -348,60 +355,209 @@ CREATE INDEX idx_chapter_markdown_owner ON chapter_markdown(owner_id);
 
 ---
 
-## Remaining Work
+## Individual Chapter Extraction with Job Queue
 
-### 1. Job Polling Integration (courses/[id]/page.tsx)
+### Architecture: One Job Per Chapter
 
-**TODO:** Add polling logic to detect tier 2 job completion and trigger modal
+Instead of processing all chapters in a single job, each selected chapter is queued as an individual job. This provides:
 
-```tsx
-// Pseudo-code
-useEffect(() => {
-  if (job.status === 'completed' && job.result.type === 'multi_chapter') {
-    setChapterSelectionData({
-      documentId: job.result.document_id,
-      documentName: job.result.title,
-      storageKey: job.result.storage_key,
-      chapters: job.result.chapters
-    });
-    setIsChapterSelectionOpen(true);
+**Benefits:**
+- **Real-time progress**: Each chapter shows its own status (queued → processing → completed)
+- **Fault isolation**: One chapter failure doesn't affect others
+- **Resource optimization**: Chapters process concurrently (configurable concurrency)
+- **User feedback**: Individual chapter completion triggers UI refresh
+
+**Implementation:**
+
+**Backend:** `chapterExtractionQueue` with dedicated processor
+```javascript
+// backend/src/jobs/processors/chapterExtraction.processor.js
+export async function processChapterExtractionJob(job, { tenantHelpers, jobTracker, storageService }) {
+  // Download PDF
+  // Extract chapter with retry logic
+  // Save to chapter_markdown table
+  // Update job progress: 10% → 30% → 70% → 100%
+}
+```
+
+**Frontend:** Individual task tracking with `createJobPoller`
+```typescript
+// frontend/src/components/ui/ChapterSelectionModal.tsx
+result.jobs.forEach((job: any) => {
+  addTask({
+    id: job.jobId,
+    type: 'extraction',
+    title: `Extracting ${documentName} - Chapter ${job.chapterNumber}: ${job.chapterTitle}`,
+    status: 'processing',
+    progress: 0
+  });
+
+  createJobPoller(job.jobId, {
+    interval: 2000,
+    onProgress: (jobData) => updateTask(job.jobId, { status: 'processing', progress: jobData.progress }),
+    onComplete: (jobData) => {
+      updateTask(job.jobId, { status: 'completed', progress: 100 });
+      router.refresh(); // Show this chapter immediately
+    },
+    onError: (error) => updateTask(job.jobId, { status: 'failed', error })
+  });
+});
+```
+
+---
+
+## Retry Logic for 503 Errors
+
+Gemini API occasionally returns 503 Service Unavailable during high load. The chapter extraction processor includes automatic retry with exponential backoff:
+
+**Configuration:**
+- **Max retries**: 3 attempts
+- **Base delay**: 10 seconds
+- **Backoff**: Exponential (10s → 20s → 40s)
+- **Retry condition**: Only 503/Service Unavailable errors
+
+**Implementation:**
+```javascript
+// backend/src/jobs/processors/chapterExtraction.processor.js
+const MAX_RETRIES = 3;
+const BASE_DELAY = 10000; // 10 seconds
+
+for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  try {
+    extraction = await extractSingleChapter(tempPdfPath, chapter.number, ...);
+    break; // Success
+  } catch (error) {
+    if (is503Error(error) && attempt < MAX_RETRIES) {
+      const delayMs = BASE_DELAY * Math.pow(2, attempt - 1);
+      console.log(`503 error detected. Retrying after ${delayMs}ms...`);
+      await sleep(delayMs);
+    } else {
+      throw error; // Non-503 or max retries reached
+    }
   }
-}, [processingJobs]);
+}
 ```
 
 ---
 
-### 2. Chapter Sources Display
+## Multi-Chapter Parent Document Handling
 
-**TODO:** Fetch and display chapter sources in course page
+Multi-chapter PDFs create a "parent" document in the database with `chapter: null`. This document acts as a container and should never be shown to users.
 
+**Problem:** Parent documents would appear as empty "Uncategorized" sections in the UI.
+
+**Solution:** Systematic filtering at multiple levels
+
+### 1. Identify Parent Documents
+```typescript
+// frontend/src/app/courses/[id]/page.tsx
+const documentIdsWithTier2Sources = new Set<string>();
+Object.values(chapterSources).forEach(sources => {
+  sources.forEach(source => {
+    documentIdsWithTier2Sources.add(source.documentId);
+  });
+});
+```
+
+### 2. Filter Parent Documents
+```typescript
+const filteredDocuments = documents.filter(doc =>
+  !documentIdsWithTier2Sources.has(doc.id)
+);
+```
+
+### 3. Check for Renderable Content
+```typescript
+const hasAnyContent =
+  filteredDocuments.some(doc => {
+    const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+    return skills.length > 0; // Has actual sections/concepts
+  }) ||
+  processingJobs.length > 0 ||
+  Object.keys(chapterSources).length > 0;
+```
+
+### 4. Cleanup on Cancel
+When user closes chapter selection modal without extracting:
+```typescript
+// frontend/src/components/ui/ChapterSelectionModal.tsx
+const handleClose = async () => {
+  // Delete the multi-chapter parent document
+  await fetch(`${getBackendUrl()}/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  onClose();
+};
+```
+
+**Result:** No orphaned parent documents, clean empty states, consistent UI behavior.
+
+---
+
+## Chapter Selection UX Improvements
+
+### Hide Extract Button When No Selection
 ```tsx
-// Pseudo-code
-const { chapterSources } = useFetchChapterSources(courseId);
-
-// In chapter section:
-{chapterSources[chapterNumber]?.map(source => (
-  <div key={source.id}>
-    <span>{source.documentTitle}</span>
-    <button onClick={() => viewMarkdown(source.id)}>
-      View Markdown
-    </button>
-  </div>
-))}
+// Only show Extract button when chapters are selected
+{selectedChapters.size > 0 && (
+  <Button onClick={handleExtract} variant="primary">
+    Extract {selectedChapters.size} Chapter{selectedChapters.size !== 1 ? 's' : ''}
+  </Button>
+)}
 ```
+
+**Before:** Disabled extract button appeared, looked like overlapping buttons
+**After:** Extract button only appears when needed, clean UI
+
+### All Cancel Actions Trigger Cleanup
+- Cancel button → `handleClose()`
+- X close button → `handleClose()`
+- Click outside modal → `handleClose()`
+- Escape key → `handleClose()`
+
+All actions delete the parent document to prevent orphaned records.
 
 ---
 
-### 3. Markdown Viewer Component
+## Test Mode Tier Switching
 
-**TODO:** Create component to display markdown with raw/rendered toggle
+For development and testing, users can switch tiers without Stripe integration:
 
-**Features:**
-- Toggle button: [Raw] [Rendered]
-- Raw view: Plain text in monospace
-- Rendered view: Markdown + LaTeX rendering
-- Modal or expandable panel
-- Syntax highlighting for code blocks
+**Environment Variable:**
+```bash
+# backend/.env
+ENABLE_TEST_MODE_TIERS=true
+```
+
+**Frontend Toggle:**
+```tsx
+// frontend/src/app/page.tsx
+{process.env.NEXT_PUBLIC_ENABLE_TEST_MODE_TIERS === 'true' && (
+  <div className="tier-switch">
+    <button onClick={() => switchToTier('free')}>Free Tier</button>
+    <button onClick={() => switchToTier('tier1')}>Tier 1</button>
+    <button onClick={() => switchToTier('tier2')}>Tier 2</button>
+  </div>
+)}
+```
+
+**Backend Logic:**
+```javascript
+// backend/src/jobs/processors/upload.processor.js
+const ENABLE_TEST_MODE_TIERS = process.env.ENABLE_TEST_MODE_TIERS === 'true';
+
+let userTier;
+if (ENABLE_TEST_MODE_TIERS) {
+  // Test mode: check subscriptions table
+  userTier = await getUserTierFromDB(ownerId);
+} else {
+  // Production: use Stripe integration
+  userTier = await getStripeSubscriptionTier(ownerId);
+}
+```
+
+**Important:** This is for testing only. Production will use real Stripe integration.
 
 ---
 
@@ -441,7 +597,7 @@ Example:
 2|Variables and Data Types|29|52
 ```
 
-### Chapter Extraction Prompt
+### Chapter Extraction Prompt (Enhanced)
 
 ```
 Extract this chapter as clean, faithful markdown.
@@ -454,10 +610,21 @@ IMAGES:
 Replace each image with detailed description:
 ![Tree structure with 5 nodes: root A connects to B and C, B connects to D and E]
 
-EXCLUDE:
+**CONTENT TO EXCLUDE:**
+- **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names (e.g., "Jeff Zarnett"),
+  semester/term (e.g., "Fall 2025"), lecture dates/times (e.g., "2023-09-12"), university names
+- **References & Citations:** Bibliographies, reference lists, "References" sections
+  (e.g., "[SKS11] Abraham Silberschatz..."), citation lists, "Further Reading" sections
+- **Non-content elements:** Page numbers, headers, footers, running headers, margin notes
+- **Administrative:** Copyright notices, ISBN numbers, publication details, acknowledgments, prefaces
+- **Navigation:** Table of contents sections
+- **Anything not directly educational content**
+
+**IMPORTANT - EXCLUDE:**
+- Course metadata (course codes, instructor names, dates like "Fall 2025" or "2023-09-12")
+- References/bibliographies sections at the end
 - Page numbers, headers, footers
-- References to other chapters
-- Copyright notices
+- Any non-educational administrative content
 
 FORMATTING:
 - LaTeX for math: inline $x^2$, display $$E=mc^2$$
@@ -465,6 +632,8 @@ FORMATTING:
 - Code blocks with language tags
 - Preserve structure and hierarchy
 ```
+
+**Note:** These enhanced exclusion rules significantly improve extraction quality by filtering out non-educational metadata and reference sections that would clutter the markdown.
 
 ---
 
@@ -486,36 +655,60 @@ FORMATTING:
 ## Testing Checklist
 
 ### Backend
-- [ ] Single chapter PDF detection
-- [ ] Single chapter auto-extraction
-- [ ] Multi-chapter PDF detection
-- [ ] Chapter list parsing
-- [ ] Page range splitting
-- [ ] Multi-chapter extraction
-- [ ] Database storage
-- [ ] Tier routing logic
+- [x] Single chapter PDF detection
+- [x] Single chapter auto-extraction
+- [x] Multi-chapter PDF detection
+- [x] Chapter list parsing
+- [x] Page range splitting
+- [x] Multi-chapter extraction with retry logic
+- [x] Database storage (chapter_markdown table)
+- [x] Tier routing logic (test mode)
+- [x] Individual job queue per chapter
+- [x] 503 error retry with exponential backoff
 
 ### Frontend
-- [ ] Tier 2 upload modal
-- [ ] Job polling
-- [ ] Chapter selection modal
-- [ ] Chapter extraction trigger
-- [ ] Chapter sources display
-- [ ] Markdown viewer
-- [ ] Error handling
+- [x] Tier 2 upload modal
+- [x] Job polling with createJobPoller
+- [x] Chapter selection modal
+- [x] Chapter extraction trigger
+- [x] Chapter sources display
+- [x] Markdown viewer (raw/rendered toggle)
+- [x] Error handling
+- [x] Real-time status updates
+- [x] Individual chapter completion refresh
+- [x] Multi-chapter parent document filtering
+- [x] Extract button UX (hide when no selection)
+- [x] Parent document cleanup on cancel
 
 ### Integration
-- [ ] End-to-end single chapter flow
-- [ ] End-to-end multi-chapter flow
-- [ ] Image description quality
-- [ ] LaTeX rendering
+- [x] End-to-end single chapter flow
+- [x] End-to-end multi-chapter flow
+- [x] Individual chapter tracking
+- [x] Metadata and reference exclusion
+- [x] Test mode tier switching
+- [ ] LaTeX rendering (depends on lesson generation)
 - [ ] Multi-source display (future)
 
 ---
 
 ## Future Enhancements
 
-### Multi-Source Merging (Post-MVP)
+### Lesson Generation for Tier 2 Sources
+
+Currently, tier 2 sources are extracted and viewable but not used for lesson generation. Future work:
+1. Modify lesson generation to accept tier 2 chapter sources
+2. Merge multiple sources for same chapter before lesson generation
+3. Use enhanced markdown for better lesson quality
+
+### Real Stripe Integration
+
+Replace test mode tier switching with actual Stripe subscription management:
+1. Stripe webhook integration
+2. Subscription tier enforcement
+3. Payment flow
+4. Usage tracking and limits
+
+### Multi-Source Merging
 
 When multiple sources exist for same chapter:
 1. Fetch all markdown for chapter_number
@@ -538,13 +731,33 @@ When multiple sources exist for same chapter:
 
 ## Related Documentation
 
-- `SUBSCRIPTION_ARCHITECTURE.md` - Tier enforcement and payment flow
+- `SUBSCRIPTION_ARCHITECTURE.md` - Tier enforcement and payment flow (future)
 - `PRICING_TIERS.md` - Tier features and pricing strategy
 - `backend/PDF_EXTRACTION_GUIDE.md` - PDF processing overview
 - `ASYNC_OPERATIONS.md` - Job queue system
+- `LESSON_GENERATION_ARCHITECTURE.md` - Lesson generation (tier 1 only currently)
 
 ---
 
-**Document History:**
-- 2025-11-24: Initial planning document
-- 2025-11-25: Updated with actual implementation details (backend complete, frontend in progress)
+## Changelog
+
+### 2025-11-28: Document Extraction Complete
+- ✅ Implemented individual chapter extraction with job queue
+- ✅ Added retry logic for 503 errors (exponential backoff)
+- ✅ Completed job polling and real-time status updates
+- ✅ Implemented chapter source display in course page
+- ✅ Created markdown viewer with raw/rendered toggle
+- ✅ Fixed multi-chapter parent document handling
+- ✅ Enhanced UX for chapter selection modal
+- ✅ Added test mode tier switching
+- ✅ Improved extraction prompts to exclude metadata and references
+- Updated documentation to reflect completed implementation
+
+### 2025-11-25: Backend Implementation
+- Backend complete, frontend in progress
+- Chapter detection and extraction services implemented
+- Tier 2 API endpoints created
+
+### 2025-11-24: Initial Planning
+- Initial planning document created
+- Architecture designed
