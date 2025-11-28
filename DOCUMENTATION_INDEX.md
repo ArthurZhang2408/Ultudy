@@ -1,6 +1,6 @@
 # Ultudy Documentation System
 
-**Last Updated:** 2025-11-24
+**Last Updated:** 2025-11-28
 **Purpose:** Central index for all project documentation with self-maintenance instructions
 
 ---
@@ -54,7 +54,7 @@ When you open this repository:
 | **LESSON_GENERATION_ARCHITECTURE.md** | How AI lessons are generated | Current |
 | **ASYNC_OPERATIONS.md** | Job queue and async processing | Current |
 | **PRICING_TIERS.md** | Tier structure, cost analysis, feature matrix | Current |
-| **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing technical design | Planning |
+| **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing (document extraction complete) | Current |
 | **SUBSCRIPTION_ARCHITECTURE.md** | Stripe integration, payment flow, tier enforcement | Planning |
 | **MARKDOWN_MIGRATION_CHANGELOG.md** | JSON to Markdown migration & UI/UX fixes | Current |
 
@@ -191,11 +191,15 @@ Before committing code changes, verify:
 - ❌ Chunking system
 
 ### What's Current (Keep Documented)
-- ✅ Vision-based PDF extraction
-- ✅ Section-based lesson generation
+- ✅ Vision-based PDF extraction (tier 1)
+- ✅ Multi-chapter PDF detection and extraction (tier 2)
+- ✅ Individual chapter extraction with retry logic
+- ✅ Section-based lesson generation (tier 1 only, tier 2 future)
 - ✅ Concept mastery tracking
 - ✅ Multi-course support
-- ✅ Async job processing
+- ✅ Async job processing with BullMQ
+- ✅ Real-time progress tracking
+- ✅ Test mode tier switching
 - ✅ Scalability features (connection pooling, caching)
 
 ---

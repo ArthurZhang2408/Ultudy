@@ -222,7 +222,7 @@ Project: ultudy-production
 Domain: ultudy.com, www.ultudy.com
 Branch: production
 Environment Variables:
-  - NEXT_PUBLIC_API_URL=https://ultudy-backend-production.up.railway.app
+  - NEXT_PUBLIC_BACKEND_URL=https://ultudy-backend-production.up.railway.app
   - CLERK_* (production keys)
   - NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/courses
 ```
@@ -233,7 +233,7 @@ Project: ultudy-staging (or same project, different branch)
 Domain: staging.ultudy.com or auto-generated
 Branch: staging
 Environment Variables:
-  - NEXT_PUBLIC_API_URL=https://ultudy-backend-staging.up.railway.app
+  - NEXT_PUBLIC_BACKEND_URL=https://ultudy-backend-staging.up.railway.app
   - CLERK_* (test/staging keys)
 ```
 

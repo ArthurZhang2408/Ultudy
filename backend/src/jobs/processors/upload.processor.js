@@ -3,22 +3,76 @@
  *
  * Handles PDF upload and extraction in the background
  * Works with both S3 and local filesystem storage
+ * Routes to tier-specific processors based on user subscription
  */
 
 import { extractStructuredSections } from '../../ingestion/llm_extractor.js';
+import { processTier2UploadJob } from './tier2Upload.processor.js';
+import { queryRead } from '../../db/index.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { StorageService } from '../../lib/storage.js';
 
+/**
+ * Get user's subscription tier
+ */
+async function getUserTier(ownerId) {
+  const WORKER_ID = process.env.WORKER_ID || `worker-${process.pid}`;
+
+  try {
+    console.log(`[getUserTier:${WORKER_ID}] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`[getUserTier:${WORKER_ID}] Querying subscription for user: ${ownerId}`);
+
+    const result = await queryRead(
+      'SELECT tier FROM subscriptions WHERE user_id = $1',
+      [ownerId]
+    );
+
+    console.log(`[getUserTier:${WORKER_ID}] Query returned ${result.rows.length} rows`);
+
+    if (result.rows.length > 0) {
+      console.log(`[getUserTier:${WORKER_ID}] ✅ Found subscription: tier=${result.rows[0].tier}`);
+      console.log(`[getUserTier:${WORKER_ID}] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      return result.rows[0].tier;
+    } else {
+      console.log(`[getUserTier:${WORKER_ID}] ⚠️  No subscription found for user ${ownerId}`);
+      console.log(`[getUserTier:${WORKER_ID}] ⚠️  Defaulting to 'free'`);
+      console.log(`[getUserTier:${WORKER_ID}] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      return 'free';
+    }
+  } catch (error) {
+    console.error(`[getUserTier:${WORKER_ID}] ❌ Database error: ${error.message}`);
+    console.error(`[getUserTier:${WORKER_ID}] ❌ Stack:`, error.stack);
+    console.warn(`[getUserTier:${WORKER_ID}] ⚠️  Defaulting to 'free' due to error`);
+    console.log(`[getUserTier:${WORKER_ID}] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    return 'free';
+  }
+}
+
 export async function processUploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService }) {
   // Support both old (pdfPath) and new (storageKey) job formats for backward compatibility
   const { jobId, ownerId, pdfPath, storageKey, storageLocation, originalFilename, documentId, courseId, chapter, materialType, title } = job.data;
 
+  console.log(`[UploadProcessor] ═══════════════════════════════════════`);
   console.log(`[UploadProcessor] Starting job ${jobId} for document ${documentId}`);
+  console.log(`[UploadProcessor] Owner ID: ${ownerId}`);
   console.log(`[UploadProcessor] Metadata: course=${courseId}, chapter=${chapter}, type=${materialType}`);
   console.log(`[UploadProcessor] Storage: ${storageKey ? 'using storage service' : 'using legacy pdfPath'}`);
+
+  // Check user tier and route accordingly
+  console.log(`[UploadProcessor] Checking tier for user: ${ownerId}`);
+  const userTier = await getUserTier(ownerId);
+  console.log(`[UploadProcessor] ✓ User tier: ${userTier}`);
+
+  if (userTier === 'tier2') {
+    console.log(`[UploadProcessor] → Routing to Tier 2 processor`);
+    return await processTier2UploadJob(job, { tenantHelpers, jobTracker, storageDir, storageService });
+  }
+
+  // Tier 1 / Free processing (existing logic)
+  console.log(`[UploadProcessor] → Using Tier 1/Free processor`);
 
   let tempPdfPath = null;
 

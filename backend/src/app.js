@@ -9,6 +9,9 @@ import createStudyRouter from './routes/study.js';
 import createCoursesRouter from './routes/courses.js';
 import createJobsRouter from './routes/jobs.js';
 import createAdminRouter from './routes/admin.js';
+import subscriptionsRouter from './routes/subscriptions.js';
+import chaptersRouter from './routes/chapters.js';
+import tier2Router from './routes/tier2.js';
 import setupWorkers from './jobs/worker.js';
 import { uploadQueue, lessonQueue } from './jobs/queue.js';
 import { createJobTracker } from './jobs/tracking.js';
@@ -95,6 +98,56 @@ export function createApp(options = {}) {
       })
     );
 
+    // Public subscription endpoints (no auth required)
+    app.get('/subscriptions/tiers', (req, res) => {
+      const tiers = [
+        {
+          id: 'free',
+          name: 'Free',
+          price: 0,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            '1 PDF per month',
+            'Max 10 pages',
+            'All core learning features',
+            'Concept mastery tracking'
+          ]
+        },
+        {
+          id: 'tier1',
+          name: 'Student',
+          price: 17,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            'Unlimited PDFs',
+            'No page limit',
+            'Multiple courses',
+            'Full mastery tracking',
+            'Priority support'
+          ],
+          popular: true
+        },
+        {
+          id: 'tier2',
+          name: 'Pro',
+          price: 40,
+          currency: 'CAD',
+          period: 'month',
+          features: [
+            'All Student features',
+            'Multi-chapter PDFs',
+            'Multiple sources per chapter',
+            '100 chapters/month',
+            'Premium AI quality',
+            'Content deduplication'
+          ]
+        }
+      ];
+      res.json({ tiers });
+    });
+
     app.use(requireUser);
 
     app.use(
@@ -145,6 +198,13 @@ export function createApp(options = {}) {
         jobTracker
       })
     );
+
+    // Subscription routes (test mode - no payment)
+    app.use('/subscriptions', subscriptionsRouter);
+
+    // Tier 2 chapter routes
+    app.use('/chapters', chaptersRouter);
+    app.use('/tier2', tier2Router);
   }
 
   return app;

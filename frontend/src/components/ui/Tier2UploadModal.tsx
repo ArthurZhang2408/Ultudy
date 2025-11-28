@@ -4,7 +4,6 @@ import { FormEvent, useState, useRef, DragEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { Button, Card, Input, Badge, Select } from '@/components/ui';
-import CustomSelect from './CustomSelect';
 import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 import { getBackendUrl } from '@/lib/api';
 import { useAuth } from '@clerk/nextjs';
@@ -12,27 +11,25 @@ import { useModal } from '@/contexts/ModalContext';
 import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 import { createJobPoller, Job } from '@/lib/jobs';
 
-interface UploadModalProps {
+interface Tier2UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   preselectedCourseId?: string | null;
 }
 
-export default function UploadModal({ isOpen, onClose, preselectedCourseId }: UploadModalProps) {
+export default function Tier2UploadModal({ isOpen, onClose, preselectedCourseId }: Tier2UploadModalProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const { courses } = useFetchCourses();
   const { addTask, updateTask } = useBackgroundTasks();
   const [file, setFile] = useState<File | null>(null);
   const [courseId, setCourseId] = useState(preselectedCourseId || '');
-  const [chapter, setChapter] = useState('');
-  const [materialType, setMaterialType] = useState('textbook');
   const [title, setTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [mounted, setMounted] = useState(false);
-  useModal(isOpen, 'upload-modal');
+  useModal(isOpen, 'tier2-upload-modal');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -87,8 +84,9 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       const formData = new FormData();
       formData.append('file', file);
       formData.append('course_id', courseId);
-      formData.append('chapter', chapter || '');
-      formData.append('material_type', materialType);
+      // Tier 2 upload: no chapter number, material type defaults to textbook
+      formData.append('chapter', '');
+      formData.append('material_type', 'textbook');
       formData.append('title', title || file.name.replace('.pdf', ''));
 
       // For files > 4MB, upload directly to backend to bypass Vercel's 4.5MB limit
@@ -97,7 +95,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
 
       let uploadRes;
       if (useDirectUpload) {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
+        console.log(`[Tier2UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB > 4MB, using direct upload to backend`);
 
         // Get auth token for direct backend upload
         const token = await getToken();
@@ -114,7 +112,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
           body: formData
         });
       } else {
-        console.log(`[UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
+        console.log(`[Tier2UploadModal] File size ${(file.size / 1024 / 1024).toFixed(2)}MB <= 4MB, using Vercel proxy`);
 
         // Use Vercel API route as proxy (for files <= 4MB)
         uploadRes = await fetch('/api/upload', {
@@ -125,21 +123,21 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
 
       if (!uploadRes.ok) {
         const errorData = await uploadRes.json().catch(() => ({}));
-        console.error('[UploadModal] Upload failed:', uploadRes.status, errorData);
+        console.error('[Tier2UploadModal] Upload failed:', uploadRes.status, errorData);
         throw new Error(errorData.error || 'Upload failed');
       }
 
       const uploadData = await uploadRes.json();
       const { job_id, document_id } = uploadData;
 
-      console.log('[UploadModal] Upload successful:', { job_id, document_id });
+      console.log('[Tier2UploadModal] Upload successful:', { job_id, document_id });
 
       // Add background task
       const taskTitle = title || file.name.replace('.pdf', '');
       addTask({
         id: job_id,
         type: 'upload',
-        title: `Processing ${taskTitle}`,
+        title: `Extracting ${taskTitle}`,
         status: 'processing',
         progress: 0,
         courseId,
@@ -155,7 +153,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
           });
         },
         onComplete: (job: Job) => {
-          console.log('[UploadModal] Job completed:', job);
+          console.log('[Tier2UploadModal] Job completed:', job);
 
           updateTask(job_id, {
             status: 'completed',
@@ -163,8 +161,15 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
             completedAt: new Date().toISOString()
           });
 
-          // Refresh the page to show new content
-          router.refresh();
+          // Check if multi-chapter and needs chapter selection
+          if (job.result?.type === 'multi_chapter' && job.result?.chapters) {
+            console.log('[Tier2UploadModal] Multi-chapter detected, redirecting to course page for selection');
+            // Redirect to course page with job_id so it can handle chapter selection
+            router.push(`/courses/${courseId}?upload_job_id=${job_id}`);
+          } else {
+            // Single chapter or direct extraction - just refresh
+            router.refresh();
+          }
         },
         onError: (error: string) => {
           updateTask(job_id, {
@@ -177,7 +182,6 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
 
       // Reset form and close modal
       setFile(null);
-      setChapter('');
       setTitle('');
       setIsUploading(false);
       onClose();
@@ -188,7 +192,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       }
       // If already on course page, just stay (banner will show progress)
     } catch (err) {
-      console.error('[UploadModal] Error:', err);
+      console.error('[Tier2UploadModal] Error:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       // Always reset uploading state
@@ -245,7 +249,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
       <div className="relative w-full max-w-3xl max-h-[90vh] my-auto bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-700 shrink-0">
-          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Upload Study Materials</h2>
+          <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">Upload Textbook/Lecture Note</h2>
           <button
             onClick={onClose}
             className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
@@ -356,7 +360,7 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                 </div>
               </div>
 
-              {/* Document Details */}
+              {/* Document Details - Simplified for Tier 2 */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Document Details</h3>
 
@@ -385,31 +389,6 @@ export default function UploadModal({ isOpen, onClose, preselectedCourseId }: Up
                   placeholder="Auto-filled from filename"
                   fullWidth
                 />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <CustomSelect
-                    label="Material Type"
-                    value={materialType}
-                    onChange={(value) => setMaterialType(value)}
-                    fullWidth
-                    dropdownDirection="up"
-                    options={[
-                      { value: 'textbook', label: 'Textbook' },
-                      { value: 'lecture', label: 'Lecture Notes' },
-                      { value: 'tutorial', label: 'Tutorial' },
-                      { value: 'exam', label: 'Exam / Practice' }
-                    ]}
-                  />
-
-                  <Input
-                    label="Chapter/Section"
-                    type="text"
-                    value={chapter}
-                    onChange={(e) => setChapter(e.target.value)}
-                    placeholder="e.g., Chapter 1"
-                    fullWidth
-                  />
-                </div>
               </div>
 
               {error && (

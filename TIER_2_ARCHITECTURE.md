@@ -1,8 +1,8 @@
 # Tier 2 Architecture: Multi-Chapter PDF Processing
 
-**Last Updated:** 2025-11-24
-**Status:** Planning
-**Purpose:** Technical architecture for Tier 2 multi-chapter PDF processing, chapter detection, and multi-source merging
+**Last Updated:** 2025-11-28
+**Status:** Implemented (Document Extraction Complete)
+**Purpose:** Technical architecture for Tier 2 multi-chapter PDF processing, chapter detection, and extraction
 
 ---
 
@@ -10,720 +10,754 @@
 
 Tier 2 introduces advanced PDF processing capabilities that allow users to:
 1. Upload multi-chapter PDFs (textbooks, comprehensive notes)
-2. Detect and extract individual chapters automatically
-3. Combine multiple sources for the same chapter
-4. Generate high-quality lessons from merged content
+2. Automatically detect single vs multi-chapter structure
+3. Extract individual chapters with faithful markdown conversion
+4. Track individual chapter extraction progress with retry logic
+5. View extracted markdown with image descriptions
+6. Switch between tiers in test mode for development
 
-This document outlines the technical implementation strategy.
+This document outlines the implemented architecture and remaining work.
 
 ---
 
-## Architecture Diagram
+## Implementation Status
+
+### ✅ Completed (Document Extraction)
+- Database schema (`chapter_markdown` table)
+- Chapter detection service (single vs multi)
+- Chapter extraction service (by page range) with retry logic for 503 errors
+- Upload processor routing by tier
+- Tier 2 API endpoints
+- ChapterSelectionModal component with UX improvements
+- Job polling and real-time status updates
+- Chapter source display in course page
+- Markdown viewer with raw/rendered toggle
+- Individual chapter extraction tracking (one job per chapter)
+- Auto-refresh when individual chapters complete
+- Multi-chapter parent document cleanup on cancel
+- Enhanced prompts to exclude metadata and references
+- Test mode tier switching for development
+- Multi-chapter parent document filtering in UI
+
+### 🚧 Future Enhancements
+- Lesson generation for tier 2 chapter sources
+- Real Stripe integration for tier management
+- Multi-source merging for same chapter
+- Conflict detection and deduplication
+- Source attribution in merged content
+
+---
+
+## Architecture Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    User Upload (Tier 2)                     │
+│                Tier 2 User Uploads PDF                      │
+│              (via Tier2UploadModal component)               │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│         Step 1: Chapter Detection (Flash-Lite Vision)       │
-│  • Analyze first 10-20 pages                                │
-│  • Detect single vs multi-chapter                           │
-│  • Extract: chapter_number, title, page_range               │
+│           POST /upload/pdf-structured                       │
+│  • Saves PDF to storage (S3 or local)                       │
+│  • Creates job in database                                  │
+│  • Queues for background processing                         │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│         Step 2: User Chapter Selection (Frontend)           │
-│  • Display checkbox list of detected chapters               │
-│  • User selects which chapters to import                    │
-│  • Validation: Check against monthly limit                  │
+│          Upload Processor (Tier Detection)                  │
+│  • Checks user's tier from subscriptions table              │
+│  • Routes to processTier2UploadJob if tier2                 │
+│  • Routes to legacy processor for free/tier1                │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│       Step 3: Chapter Extraction (On-Demand, No Storage)    │
-│  • For each selected chapter:                               │
-│    - Extract pages using page_range                         │
-│    - Convert to images (PDF → PNG)                          │
-│    - Send to Flash-Lite vision for markdown                 │
-│  • Store: chapter_metadata + markdown_content               │
+│      Tier 2 Detection (detectChapterStructure)              │
+│  • Downloads PDF from storage                               │
+│  • Calls Gemini Vision API                                  │
+│  • Detects: single-chapter OR multi-chapter                 │
+└───────────────────────┬─────────────────────────────────────┘
+                        │
+                   ┌────┴────┐
+                   │         │
+        ┌──────────▼──┐  ┌──▼──────────┐
+        │   SINGLE    │  │   MULTI     │
+        │   CHAPTER   │  │  CHAPTER    │
+        └──────┬──────┘  └──┬──────────┘
+               │            │
+               │            ▼
+               │  ┌─────────────────────────────────────────┐
+               │  │  Store document with chapter=NULL       │
+               │  │  Return detection results to frontend   │
+               │  │  Job marked complete with:              │
+               │  │  - type: 'multi_chapter'                │
+               │  │  - chapters: [...detected chapters]     │
+               │  │  - storage_key: for later extraction    │
+               │  └──────────────┬──────────────────────────┘
+               │                 │
+               │                 ▼
+               │  ┌─────────────────────────────────────────┐
+               │  │  Frontend: ChapterSelectionModal        │
+               │  │  • Polls job status                     │
+               │  │  • Detects multi_chapter completion     │
+               │  │  • Shows checkbox list                  │
+               │  │  • All chapters selected by default     │
+               │  └──────────────┬──────────────────────────┘
+               │                 │
+               │                 ▼
+               │  ┌─────────────────────────────────────────┐
+               │  │  POST /tier2/extract-chapters           │
+               │  │  • Downloads PDF from storage           │
+               │  │  • For each selected chapter:           │
+               │  │    - Split PDF by page range            │
+               │  │    - Extract markdown via Gemini Vision │
+               │  │    - Save to chapter_markdown table     │
+               │  └──────────────┬──────────────────────────┘
+               │                 │
+               ▼                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│            chapter_markdown table populated                 │
+│  • One row per chapter extraction                           │
+│  • Links to document_id                                     │
+│  • Contains full markdown with image descriptions           │
 └───────────────────────┬─────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│          Step 4: Source Organization (Frontend)             │
-│  • Group chapters by chapter_number across sources          │
-│  • Display:                                                 │
-│    Chapter 1                                                │
-│    ├─ textbook.pdf                                          │
-│    └─ lecture_1.pdf                                         │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│       Step 5: Content Merging (When User Clicks "Study")    │
-│  • Fetch all markdowns for chapter_number                   │
-│  • Content conflict detection (Flash-Lite)                  │
-│  • Deduplication (Flash-Lite)                               │
-│  • Merge with source attribution                            │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│         Step 6: Lesson Generation (Flash or Flash-Lite)     │
-│  • Input: Merged markdown                                   │
-│  • Extract sections                                         │
-│  • Generate concepts per section                            │
-│  • Store lesson in database                                 │
+│       Frontend: Course Page Shows Chapter Sources           │
+│  • Fetches: GET /tier2/chapter-sources/:courseId            │
+│  • Groups sources by chapter_number                         │
+│  • Displays document names under each chapter               │
+│  • [View Markdown] button next to each source               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Step-by-Step Implementation
+## Database Schema
 
-### Step 1: Chapter Detection
+### `chapter_markdown` Table
 
-**Endpoint:** `POST /api/documents/detect-chapters`
+```sql
+CREATE TABLE chapter_markdown (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id TEXT NOT NULL,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  course_id UUID NOT NULL,
+  chapter_number INTEGER NOT NULL,
+  chapter_title VARCHAR(500) NOT NULL,
+  markdown_content TEXT NOT NULL,
+  page_start INTEGER,
+  page_end INTEGER,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-**Input:**
-```json
-{
-  "document_id": "uuid",
-  "file_url": "s3://...",
-  "user_id": "clerk_user_id"
-}
+CREATE INDEX idx_chapter_markdown_course ON chapter_markdown(course_id, chapter_number);
+CREATE INDEX idx_chapter_markdown_document ON chapter_markdown(document_id);
+CREATE INDEX idx_chapter_markdown_owner ON chapter_markdown(owner_id);
 ```
 
-**Process:**
-1. Download PDF from S3
-2. Extract first 10-20 pages (configurable)
-3. Convert pages to images (PNG, base64)
-4. Send to Gemini 2.5 Flash-Lite with prompt:
-
-```javascript
-const prompt = `
-Analyze this PDF document and determine if it's a single-chapter or multi-chapter document.
-
-If SINGLE-CHAPTER:
-Return: { "type": "single", "chapter_number": 1, "title": "..." }
-
-If MULTI-CHAPTER:
-For each chapter, extract:
-- chapter_number (integer)
-- chapter_title (string)
-- page_start (integer, 1-indexed)
-- page_end (integer, 1-indexed, estimated if not explicit)
-
-Return JSON array:
-[
-  {
-    "chapter_number": 1,
-    "chapter_title": "Introduction to Databases",
-    "page_start": 1,
-    "page_end": 15
-  },
-  {
-    "chapter_number": 2,
-    "chapter_title": "Relational Model",
-    "page_start": 16,
-    "page_end": 30
-  }
-]
-
-IMPORTANT:
-- Only include chapters that are clearly marked
-- Use the actual page numbers from the PDF (not the printed page numbers in the document)
-- If unsure about page_end, estimate based on next chapter's page_start
-`;
-```
-
-5. Parse JSON response
-6. Validate response structure
-7. Store in `chapter_metadata` table
-
-**Output:**
-```json
-{
-  "type": "multi",
-  "chapters": [
-    {
-      "chapter_number": 1,
-      "chapter_title": "Introduction to Databases",
-      "page_start": 1,
-      "page_end": 15,
-      "estimated": false
-    },
-    {
-      "chapter_number": 2,
-      "chapter_title": "Relational Model",
-      "page_start": 16,
-      "page_end": 30,
-      "estimated": false
-    }
-  ]
-}
-```
-
-**Error Handling:**
-- If AI detection fails: Allow manual chapter input
-- If page ranges overlap: Flag warning, let user adjust
-- If too many chapters (>50): Prompt user to split PDF
+**Design Decisions:**
+- **One row per chapter**: Each extraction is a separate row (smallest unit)
+- **document_id links to source**: Multi-chapter PDFs create multiple rows
+- **chapter field in documents table is NULL**: For tier 2 multi-chapter uploads
+- **Backward compatible**: Tier 1 uploads still use documents.chapter string field
 
 ---
 
-### Step 2: User Chapter Selection
+## Backend Implementation
 
-**Frontend Component:** `ChapterSelectionModal.tsx`
+### Service: tier2Detection.js
 
-**UI:**
-```tsx
-<Modal>
-  <h2>Select Chapters to Import</h2>
-  <p>You have {remainingChapters}/100 chapters remaining this month</p>
+**Purpose:** Detect if PDF is single or multi-chapter, extract single chapters immediately
 
-  {chapters.map(chapter => (
-    <Checkbox
-      key={chapter.chapter_number}
-      label={`Chapter ${chapter.chapter_number}: ${chapter.chapter_title}`}
-      sublabel={`Pages ${chapter.page_start}-${chapter.page_end}`}
-      checked={selected.includes(chapter.chapter_number)}
-      onChange={(checked) => toggleChapter(chapter.chapter_number, checked)}
-    />
-  ))}
+**Key Functions:**
+- `detectChapterStructure(pdfPath)` - Main detection function
+- `parseSingleChapterMarkdown(markdown)` - Parses `# Chapter_5: Title` format
+- `parseMultiChapterResponse(text)` - Parses pipe-separated chapter list
 
-  <Button onClick={importSelectedChapters}>
-    Import {selected.length} Chapters
-  </Button>
-</Modal>
-```
+**LLM Response Formats (No JSON):**
 
-**Validation:**
-- Check if `selected.length + current_month_usage <= 100`
-- If exceeds: Offer overage purchase modal
-- Update `monthly_usage.chapters_generated`
-
----
-
-### Step 3: Chapter Extraction
-
-**Endpoint:** `POST /api/documents/extract-chapter`
-
-**Input:**
-```json
-{
-  "document_id": "uuid",
-  "chapter_number": 1,
-  "page_start": 1,
-  "page_end": 15
-}
-```
-
-**Process:**
-
-1. **Fetch PDF from S3** (original uploaded file)
-2. **Extract page range** using `pdf-lib` or `pdfjs-dist`:
-   ```javascript
-   const PDFDocument = require('pdf-lib').PDFDocument;
-
-   async function extractPages(pdfBuffer, pageStart, pageEnd) {
-     const srcDoc = await PDFDocument.load(pdfBuffer);
-     const newDoc = await PDFDocument.create();
-
-     // Pages are 0-indexed in pdf-lib, so adjust
-     const pageIndices = [];
-     for (let i = pageStart - 1; i < pageEnd; i++) {
-       pageIndices.push(i);
-     }
-
-     const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
-     copiedPages.forEach(page => newDoc.addPage(page));
-
-     return await newDoc.save();
-   }
-   ```
-
-3. **Convert to images** (for vision model):
-   ```javascript
-   const pdfjsLib = require('pdfjs-dist/legacy/build/pdf');
-
-   async function pdfToImages(pdfBuffer) {
-     const pdf = await pdfjsLib.getDocument({ data: pdfBuffer }).promise;
-     const images = [];
-
-     for (let i = 1; i <= pdf.numPages; i++) {
-       const page = await pdf.getPage(i);
-       const viewport = page.getViewport({ scale: 2.0 });
-       const canvas = createCanvas(viewport.width, viewport.height);
-       const context = canvas.getContext('2d');
-
-       await page.render({ canvasContext: context, viewport }).promise;
-       images.push(canvas.toBuffer('image/png'));
-     }
-
-     return images;
-   }
-   ```
-
-4. **Send to Gemini Vision** for markdown extraction:
-   ```javascript
-   const prompt = `
-   Convert this chapter to clean, well-formatted markdown.
-
-   Requirements:
-   - Preserve all headings, subheadings
-   - Keep all formulas in LaTeX format
-   - Include all diagrams/figures with descriptions
-   - Maintain bullet points and numbered lists
-   - Remove headers/footers/page numbers
-
-   Return ONLY the markdown, no additional commentary.
-   `;
-
-   const response = await gemini.generateContent({
-     contents: [
-       { role: 'user', parts: [{ text: prompt }, ...images.map(img => ({ inlineData: { mimeType: 'image/png', data: img.toString('base64') } }))] }
-     ]
-   });
-
-   const markdown = response.text();
-   ```
-
-5. **Store in database**:
-   ```sql
-   INSERT INTO chapter_metadata (
-     document_id,
-     chapter_number,
-     chapter_title,
-     page_start,
-     page_end,
-     source_pdf_url,
-     markdown_content
-   ) VALUES ($1, $2, $3, $4, $5, $6, $7);
-   ```
-
-**Output:**
-```json
-{
-  "chapter_id": "uuid",
-  "markdown_length": 12500,
-  "processing_time_ms": 8500
-}
-```
-
-**Optimization:**
-- **No storage of split PDFs** - saves S3 costs
-- Extract on-demand when user selects chapter
-- Cache markdown in database (cheaper than re-extracting)
-
----
-
-### Step 4: Source Organization
-
-**Endpoint:** `GET /api/chapters/by-number?chapter_number=1&course_id=uuid`
-
-**Process:**
-1. Query all `chapter_metadata` WHERE `chapter_number = 1` AND `course_id = uuid`
-2. Group by `document_id` (source)
-3. Return array with source metadata
-
-**Output:**
-```json
-{
-  "chapter_number": 1,
-  "sources": [
-    {
-      "document_id": "uuid1",
-      "document_name": "textbook.pdf",
-      "chapter_title": "Introduction to Databases",
-      "page_range": "1-15",
-      "markdown_preview": "# Introduction\n\nDatabases are..."
-    },
-    {
-      "document_id": "uuid2",
-      "document_name": "lecture_1.pdf",
-      "chapter_title": "Intro to Databases",
-      "page_range": "1-8",
-      "markdown_preview": "# Lecture 1\n\nToday we cover..."
-    }
-  ]
-}
-```
-
-**Frontend Display:**
-```tsx
-<ChapterView chapterNumber={1}>
-  <h2>Chapter 1: Introduction to Databases</h2>
-  <p>{sources.length} sources available</p>
-
-  {sources.map(source => (
-    <SourceCard
-      key={source.document_id}
-      name={source.document_name}
-      title={source.chapter_title}
-      pageRange={source.page_range}
-      preview={source.markdown_preview}
-    />
-  ))}
-
-  <Button onClick={() => studyChapter(1)}>
-    Study Chapter 1
-  </Button>
-</ChapterView>
-```
-
----
-
-### Step 5: Content Merging
-
-**Endpoint:** `POST /api/chapters/merge-sources`
-
-**Input:**
-```json
-{
-  "chapter_number": 1,
-  "source_ids": ["uuid1", "uuid2"],
-  "course_id": "uuid"
-}
-```
-
-**Process:**
-
-#### 5.1 Content Conflict Detection
-
-```javascript
-async function detectConflicts(markdowns) {
-  const prompt = `
-  Analyze these two markdown documents and determine if they cover the same topic.
-
-  Document 1:
-  ${markdowns[0].substring(0, 2000)}
-
-  Document 2:
-  ${markdowns[1].substring(0, 2000)}
-
-  Return JSON:
-  {
-    "same_topic": true/false,
-    "similarity_score": 0.0-1.0,
-    "topic_1": "brief description",
-    "topic_2": "brief description",
-    "warning": "optional warning message if different topics"
-  }
-  `;
-
-  const response = await gemini.generateContent(prompt);
-  return JSON.parse(response.text());
-}
-```
-
-**If conflict detected:**
-```json
-{
-  "same_topic": false,
-  "similarity_score": 0.3,
-  "topic_1": "Database fundamentals",
-  "topic_2": "Computer networking",
-  "warning": "These sources appear to cover different topics. Are you sure you want to merge them?"
-}
-```
-
-Frontend shows warning modal, user can proceed or cancel.
-
-#### 5.2 Deduplication
-
-```javascript
-async function deduplicateContent(markdowns) {
-  const prompt = `
-  You are given multiple markdown documents covering the same topic.
-  Your task is to merge them into a single, comprehensive document while:
-
-  1. Removing duplicate content
-  2. Preserving unique information from each source
-  3. Maintaining clear source attribution
-  4. Keeping the best explanation for overlapping concepts
-
-  Documents:
-  ${markdowns.map((md, i) => `## Source ${i + 1}\n${md}`).join('\n\n')}
-
-  Return the merged markdown with this structure:
-  # [Chapter Title]
-
-  ## [Section 1 Name]
-  [Content with inline citations like: "According to Source 1, ..." or "(Source 2)"]
-
-  ## [Section 2 Name]
-  [Content...]
-
-  Include ALL unique information. When content overlaps, choose the clearest explanation.
-  `;
-
-  const response = await gemini.generateContent(prompt);
-  return response.text();
-}
-```
-
-#### 5.3 Source Attribution
-
-Add headers to indicate sources:
+**Single Chapter:**
 ```markdown
-# Chapter 1: Introduction to Databases
+# Chapter_5: Introduction to Algorithms
 
-> **Sources:** textbook.pdf (pages 1-15), lecture_1.pdf (pages 1-8)
-
-## What is a Database?
-
-According to the textbook, a database is...
-
-*Note: Lecture 1 provides a simpler definition: "...*"
-
-## Relational Model
-
-[Merged content with citations...]
+[Full markdown content with image descriptions...]
 ```
 
-**Output:**
+**Multi-Chapter:**
+```
+1|Introduction to Algorithms|1|25
+2|Data Structures|26|58
+3|Graph Theory|59|102
+```
+
+**Design Decision:** Plain text formats instead of JSON to reduce parsing errors and improve LLM reliability.
+
+---
+
+### Service: tier2Extraction.js
+
+**Purpose:** Extract individual chapters from multi-chapter PDFs
+
+**Key Functions:**
+- `extractSingleChapter(pdfPath, chapterNumber, chapterTitle, pageStart, pageEnd)`
+- `splitPdfByPageRange(sourcePdfPath, pageStart, pageEnd)` - Uses pdf-lib to split
+
+**Process:**
+1. Split PDF to temp file with only chapter pages
+2. Send to Gemini Vision with extraction prompt
+3. Parse response for chapter markdown
+4. Return structured data
+
+**Image Handling:**
+- Replace images with detailed textual descriptions
+- Example: `![Tree data structure with 5 nodes: root A connects to B and C, B connects to D and E]`
+- Descriptions should allow reconstruction of diagrams
+
+---
+
+### Processor: tier2Upload.processor.js
+
+**Purpose:** Handle tier 2 uploads from detection to storage
+
+**Flow:**
+1. Download PDF from storage if needed
+2. Call `detectChapterStructure()`
+3. **If single chapter:**
+   - Insert document record
+   - Insert chapter_markdown record
+   - Mark job complete
+4. **If multi-chapter:**
+   - Insert document record (chapter=NULL)
+   - Return chapter list in job result
+   - Mark job complete with `awaiting_user_selection: true`
+
+**Design Decision:** Single chapter auto-extracts immediately for better UX. Multi-chapter waits for user selection to avoid wasting resources on unwanted chapters.
+
+---
+
+### Routes: /tier2/*
+
+**POST /tier2/extract-chapters**
+```json
+// Request
+{
+  "documentId": "uuid",
+  "storageKey": "s3-key-or-path",
+  "courseId": "uuid",
+  "chapters": [
+    { "number": 1, "title": "...", "pageStart": 1, "pageEnd": 25 },
+    { "number": 3, "title": "...", "pageStart": 59, "pageEnd": 102 }
+  ]
+}
+
+// Response
+{
+  "success": true,
+  "extracted": 2,
+  "total": 2,
+  "results": [
+    { "chapter_number": 1, "chapter_title": "...", "id": "uuid", "success": true },
+    { "chapter_number": 3, "chapter_title": "...", "id": "uuid", "success": true }
+  ]
+}
+```
+
+**GET /tier2/chapter-markdown/:id**
 ```json
 {
-  "merged_markdown": "# Chapter 1...",
-  "sources_used": ["textbook.pdf", "lecture_1.pdf"],
-  "deduplication_stats": {
-    "total_sections": 15,
-    "duplicate_sections_removed": 5,
-    "unique_sections_kept": 10
+  "id": "uuid",
+  "document_id": "uuid",
+  "chapter_number": 1,
+  "chapter_title": "Introduction",
+  "markdown_content": "# Content here...",
+  "page_start": 1,
+  "page_end": 25,
+  "created_at": "2025-11-25T..."
+}
+```
+
+**GET /tier2/chapter-sources/:courseId**
+```json
+{
+  "chapters": {
+    "1": [
+      {
+        "id": "markdown-uuid",
+        "documentId": "doc-uuid",
+        "documentTitle": "textbook.pdf",
+        "chapterTitle": "Introduction",
+        "pageStart": 1,
+        "pageEnd": 25,
+        "createdAt": "..."
+      },
+      {
+        "id": "markdown-uuid-2",
+        "documentId": "doc-uuid-2",
+        "documentTitle": "lecture_1.pdf",
+        "chapterTitle": "Intro Lecture",
+        "pageStart": null,
+        "pageEnd": null,
+        "createdAt": "..."
+      }
+    ],
+    "2": [...]
   }
 }
 ```
 
 ---
 
-### Step 6: Lesson Generation
+## Frontend Implementation
 
-Use existing lesson generation flow with merged markdown:
+### Component: Tier2UploadModal.tsx
 
-**Endpoint:** `POST /api/lessons/generate`
+**Purpose:** Simplified upload modal for tier 2 users
 
-**Input:**
+**Key Differences from UploadModal:**
+- No "Material Type" dropdown (defaults to textbook)
+- No "Chapter/Section" input field
+- Title: "Upload Textbook/Lecture Note"
+
+**Design Decision:** Simplified UI reflects tier 2's focus on comprehensive materials rather than granular organization.
+
+---
+
+### Component: ChapterSelectionModal.tsx
+
+**Purpose:** Allow users to select which chapters to extract from multi-chapter PDFs
+
+**Features:**
+- Checkbox list of detected chapters
+- All chapters selected by default
+- Select/Deselect all button
+- Shows chapter number, title, page range
+- Disabled during extraction
+- Progress indicator
+- Error handling
+
+**Usage:**
+```tsx
+<ChapterSelectionModal
+  isOpen={isModalOpen}
+  onClose={() => setIsModalOpen(false)}
+  documentId={doc.id}
+  documentName={doc.title}
+  storageKey={job.storage_key}
+  courseId={courseId}
+  chapters={job.chapters}
+/>
+```
+
+---
+
+## Individual Chapter Extraction with Job Queue
+
+### Architecture: One Job Per Chapter
+
+Instead of processing all chapters in a single job, each selected chapter is queued as an individual job. This provides:
+
+**Benefits:**
+- **Real-time progress**: Each chapter shows its own status (queued → processing → completed)
+- **Fault isolation**: One chapter failure doesn't affect others
+- **Resource optimization**: Chapters process concurrently (configurable concurrency)
+- **User feedback**: Individual chapter completion triggers UI refresh
+
+**Implementation:**
+
+**Backend:** `chapterExtractionQueue` with dedicated processor
+```javascript
+// backend/src/jobs/processors/chapterExtraction.processor.js
+export async function processChapterExtractionJob(job, { tenantHelpers, jobTracker, storageService }) {
+  // Download PDF
+  // Extract chapter with retry logic
+  // Save to chapter_markdown table
+  // Update job progress: 10% → 30% → 70% → 100%
+}
+```
+
+**Frontend:** Individual task tracking with `createJobPoller`
+```typescript
+// frontend/src/components/ui/ChapterSelectionModal.tsx
+result.jobs.forEach((job: any) => {
+  addTask({
+    id: job.jobId,
+    type: 'extraction',
+    title: `Extracting ${documentName} - Chapter ${job.chapterNumber}: ${job.chapterTitle}`,
+    status: 'processing',
+    progress: 0
+  });
+
+  createJobPoller(job.jobId, {
+    interval: 2000,
+    onProgress: (jobData) => updateTask(job.jobId, { status: 'processing', progress: jobData.progress }),
+    onComplete: (jobData) => {
+      updateTask(job.jobId, { status: 'completed', progress: 100 });
+      router.refresh(); // Show this chapter immediately
+    },
+    onError: (error) => updateTask(job.jobId, { status: 'failed', error })
+  });
+});
+```
+
+---
+
+## Retry Logic for 503 Errors
+
+Gemini API occasionally returns 503 Service Unavailable during high load. The chapter extraction processor includes automatic retry with exponential backoff:
+
+**Configuration:**
+- **Max retries**: 3 attempts
+- **Base delay**: 10 seconds
+- **Backoff**: Exponential (10s → 20s → 40s)
+- **Retry condition**: Only 503/Service Unavailable errors
+
+**Implementation:**
+```javascript
+// backend/src/jobs/processors/chapterExtraction.processor.js
+const MAX_RETRIES = 3;
+const BASE_DELAY = 10000; // 10 seconds
+
+for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  try {
+    extraction = await extractSingleChapter(tempPdfPath, chapter.number, ...);
+    break; // Success
+  } catch (error) {
+    if (is503Error(error) && attempt < MAX_RETRIES) {
+      const delayMs = BASE_DELAY * Math.pow(2, attempt - 1);
+      console.log(`503 error detected. Retrying after ${delayMs}ms...`);
+      await sleep(delayMs);
+    } else {
+      throw error; // Non-503 or max retries reached
+    }
+  }
+}
+```
+
+---
+
+## Multi-Chapter Parent Document Handling
+
+Multi-chapter PDFs create a "parent" document in the database with `chapter: null`. This document acts as a container and should never be shown to users.
+
+**Problem:** Parent documents would appear as empty "Uncategorized" sections in the UI.
+
+**Solution:** Systematic filtering at multiple levels
+
+### 1. Identify Parent Documents
+```typescript
+// frontend/src/app/courses/[id]/page.tsx
+const documentIdsWithTier2Sources = new Set<string>();
+Object.values(chapterSources).forEach(sources => {
+  sources.forEach(source => {
+    documentIdsWithTier2Sources.add(source.documentId);
+  });
+});
+```
+
+### 2. Filter Parent Documents
+```typescript
+const filteredDocuments = documents.filter(doc =>
+  !documentIdsWithTier2Sources.has(doc.id)
+);
+```
+
+### 3. Check for Renderable Content
+```typescript
+const hasAnyContent =
+  filteredDocuments.some(doc => {
+    const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+    return skills.length > 0; // Has actual sections/concepts
+  }) ||
+  processingJobs.length > 0 ||
+  Object.keys(chapterSources).length > 0;
+```
+
+### 4. Cleanup on Cancel
+When user closes chapter selection modal without extracting:
+```typescript
+// frontend/src/components/ui/ChapterSelectionModal.tsx
+const handleClose = async () => {
+  // Delete the multi-chapter parent document
+  await fetch(`${getBackendUrl()}/documents/${documentId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  onClose();
+};
+```
+
+**Result:** No orphaned parent documents, clean empty states, consistent UI behavior.
+
+---
+
+## Chapter Selection UX Improvements
+
+### Hide Extract Button When No Selection
+```tsx
+// Only show Extract button when chapters are selected
+{selectedChapters.size > 0 && (
+  <Button onClick={handleExtract} variant="primary">
+    Extract {selectedChapters.size} Chapter{selectedChapters.size !== 1 ? 's' : ''}
+  </Button>
+)}
+```
+
+**Before:** Disabled extract button appeared, looked like overlapping buttons
+**After:** Extract button only appears when needed, clean UI
+
+### All Cancel Actions Trigger Cleanup
+- Cancel button → `handleClose()`
+- X close button → `handleClose()`
+- Click outside modal → `handleClose()`
+- Escape key → `handleClose()`
+
+All actions delete the parent document to prevent orphaned records.
+
+---
+
+## Test Mode Tier Switching
+
+For development and testing, users can switch tiers without Stripe integration:
+
+**Environment Variable:**
+```bash
+# backend/.env
+ENABLE_TEST_MODE_TIERS=true
+```
+
+**Frontend Toggle:**
+```tsx
+// frontend/src/app/page.tsx
+{process.env.NEXT_PUBLIC_ENABLE_TEST_MODE_TIERS === 'true' && (
+  <div className="tier-switch">
+    <button onClick={() => switchToTier('free')}>Free Tier</button>
+    <button onClick={() => switchToTier('tier1')}>Tier 1</button>
+    <button onClick={() => switchToTier('tier2')}>Tier 2</button>
+  </div>
+)}
+```
+
+**Backend Logic:**
+```javascript
+// backend/src/jobs/processors/upload.processor.js
+const ENABLE_TEST_MODE_TIERS = process.env.ENABLE_TEST_MODE_TIERS === 'true';
+
+let userTier;
+if (ENABLE_TEST_MODE_TIERS) {
+  // Test mode: check subscriptions table
+  userTier = await getUserTierFromDB(ownerId);
+} else {
+  // Production: use Stripe integration
+  userTier = await getStripeSubscriptionTier(ownerId);
+}
+```
+
+**Important:** This is for testing only. Production will use real Stripe integration.
+
+---
+
+## LLM Prompts
+
+### Chapter Detection Prompt
+
+```
+You are an expert at analyzing educational PDFs (textbooks, lecture notes).
+
+YOUR TASK:
+Determine if this PDF contains a SINGLE chapter or MULTIPLE chapters.
+
+SINGLE CHAPTER if:
+- PDF covers ONE chapter/topic only
+- Titled like "Chapter 5", "Lecture 3", "Unit 2"
+- All content cohesive and related
+
+MULTI-CHAPTER if:
+- PDF contains multiple chapters
+- Has table of contents with chapters
+- Clear chapter boundaries
+- Covers multiple distinct topics
+
+RESPONSE FORMAT:
+
+For SINGLE CHAPTER:
+# Chapter_N: Title
+[Full markdown extraction]
+
+For MULTI-CHAPTER:
+number|title|pageStart|pageEnd
+number|title|pageStart|pageEnd
+
+Example:
+1|Introduction to Programming|1|28
+2|Variables and Data Types|29|52
+```
+
+### Chapter Extraction Prompt (Enhanced)
+
+```
+Extract this chapter as clean, faithful markdown.
+
+OUTPUT FORMAT:
+# Chapter_5: Title
+[Full content in markdown]
+
+IMAGES:
+Replace each image with detailed description:
+![Tree structure with 5 nodes: root A connects to B and C, B connects to D and E]
+
+**CONTENT TO EXCLUDE:**
+- **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names (e.g., "Jeff Zarnett"),
+  semester/term (e.g., "Fall 2025"), lecture dates/times (e.g., "2023-09-12"), university names
+- **References & Citations:** Bibliographies, reference lists, "References" sections
+  (e.g., "[SKS11] Abraham Silberschatz..."), citation lists, "Further Reading" sections
+- **Non-content elements:** Page numbers, headers, footers, running headers, margin notes
+- **Administrative:** Copyright notices, ISBN numbers, publication details, acknowledgments, prefaces
+- **Navigation:** Table of contents sections
+- **Anything not directly educational content**
+
+**IMPORTANT - EXCLUDE:**
+- Course metadata (course codes, instructor names, dates like "Fall 2025" or "2023-09-12")
+- References/bibliographies sections at the end
+- Page numbers, headers, footers
+- Any non-educational administrative content
+
+FORMATTING:
+- LaTeX for math: inline $x^2$, display $$E=mc^2$$
+- Markdown tables for tables
+- Code blocks with language tags
+- Preserve structure and hierarchy
+```
+
+**Note:** These enhanced exclusion rules significantly improve extraction quality by filtering out non-educational metadata and reference sections that would clutter the markdown.
+
+---
+
+## Cost Analysis
+
+**Tier 2 Pricing:** $40/month
+
+**Chapter Extraction Costs:**
+- Detection: ~1-2 cents per PDF (analyzing first 10-20 pages)
+- Single chapter extraction: ~5-10 cents
+- Multi-chapter extraction: ~5-10 cents per chapter
+
+**Monthly Limit:** 100 chapters/month
+- Max cost: $10/month in LLM usage
+- Profit margin: $30/month per user
+
+---
+
+## Testing Checklist
+
+### Backend
+- [x] Single chapter PDF detection
+- [x] Single chapter auto-extraction
+- [x] Multi-chapter PDF detection
+- [x] Chapter list parsing
+- [x] Page range splitting
+- [x] Multi-chapter extraction with retry logic
+- [x] Database storage (chapter_markdown table)
+- [x] Tier routing logic (test mode)
+- [x] Individual job queue per chapter
+- [x] 503 error retry with exponential backoff
+
+### Frontend
+- [x] Tier 2 upload modal
+- [x] Job polling with createJobPoller
+- [x] Chapter selection modal
+- [x] Chapter extraction trigger
+- [x] Chapter sources display
+- [x] Markdown viewer (raw/rendered toggle)
+- [x] Error handling
+- [x] Real-time status updates
+- [x] Individual chapter completion refresh
+- [x] Multi-chapter parent document filtering
+- [x] Extract button UX (hide when no selection)
+- [x] Parent document cleanup on cancel
+
+### Integration
+- [x] End-to-end single chapter flow
+- [x] End-to-end multi-chapter flow
+- [x] Individual chapter tracking
+- [x] Metadata and reference exclusion
+- [x] Test mode tier switching
+- [ ] LaTeX rendering (depends on lesson generation)
+- [ ] Multi-source display (future)
+
+---
+
+## Future Enhancements
+
+### Lesson Generation for Tier 2 Sources
+
+Currently, tier 2 sources are extracted and viewable but not used for lesson generation. Future work:
+1. Modify lesson generation to accept tier 2 chapter sources
+2. Merge multiple sources for same chapter before lesson generation
+3. Use enhanced markdown for better lesson quality
+
+### Real Stripe Integration
+
+Replace test mode tier switching with actual Stripe subscription management:
+1. Stripe webhook integration
+2. Subscription tier enforcement
+3. Payment flow
+4. Usage tracking and limits
+
+### Multi-Source Merging
+
+When multiple sources exist for same chapter:
+1. Fetch all markdown for chapter_number
+2. Send to LLM for conflict detection
+3. Deduplicate redundant content
+4. Merge with source attribution
+5. Store merged version
+6. Use merged version for lesson generation
+
+**API:** `POST /tier2/merge-chapter`
 ```json
 {
   "course_id": "uuid",
   "chapter_number": 1,
-  "markdown_content": "[merged markdown]",
-  "model": "flash" // or "flash-lite" if user toggled "Faster Response"
+  "source_ids": ["uuid1", "uuid2"]
 }
 ```
-
-**Process:**
-1. Extract sections from merged markdown (Flash or Flash-Lite)
-2. For each section, generate concepts
-3. Store lesson with `lesson.chapter_number = 1`
-4. Link to multiple source documents via `lesson_sources` table
-
-**Database Schema:**
-```sql
-CREATE TABLE lesson_sources (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lesson_id UUID REFERENCES lessons(id) ON DELETE CASCADE,
-  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-  chapter_number INTEGER NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
----
-
-## Database Schema Changes
-
-### New Tables
-
-```sql
--- Chapter metadata
-CREATE TABLE chapter_metadata (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
-  course_id UUID REFERENCES courses(id) ON DELETE CASCADE,
-  chapter_number INTEGER NOT NULL,
-  chapter_title TEXT NOT NULL,
-  page_start INTEGER NOT NULL,
-  page_end INTEGER NOT NULL,
-  markdown_content TEXT, -- Cached extraction
-  created_at TIMESTAMP DEFAULT NOW(),
-  owner_id TEXT NOT NULL,
-  UNIQUE(document_id, chapter_number)
-);
-
--- Lesson sources (many-to-many)
-CREATE TABLE lesson_sources (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  lesson_id UUID REFERENCES lessons(id) ON DELETE CASCADE,
-  chapter_metadata_id UUID REFERENCES chapter_metadata(id) ON DELETE CASCADE,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Indexes
-CREATE INDEX idx_chapter_metadata_course ON chapter_metadata(course_id, chapter_number);
-CREATE INDEX idx_chapter_metadata_owner ON chapter_metadata(owner_id);
-CREATE INDEX idx_lesson_sources_lesson ON lesson_sources(lesson_id);
-```
-
----
-
-## API Endpoints Summary
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/documents/detect-chapters` | POST | Detect chapters in uploaded PDF |
-| `/api/documents/extract-chapter` | POST | Extract specific chapter by page range |
-| `/api/chapters/by-number` | GET | Get all sources for a chapter number |
-| `/api/chapters/merge-sources` | POST | Merge multiple sources with deduplication |
-| `/api/lessons/generate` | POST | Generate lesson from merged markdown |
-| `/api/usage/current` | GET | Get current month's usage stats |
-
----
-
-## Frontend Components
-
-### New Components
-
-1. **`ChapterDetectionModal.tsx`**
-   - Shows detected chapters with checkboxes
-   - Displays remaining monthly quota
-   - Handles chapter selection
-
-2. **`ChapterSourceCard.tsx`**
-   - Shows single source for a chapter
-   - Preview of markdown content
-   - Page range and document name
-
-3. **`ChapterMergeView.tsx`**
-   - Groups sources by chapter number
-   - "Study Chapter" button
-   - Source conflict warnings
-
-4. **`UsageDashboard.tsx`**
-   - Shows chapters used this month
-   - Overage pricing calculator
-   - Upgrade prompts
-
-### Updated Components
-
-1. **`UploadModal.tsx`**
-   - Tier-based upload flow
-   - Page limit validation (Free tier)
-   - Chapter detection trigger (Tier 2)
-
-2. **`CourseView.tsx`**
-   - Chapter-based organization (Tier 2)
-   - Section-based organization (Tier 1)
-
----
-
-## Performance Considerations
-
-### Caching Strategy
-- **Markdown content**: Cache in `chapter_metadata.markdown_content`
-- **Merged chapters**: Cache for 24 hours in Redis
-- **Deduplication results**: Cache key = hash of source IDs
-
-### Rate Limiting
-- Chapter detection: 10 requests per hour (prevents abuse)
-- Chapter extraction: 20 requests per hour
-- Merging: 30 requests per hour
-
-### Optimization
-- Extract chapters in parallel (up to 5 concurrent)
-- Use smaller images for vision (reduce bandwidth)
-- Compress markdown before storage
-
----
-
-## Error Handling
-
-### Chapter Detection Failures
-- **Fallback**: Allow manual chapter entry
-- **Retry**: Offer re-analysis with different pages
-- **Support**: Log failures for manual review
-
-### Extraction Failures
-- **Partial success**: Save successfully extracted chapters
-- **Retry**: Allow per-chapter retry
-- **Refund**: Deduct from monthly quota only on success
-
-### Merge Conflicts
-- **User choice**: Show conflict, let user decide
-- **Skip merge**: Allow using single source
-- **Manual merge**: Advanced users can edit markdown
-
----
-
-## Testing Strategy
-
-### Unit Tests
-- Chapter detection prompt parsing
-- Page range extraction logic
-- Markdown deduplication algorithm
-- Content conflict detection
-
-### Integration Tests
-- End-to-end: Upload → Detect → Extract → Merge → Generate
-- Multi-source merging with 2, 3, 4+ sources
-- Overage limit enforcement
-
-### User Acceptance Tests
-- Real textbook PDFs (50+ pages)
-- Mixed sources (textbook + lecture slides)
-- Edge cases (1-page chapters, no chapter markers)
-
----
-
-## Monitoring & Metrics
-
-### Track These Metrics
-- Chapter detection accuracy (manual review of 100 samples)
-- Average extraction time per chapter
-- Deduplication effectiveness (% duplicates removed)
-- Merge conflict rate (% of merges with warnings)
-- User satisfaction with merged content (feedback prompts)
-
-### Alerts
-- Detection failure rate > 5%
-- Extraction timeout rate > 2%
-- Merge failures > 1%
-
----
-
-## Migration Path
-
-### Phase 1: Infrastructure (Week 1-2)
-- Create database tables
-- Build chapter detection endpoint
-- Build extraction endpoint
-
-### Phase 2: Core Features (Week 3-4)
-- Chapter selection UI
-- Source organization UI
-- Basic merging (no deduplication)
-
-### Phase 3: Advanced Features (Week 5-6)
-- Content conflict detection
-- Deduplication with AI
-- Usage dashboard
-
-### Phase 4: Polish & Launch (Week 7-8)
-- Error handling improvements
-- Performance optimization
-- Beta testing with 50 users
 
 ---
 
 ## Related Documentation
-- [PRICING_TIERS.md](PRICING_TIERS.md) - Tier 2 pricing and limits
-- [backend/PDF_EXTRACTION_GUIDE.md](backend/PDF_EXTRACTION_GUIDE.md) - PDF processing basics
-- [LESSON_GENERATION_ARCHITECTURE.md](LESSON_GENERATION_ARCHITECTURE.md) - Lesson generation flow
+
+- `SUBSCRIPTION_ARCHITECTURE.md` - Tier enforcement and payment flow (future)
+- `PRICING_TIERS.md` - Tier features and pricing strategy
+- `backend/PDF_EXTRACTION_GUIDE.md` - PDF processing overview
+- `ASYNC_OPERATIONS.md` - Job queue system
+- `LESSON_GENERATION_ARCHITECTURE.md` - Lesson generation (tier 1 only currently)
 
 ---
 
 ## Changelog
-- 2025-11-24: Initial Tier 2 architecture documentation created
+
+### 2025-11-28: Document Extraction Complete
+- ✅ Implemented individual chapter extraction with job queue
+- ✅ Added retry logic for 503 errors (exponential backoff)
+- ✅ Completed job polling and real-time status updates
+- ✅ Implemented chapter source display in course page
+- ✅ Created markdown viewer with raw/rendered toggle
+- ✅ Fixed multi-chapter parent document handling
+- ✅ Enhanced UX for chapter selection modal
+- ✅ Added test mode tier switching
+- ✅ Improved extraction prompts to exclude metadata and references
+- Updated documentation to reflect completed implementation
+
+### 2025-11-25: Backend Implementation
+- Backend complete, frontend in progress
+- Chapter detection and extraction services implemented
+- Tier 2 API endpoints created
+
+### 2025-11-24: Initial Planning
+- Initial planning document created
+- Architecture designed

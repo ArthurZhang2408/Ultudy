@@ -25,14 +25,23 @@ async function runMigrations() {
     await pool.query('SELECT NOW()');
     console.log('[Migrations] Connected successfully\n');
 
-    // Run migration file
-    const migrationFile = join(__dirname, '001_add_performance_indexes.sql');
-    const sql = readFileSync(migrationFile, 'utf8');
+    // List of migration files to run in order
+    const migrations = [
+      '001_add_performance_indexes.sql',
+      '002_subscription_system.sql',
+      '003_tier2_chapter_markdown.sql',
+      '004_allow_null_chapter_number.sql'
+    ];
 
-    console.log('[Migrations] Running 001_add_performance_indexes.sql...');
-    await pool.query(sql);
+    // Run each migration
+    for (const migrationName of migrations) {
+      const migrationFile = join(__dirname, migrationName);
+      const sql = readFileSync(migrationFile, 'utf8');
 
-    console.log('[Migrations] ✓ Indexes created successfully\n');
+      console.log(`[Migrations] Running ${migrationName}...`);
+      await pool.query(sql);
+      console.log(`[Migrations] ✓ ${migrationName} completed\n`);
+    }
 
     // Run ANALYZE to update statistics
     console.log('[Migrations] Running ANALYZE to update query planner statistics...');

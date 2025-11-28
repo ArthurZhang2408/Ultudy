@@ -106,7 +106,7 @@ Option A: Separate Vercel Project (Recommended)
    - Build Command: npm run build
    - Branch: staging
 4. Environment Variables → Copy from production, update:
-   - NEXT_PUBLIC_API_URL=https://ultudy-backend-staging.up.railway.app
+   - NEXT_PUBLIC_BACKEND_URL=https://ultudy-backend-staging.up.railway.app
    - CLERK_* (use staging/test keys)
 5. Deploy
 

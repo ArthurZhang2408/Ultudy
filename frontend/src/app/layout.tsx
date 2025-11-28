@@ -10,6 +10,8 @@ import ThemeProvider from '@/components/ThemeProvider';
 import Script from 'next/script';
 import LayoutClient from './layout-client';
 import { ModalProvider } from '@/contexts/ModalContext';
+import { TierProvider } from '@/contexts/TierContext';
+import { BackgroundTasksProvider } from '@/contexts/BackgroundTasksContext';
 
 export const metadata: Metadata = {
   title: 'Ultudy — AI Study Guide',
@@ -36,6 +38,8 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
       <body className="min-h-screen relative overflow-x-hidden">
         <ThemeProvider />
         <ModalProvider>
+          <TierProvider>
+            <BackgroundTasksProvider>
 
         {isLandingMode ? (
           <>
@@ -93,6 +97,8 @@ function LayoutShell({ children, authEnabled }: LayoutShellProps) {
             </div>
           )
         )}
+            </BackgroundTasksProvider>
+          </TierProvider>
         </ModalProvider>
       </body>
     </html>

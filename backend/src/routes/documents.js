@@ -166,6 +166,59 @@ export default function createDocumentsRouter(options = {}) {
     }
   });
 
+  router.patch('/:id/rename', async (req, res) => {
+    const ownerId = req.userId;
+    const { id } = req.params;
+    const { title } = req.body;
+
+    // Validate document ID format (UUID)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!id || !uuidRegex.test(id)) {
+      return res.status(400).json({ error: 'Invalid document ID format' });
+    }
+
+    // Validate title
+    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+      return res.status(400).json({ error: 'Title is required and must be a non-empty string' });
+    }
+
+    if (title.length > 500) {
+      return res.status(400).json({ error: 'Title must be less than 500 characters' });
+    }
+
+    try {
+      const result = await tenantHelpers.withTenant(ownerId, async (client) => {
+        // Check if document exists and user owns it
+        const { rows: checkRows } = await client.query(
+          'SELECT id FROM documents WHERE id = $1 AND owner_id = $2',
+          [id, ownerId]
+        );
+
+        if (checkRows.length === 0) {
+          return { success: false, error: 'Document not found or access denied' };
+        }
+
+        // Update the document title
+        const { rows: updateRows } = await client.query(
+          'UPDATE documents SET title = $1 WHERE id = $2 AND owner_id = $3 RETURNING id, title',
+          [title.trim(), id, ownerId]
+        );
+
+        return { success: true, document: updateRows[0] };
+      });
+
+      if (!result.success) {
+        return res.status(404).json({ error: result.error });
+      }
+
+      console.log(`[documents] Document ${id} renamed to "${title.trim()}"`);
+      res.json({ success: true, document: result.document });
+    } catch (error) {
+      console.error('[documents] Rename error:', error);
+      res.status(500).json({ error: 'Failed to rename document' });
+    }
+  });
+
   router.delete('/:id', async (req, res) => {
     const ownerId = req.userId;
     const { id } = req.params;
