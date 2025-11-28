@@ -199,34 +199,22 @@ type FormattedTextProps = {
 };
 
 /**
- * Preprocesses text to convert <eqs> tags to LaTeX math delimiters
- * This allows the LLM to use <eqs> tags without escaping issues
- */
-function preprocessMathTags(text: string): string {
-  // Convert <eqs>...</eqs> to $...$
-  // Use replacement function to preserve backslashes in LaTeX
-  return text.replace(/<eqs>(.*?)<\/eqs>/gs, (_match, latex) => `$${latex}$`);
-}
-
-/**
  * FormattedText component
  *
  * Renders text with Markdown and LaTeX support.
  *
- * The LLM uses <eqs> tags for math expressions to avoid escaping issues.
- * This component preprocesses the text to convert <eqs> tags to $ delimiters,
- * which are then rendered by KaTeX.
+ * The backend generates native LaTeX using $ delimiters for inline math
+ * and $$ for display math, which are rendered by KaTeX via remark-math.
  *
  * Supports:
  * - **Bold** text
  * - *Italic* text
  * - `Inline code`
- * - Math expressions: <eqs>x^2 + y^2 = z^2</eqs>
+ * - Math expressions: $x^2 + y^2 = z^2$
+ * - Code blocks with syntax highlighting
  * - Lists, links, and other Markdown features
  */
 export function FormattedText({ children, className = '' }: FormattedTextProps) {
-  // Preprocess text to convert <eqs> tags to LaTeX delimiters
-  const processedText = preprocessMathTags(children);
 
   return (
     <div className={`formatted-text ${className}`}>
@@ -332,7 +320,7 @@ export function FormattedText({ children, className = '' }: FormattedTextProps) 
           ),
         }}
       >
-        {processedText}
+        {children}
       </ReactMarkdown>
     </div>
   );

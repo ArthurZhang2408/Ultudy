@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useModal } from '@/contexts/ModalContext';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export default function Modal({
   showCloseButton = true,
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  useModal(isOpen);
 
   const sizeStyles = {
     sm: 'max-w-md',
@@ -51,7 +53,7 @@ export default function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-neutral-900/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-neutral-900/50 backdrop-blur-safari"
         onClick={onClose}
       />
 

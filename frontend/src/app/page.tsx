@@ -8,12 +8,11 @@ import { useFetchCourses } from '@/lib/hooks/useFetchCourses';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+// COURSES HOMEPAGE - Authenticated users in app mode
 function CoursesHomePage() {
   const router = useRouter();
   const [showArchived, setShowArchived] = useState(false);
-  // Always fetch all courses (including archived)
   const { courses: allCourses, loading, refetch } = useFetchCourses(true);
-  // Filter courses based on showArchived state
   const courses = showArchived ? allCourses.filter(c => c.archived) : allCourses.filter(c => !c.archived);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -22,7 +21,6 @@ function CoursesHomePage() {
   const [isArchiving, setIsArchiving] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null);
 
-  // Listen for course updates from other components
   useEffect(() => {
     const handleCoursesUpdated = () => {
       refetch();
@@ -30,6 +28,13 @@ function CoursesHomePage() {
     window.addEventListener('coursesUpdated', handleCoursesUpdated);
     return () => window.removeEventListener('coursesUpdated', handleCoursesUpdated);
   }, [refetch]);
+
+  useEffect(() => {
+    const archivedCount = allCourses.filter(c => c.archived).length;
+    if (showArchived && archivedCount === 0) {
+      setShowArchived(false);
+    }
+  }, [showArchived, allCourses]);
 
   const handleArchiveToggle = async (course: any, e: React.MouseEvent) => {
     e.preventDefault();
@@ -48,10 +53,7 @@ function CoursesHomePage() {
         throw new Error('Failed to archive course');
       }
 
-      // Notify other components
       window.dispatchEvent(new CustomEvent('coursesUpdated'));
-
-      // Refresh courses list
       await refetch();
     } catch (error) {
       console.error('Failed to archive course:', error);
@@ -74,10 +76,7 @@ function CoursesHomePage() {
         throw new Error('Failed to delete course');
       }
 
-      // Notify other components
       window.dispatchEvent(new CustomEvent('coursesUpdated'));
-
-      // Refresh courses list
       await refetch();
       setDeleteDialogOpen(false);
       setSelectedCourse(null);
@@ -132,7 +131,6 @@ function CoursesHomePage() {
           </p>
         </div>
 
-        {/* Show Archived Toggle */}
         {archivedCount > 0 && (
           <Button
             variant={showArchived ? 'primary' : 'outline'}
@@ -178,7 +176,6 @@ function CoursesHomePage() {
                       </svg>
                     </div>
 
-                    {/* Dropdown menu */}
                     <div className="relative">
                       <button
                         onClick={(e) => {
@@ -194,7 +191,6 @@ function CoursesHomePage() {
                         </svg>
                       </button>
 
-                      {/* Dropdown content */}
                       {dropdownOpen === course.id && (
                         <>
                           <div
@@ -207,7 +203,6 @@ function CoursesHomePage() {
                           />
                           <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 z-20">
                             {course.archived ? (
-                              // Archived courses: Show only Unarchive and Delete
                               <>
                                 <button
                                   onClick={(e) => handleArchiveToggle(course, e)}
@@ -230,7 +225,6 @@ function CoursesHomePage() {
                                 </button>
                               </>
                             ) : (
-                              // Active courses: Show Edit, Archive, and Delete
                               <>
                                 <button
                                   onClick={(e) => openEditDialog(course, e)}
@@ -300,9 +294,7 @@ function CoursesHomePage() {
                         </svg>
                         <span className="text-sm text-neutral-600 dark:text-neutral-300">
                           Exam: {(() => {
-                            // Parse date string as local date to avoid timezone issues
-                            // Handle both "YYYY-MM-DD" and ISO timestamp formats
-                            const dateStr = course.exam_date.split('T')[0]; // Extract date part if ISO timestamp
+                            const dateStr = course.exam_date.split('T')[0];
                             const [year, month, day] = dateStr.split('-').map(Number);
                             const localDate = new Date(year, month - 1, day);
                             return localDate.toLocaleDateString('en-US', {
@@ -322,7 +314,6 @@ function CoursesHomePage() {
         </div>
       )}
 
-      {/* Edit Course Modal */}
       <EditCourseModal
         isOpen={editDialogOpen}
         onClose={() => setEditDialogOpen(false)}
@@ -330,14 +321,13 @@ function CoursesHomePage() {
         onSuccess={refetch}
       />
 
-      {/* Delete Confirmation Dialog */}
       {deleteDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setDeleteDialogOpen(false)}
           />
-          <div className="relative bg-white dark:bg-neutral-900 rounded-xl shadow-2xl p-6 w-full max-w-md">
+          <div className="relative bg-white dark:bg-neutral-900 rounded-xl shadow-large dark:shadow-dark-large p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-danger-100 dark:bg-danger-900/40 rounded-full flex items-center justify-center">
                 <svg className="w-5 h-5 text-danger-600 dark:text-danger-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -355,7 +345,7 @@ function CoursesHomePage() {
             </p>
             <div className="flex gap-3">
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={() => setDeleteDialogOpen(false)}
                 disabled={isDeleting}
                 className="flex-1"
@@ -381,44 +371,185 @@ function CoursesHomePage() {
 export default function HomePage() {
   const { isSignedIn, isLoaded } = useAuth();
 
-  // Show loading state
+  const launchMode = process.env.NEXT_PUBLIC_LAUNCH_MODE || 'app';
+  const isLandingMode = launchMode === 'landing';
+
   if (!isLoaded) {
     return null;
   }
 
-  // If signed in, show courses page content directly
+  if (isLandingMode) {
+    if (isSignedIn) {
+      return <PreLaunchPage />;
+    }
+    return <LandingPage />;
+  }
+
   if (isSignedIn) {
     return <CoursesHomePage />;
   }
 
-  // Landing page for non-authenticated users
+  return <LandingPage />;
+}
+
+// Countdown Timer - design system compliant
+function CountdownTimer({ targetDate }: { targetDate: string }) {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+
+    const calculateTimeLeft = () => {
+      const difference = +new Date(targetDate) - +new Date();
+
+      if (difference > 0) {
+        setTimeLeft({
+          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((difference / 1000 / 60) % 60),
+          seconds: Math.floor((difference / 1000) % 60),
+        });
+      } else {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      }
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 1000);
+
+    return () => clearInterval(timer);
+  }, [targetDate]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-4xl mx-auto">
+      {[
+        { label: 'Days', value: timeLeft.days },
+        { label: 'Hours', value: timeLeft.hours },
+        { label: 'Minutes', value: timeLeft.minutes },
+        { label: 'Seconds', value: timeLeft.seconds },
+      ].map((item) => (
+        <div
+          key={item.label}
+          className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-6 md:p-8 shadow-soft dark:shadow-dark-soft hover:shadow-medium dark:hover:shadow-dark-medium transition-all duration-200"
+        >
+          <div className="text-5xl md:text-6xl font-bold text-primary-600 dark:text-primary-400 mb-2">
+            {String(item.value).padStart(2, '0')}
+          </div>
+          <div className="text-xs md:text-sm text-neutral-600 dark:text-neutral-400 font-medium uppercase tracking-wider">
+            {item.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Pre-launch waitlist page - design system compliant
+function PreLaunchPage() {
+  const launchDate = process.env.NEXT_PUBLIC_LAUNCH_DATE || '2025-12-31T00:00:00';
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 py-12">
+      <div className="max-w-5xl mx-auto text-center space-y-12 animate-fade-in">
+        {/* Success Badge */}
+        <Badge variant="success" size="lg" className="gap-2">
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+          </svg>
+          You're on the waitlist!
+        </Badge>
+
+        {/* Main heading */}
+        <div className="space-y-4">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold text-neutral-900 dark:text-neutral-100">
+            <span className="bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-400 dark:to-primary-500 bg-clip-text text-transparent">
+              Ultudy
+            </span>{' '}
+            launches in
+          </h1>
+        </div>
+
+        {/* Countdown Timer */}
+        <div className="py-8">
+          <CountdownTimer targetDate={launchDate} />
+        </div>
+
+        {/* Description */}
+        <Card padding="lg" className="max-w-3xl mx-auto">
+          <p className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+            Thanks for being an early supporter!
+          </p>
+          <p className="text-lg text-neutral-600 dark:text-neutral-300 mb-3">
+            We're building something special just for you. Your AI-powered study companion is almost ready.
+          </p>
+          <p className="text-base text-neutral-500 dark:text-neutral-400">
+            You'll receive an email the moment we launch. Start gathering your course materials—you're about to study smarter, not harder!
+          </p>
+        </Card>
+
+        {/* What to expect */}
+        <div className="grid md:grid-cols-3 gap-6 pt-8 max-w-4xl mx-auto">
+          {[
+            {
+              icon: '📚',
+              title: 'Upload Anything',
+              description: 'Textbooks, lectures, notes, PDFs',
+            },
+            {
+              icon: '🤖',
+              title: 'AI-Powered Lessons',
+              description: 'Personalized lessons tailored to you',
+            },
+            {
+              icon: '📊',
+              title: 'Master Faster',
+              description: 'Track progress with adaptive learning',
+            },
+          ].map((feature, index) => (
+            <Card key={index} hover className="text-center">
+              <div className="text-5xl mb-4">{feature.icon}</div>
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                {feature.title}
+              </h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                {feature.description}
+              </p>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Landing page - design system compliant
+function LandingPage() {
   return (
     <div className="space-y-20 pb-16">
       {/* Hero Section */}
-      <section className="relative py-20 text-center overflow-hidden">
-        {/* Background decorations */}
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary-200/30 dark:bg-primary-900/20 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-success-200/20 dark:bg-success-900/10 rounded-full blur-3xl" />
-        </div>
-
-        <div className="space-y-6 animate-fade-in">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/40 border border-primary-200 dark:border-primary-800 rounded-full text-primary-700 dark:text-primary-300 text-sm font-medium">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+      <section className="relative py-20 text-center animate-fade-in">
+        <div className="max-w-5xl mx-auto space-y-8">
+          <Badge variant="primary" size="lg" className="gap-2">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
             </svg>
-            AI-Powered Adaptive Learning
-          </div>
+            AI-Powered Study Companion
+          </Badge>
 
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-neutral-900 dark:text-neutral-100 max-w-4xl mx-auto leading-tight">
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold text-neutral-900 dark:text-neutral-100 max-w-4xl mx-auto leading-tight">
             Master Any Course with{' '}
-            <span className="bg-gradient-to-r from-primary-600 to-primary-800 dark:from-primary-400 dark:to-primary-600 bg-clip-text text-transparent">
-              Personalized AI Lessons
+            <span className="bg-gradient-to-r from-primary-500 to-primary-600 dark:from-primary-400 dark:to-primary-500 bg-clip-text text-transparent">
+              AI-Powered Lessons
             </span>
           </h1>
 
           <p className="text-xl md:text-2xl text-neutral-600 dark:text-neutral-300 max-w-3xl mx-auto leading-relaxed">
-            Upload your study materials and get custom lessons, practice problems, and instant feedback tailored to your learning style.
+            Upload your study materials and get personalized lessons, adaptive practice, and instant feedback tailored to how you learn.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
@@ -429,52 +560,134 @@ export default function HomePage() {
               Sign In
             </Button>
           </div>
+
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+            No credit card required • Free for students
+          </p>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="grid md:grid-cols-3 gap-8">
-        {[
-          {
-            icon: (
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            ),
-            title: 'Upload Materials',
-            description: 'Upload textbooks, lecture notes, or any PDF. Our AI extracts key concepts automatically.',
-          },
-          {
-            icon: (
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-              </svg>
-            ),
-            title: 'Adaptive Lessons',
-            description: 'Get personalized lessons that adapt to your understanding, focusing on what you need most.',
-          },
-          {
-            icon: (
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            ),
-            title: 'Track Progress',
-            description: 'Monitor your mastery with detailed analytics and spaced repetition for long-term retention.',
-          },
-        ].map((feature, index) => (
-          <Card key={index} className="text-center p-8">
-            <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/40 rounded-2xl flex items-center justify-center mx-auto mb-4 text-primary-600 dark:text-primary-400">
-              {feature.icon}
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-              {feature.title}
-            </h3>
-            <p className="text-neutral-600 dark:text-neutral-300">
-              {feature.description}
+      <section className="px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+              Everything you need to study smarter
+            </h2>
+            <p className="text-lg text-neutral-600 dark:text-neutral-300">
+              AI that understands your course and adapts to your learning style
             </p>
-          </Card>
-        ))}
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: (
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                ),
+                title: 'Upload Materials',
+                description: 'Upload textbooks, lecture notes, or any PDF. Our AI extracts and understands key concepts automatically.',
+              },
+              {
+                icon: (
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                ),
+                title: 'Adaptive Lessons',
+                description: 'Get personalized lessons that adapt to your understanding, focusing on what you need to learn most.',
+              },
+              {
+                icon: (
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                ),
+                title: 'Track Progress',
+                description: 'Monitor your mastery with detailed analytics and adaptive practice that focuses on weak spots.',
+              },
+            ].map((feature, index) => (
+              <Card key={index} className="text-center" hover>
+                <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/40 rounded-xl flex items-center justify-center mx-auto mb-4 text-primary-600 dark:text-primary-400">
+                  {feature.icon}
+                </div>
+                <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                  {feature.title}
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                  {feature.description}
+                </p>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="px-4">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-semibold text-neutral-900 dark:text-neutral-100 mb-4">
+              From overwhelmed to exam-ready
+            </h2>
+            <p className="text-lg text-neutral-600 dark:text-neutral-300">
+              Get started in three simple steps
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-12">
+            {[
+              {
+                step: '1',
+                title: 'Upload',
+                description: 'Drop your textbooks, lectures, and course materials',
+                emoji: '📤',
+              },
+              {
+                step: '2',
+                title: 'Learn',
+                description: 'AI generates personalized lessons and checks understanding',
+                emoji: '🧠',
+              },
+              {
+                step: '3',
+                title: 'Master',
+                description: 'Track progress, practice weak spots, and ace exams',
+                emoji: '🎯',
+              },
+            ].map((step, index) => (
+              <div key={index} className="text-center">
+                <div className="w-16 h-16 mx-auto mb-6 bg-primary-600 dark:bg-primary-500 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-soft dark:shadow-dark-soft">
+                  {step.step}
+                </div>
+                <div className="text-5xl mb-4">{step.emoji}</div>
+                <h3 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+                  {step.title}
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-300">
+                  {step.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="px-4 text-center py-12">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <h2 className="text-3xl md:text-4xl font-semibold text-neutral-900 dark:text-neutral-100">
+            Ready to transform how you study?
+          </h2>
+          <p className="text-xl text-neutral-600 dark:text-neutral-300">
+            Join students who are learning smarter, not harder.
+          </p>
+          <Button variant="primary" size="lg" onClick={() => window.location.href = '/sign-up'}>
+            Start Learning for Free
+          </Button>
+        </div>
       </section>
     </div>
   );

@@ -39,13 +39,86 @@ export async function createGeminiVisionProvider() {
     name: 'gemini-vision',
 
     /**
-     * Extract structured sections from PDF using vision model
+     * Extract markdown from PDF using vision model (returns plain text)
+     *
+     * @param {string} pdfPath - Path to PDF file
+     * @param {string} systemPrompt - System instruction
+     * @param {string} userPrompt - User prompt
+     * @returns {Promise<string>} Plain markdown text
+     */
+    async extractMarkdown(pdfPath, systemPrompt, userPrompt) {
+      console.log('[gemini_vision] Reading PDF file:', pdfPath);
+
+      // Read PDF as binary
+      const pdfData = await fs.readFile(pdfPath);
+      const pdfBase64 = pdfData.toString('base64');
+      const pdfSizeMB = (pdfData.length / 1024 / 1024).toFixed(2);
+
+      console.log(`[gemini_vision] PDF size: ${pdfSizeMB} MB`);
+      console.log('[gemini_vision] Creating vision model for markdown extraction...');
+
+      const visionModel = process.env.GEMINI_VISION_MODEL || 'gemini-2.0-flash-exp';
+      const temperature = parseFloat(process.env.GEMINI_VISION_TEMPERATURE || '0.4');
+
+      console.log(`[gemini_vision] Using model: ${visionModel}, temperature: ${temperature}`);
+
+      const model = genAI.getGenerativeModel({
+        model: visionModel,
+        systemInstruction: systemPrompt
+      });
+
+      console.log('[gemini_vision] Sending PDF to Gemini for markdown conversion...');
+
+      const startTime = Date.now();
+
+      // Generate plain text markdown (no JSON schema)
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: pdfBase64
+                }
+              },
+              { text: userPrompt }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: temperature
+          // No responseMimeType - returns plain text by default
+        }
+      });
+
+      const duration = Date.now() - startTime;
+      console.log(`[gemini_vision] Response received in ${duration}ms`);
+
+      const response = result.response;
+      const markdown = response.text();
+
+      console.log(`[gemini_vision] ✅ Markdown extraction successful`);
+      console.log(`[gemini_vision] Response length: ${markdown.length} characters`);
+
+      // Basic validation
+      if (!markdown || markdown.trim().length === 0) {
+        throw new Error('LLM returned empty response');
+      }
+
+      return markdown;
+    },
+
+    /**
+     * Extract structured sections from PDF using vision model (DEPRECATED - uses JSON)
      *
      * @param {string} pdfPath - Path to PDF file
      * @param {string} systemPrompt - System instruction
      * @param {string} userPrompt - User prompt
      * @param {object} responseSchema - JSON schema for response
      * @returns {Promise<object>} Parsed JSON response
+     * @deprecated Use extractMarkdown instead
      */
     async extractStructuredSections(pdfPath, systemPrompt, userPrompt, responseSchema) {
       console.log('[gemini_vision] Reading PDF file:', pdfPath);

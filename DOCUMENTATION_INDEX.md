@@ -1,6 +1,6 @@
 # Ultudy Documentation System
 
-**Last Updated:** 2025-01-17
+**Last Updated:** 2025-11-28
 **Purpose:** Central index for all project documentation with self-maintenance instructions
 
 ---
@@ -26,6 +26,8 @@ When you open this repository:
 | **DEVELOPMENT_PIPELINE.md** | Development workflow and environment strategy | Setting up dev pipeline |
 | **DEPLOYMENT_GUIDE.md** | Complete deployment guide to ultudy.com | Deploying to production |
 | **DEPLOYMENT_CHECKLIST.md** | Step-by-step deployment checklist | During deployment |
+| **LAUNCH_MODE_GUIDE.md** | Switching between landing page and app | Pre-launch setup, launch day |
+| **WAITLIST_GUIDE.md** | Managing pre-launch waitlist and launch emails | Pre-launch, launch day |
 | **PRODUCTION_FIXES.md** | Production deployment troubleshooting | After deployment, fixing issues |
 | **SCALABILITY_GUIDE.md** | Scaling from 1k to 100k+ users | After deployment, scaling |
 | **CLERK_SETUP.md** | Authentication setup with Clerk | Setting up auth |
@@ -51,6 +53,10 @@ When you open this repository:
 |----------|---------|--------|
 | **LESSON_GENERATION_ARCHITECTURE.md** | How AI lessons are generated | Current |
 | **ASYNC_OPERATIONS.md** | Job queue and async processing | Current |
+| **PRICING_TIERS.md** | Tier structure, cost analysis, feature matrix | Current |
+| **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing (document extraction complete) | Current |
+| **SUBSCRIPTION_ARCHITECTURE.md** | Stripe integration, payment flow, tier enforcement | Planning |
+| **MARKDOWN_MIGRATION_CHANGELOG.md** | JSON to Markdown migration & UI/UX fixes | Current |
 
 ---
 
@@ -63,6 +69,8 @@ Files that represent the current state of the system:
 - `DEVELOPMENT_PIPELINE.md` - Development workflow and CI/CD
 - `DEPLOYMENT_GUIDE.md` - Production deployment guide
 - `DEPLOYMENT_CHECKLIST.md` - Deployment verification checklist
+- `LAUNCH_MODE_GUIDE.md` - Landing page/app switching guide
+- `WAITLIST_GUIDE.md` - Pre-launch waitlist and launch email guide
 - `PRODUCTION_FIXES.md` - Production troubleshooting guide
 - `SCALABILITY_GUIDE.md` - Production scaling guide
 - `CLERK_SETUP.md` - Authentication setup
@@ -72,6 +80,10 @@ Files that represent the current state of the system:
 - `backend/src/db/migrations/README.md` - Database migrations
 - `LESSON_GENERATION_ARCHITECTURE.md` - Core architecture
 - `ASYNC_OPERATIONS.md` - Async job processing
+- `PRICING_TIERS.md` - Pricing strategy and cost analysis
+- `TIER_2_ARCHITECTURE.md` - Tier 2 multi-chapter technical design
+- `SUBSCRIPTION_ARCHITECTURE.md` - Stripe payment integration
+- `MARKDOWN_MIGRATION_CHANGELOG.md` - Recent migration documentation
 
 ### Archived/Historical Documentation
 Implementation plans, migration docs, and phase documents that are completed:
@@ -179,11 +191,15 @@ Before committing code changes, verify:
 - ❌ Chunking system
 
 ### What's Current (Keep Documented)
-- ✅ Vision-based PDF extraction
-- ✅ Section-based lesson generation
+- ✅ Vision-based PDF extraction (tier 1)
+- ✅ Multi-chapter PDF detection and extraction (tier 2)
+- ✅ Individual chapter extraction with retry logic
+- ✅ Section-based lesson generation (tier 1 only, tier 2 future)
 - ✅ Concept mastery tracking
 - ✅ Multi-course support
-- ✅ Async job processing
+- ✅ Async job processing with BullMQ
+- ✅ Real-time progress tracking
+- ✅ Test mode tier switching
 - ✅ Scalability features (connection pooling, caching)
 
 ---
@@ -274,6 +290,15 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 ### "How do I deploy to production?"
 → See `DEPLOYMENT_GUIDE.md` and `DEPLOYMENT_CHECKLIST.md`
 
+### "How do I switch between landing page and app?"
+→ See `LAUNCH_MODE_GUIDE.md`
+
+### "How do I manage the pre-launch waitlist?"
+→ See `WAITLIST_GUIDE.md`
+
+### "How do I send launch day emails?"
+→ See `WAITLIST_GUIDE.md`
+
 ### "How do I scale to production?"
 → See `SCALABILITY_GUIDE.md`
 
@@ -291,6 +316,15 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How do lessons get generated?"
 → See `LESSON_GENERATION_ARCHITECTURE.md`
+
+### "What are the pricing tiers?"
+→ See `PRICING_TIERS.md`
+
+### "How does Tier 2 multi-chapter work?"
+→ See `TIER_2_ARCHITECTURE.md`
+
+### "What changed in the recent PR?"
+→ See `MARKDOWN_MIGRATION_CHANGELOG.md`
 
 ---
 

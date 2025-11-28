@@ -10,7 +10,7 @@ export type AnswerRecord = {
 export type StoredProgress = {
   conceptIndex: number;
   mcqIndex: number;
-  conceptProgress: Array<[number, 'completed' | 'skipped' | 'wrong']>;
+  conceptProgress: Array<[number, 'completed' | 'skipped' | 'wrong' | 'in_progress']>;
   answerHistory: Record<string, AnswerRecord>;
 };
 

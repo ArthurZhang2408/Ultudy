@@ -4,8 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { MasteryGrid, type SkillSquare, type MasteryLevel } from '../../../components/MasteryGrid';
-import { Button, Card, Badge, ConfirmModal, UploadModal } from '@/components/ui';
+import { Button, Card, Badge, ConfirmModal, UploadModal, Tier2UploadModal, ChapterSelectionModal, MarkdownViewerModal, CustomSelect, BackgroundTasksBanner } from '@/components/ui';
 import { createJobPoller, type Job } from '@/lib/jobs';
+import { useTier } from '@/contexts/TierContext';
+import { useFetchChapterSources } from '@/lib/hooks/useFetchChapterSources';
+import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
+import { useAuth } from '@clerk/nextjs';
+import { getBackendUrl } from '@/lib/api';
 
 type Course = {
   id: string;
@@ -52,6 +57,15 @@ type ConceptWithMastery = {
   correct_attempts: number;
 };
 
+type ConceptMeta = {
+  id: string;
+  name: string;
+  concept_number: number | null;
+  lesson_position: number;
+  mastery_level: MasteryLevel;
+  accuracy: number;
+};
+
 type SectionWithMastery = {
   id: string;
   section_number: number;
@@ -61,6 +75,7 @@ type SectionWithMastery = {
   concepts_generated: boolean;
   page_start: number | null;
   page_end: number | null;
+  concepts?: ConceptMeta[]; // Populated for sidebar navigation
 };
 
 export default function CoursePage() {
@@ -68,19 +83,41 @@ export default function CoursePage() {
   const searchParams = useSearchParams();
   const courseId = params.id as string;
   const router = useRouter();
+  const { tierData, isTier } = useTier();
+  const { chapterSources, refetch: refetchChapterSources } = useFetchChapterSources(courseId);
+  const { getToken } = useAuth();
+  const { addTask, updateTask, tasks } = useBackgroundTasks();
   const [course, setCourse] = useState<Course | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [conceptsByChapter, setConceptsByChapter] = useState<Record<string, ConceptWithMastery[]>>({});
   const [sectionsByChapter, setSectionsByChapter] = useState<Record<string, SectionWithMastery[]>>({});
+  const [conceptsByDocument, setConceptsByDocument] = useState<Record<string, ConceptWithMastery[]>>({});
+  const [sectionsByDocument, setSectionsByDocument] = useState<Record<string, SectionWithMastery[]>>({});
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
   const [processingJobs, setProcessingJobs] = useState<ProcessingJob[]>([]);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isTier2UploadModalOpen, setIsTier2UploadModalOpen] = useState(false);
+  const [isChapterSelectionOpen, setIsChapterSelectionOpen] = useState(false);
+  const [chapterSelectionData, setChapterSelectionData] = useState<{
+    documentId: string;
+    documentName: string;
+    storageKey: string;
+    chapters: Array<{ number: number; title: string; pageStart: number; pageEnd: number }>;
+  } | null>(null);
+  const [isMarkdownViewerOpen, setIsMarkdownViewerOpen] = useState(false);
+  const [markdownContent, setMarkdownContent] = useState('');
+  const [markdownTitle, setMarkdownTitle] = useState('');
+  const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
+  const [editingDocumentTitle, setEditingDocumentTitle] = useState('');
+  const [deletingTier2SourceId, setDeletingTier2SourceId] = useState<string | null>(null);
+  const [tier2DeleteModalOpen, setTier2DeleteModalOpen] = useState(false);
   const pollingJobsRef = useRef<Set<string>>(new Set());
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [placeholdersPerRow, setPlaceholdersPerRow] = useState(14); // Default fallback
+  const processedTasksRef = useRef<Set<string>>(new Set()); // Track processed task IDs
 
   useEffect(() => {
     if (courseId) {
@@ -135,8 +172,22 @@ export default function CoursePage() {
         console.log('[courses] Upload completed:', job);
         pollingJobsRef.current.delete(uploadJobId);
         removeProcessingJob(uploadJobId);
-        // Refresh course data to show the new document
-        fetchCourseData();
+
+        // Check if this is a tier 2 multi-chapter upload
+        if (job.result?.type === 'multi_chapter') {
+          console.log('[courses] Multi-chapter PDF detected:', job.result);
+          // Trigger chapter selection modal
+          setChapterSelectionData({
+            documentId: job.result.document_id,
+            documentName: job.result.title,
+            storageKey: job.result.storage_key,
+            chapters: job.result.chapters
+          });
+          setIsChapterSelectionOpen(true);
+        } else {
+          // Refresh course data to show the new document
+          fetchCourseData();
+        }
       },
       onError: (error: string) => {
         console.error('[courses] Upload job error:', error);
@@ -151,6 +202,30 @@ export default function CoursePage() {
       pollingJobsRef.current.delete(uploadJobId);
     };
   }, [searchParams]);
+
+  // Auto-refresh chapter sources when tier 2 tasks complete (uploads or extractions)
+  useEffect(() => {
+    // Watch for both upload and extraction tasks for this course
+    const tier2Tasks = tasks.filter(task =>
+      (task.type === 'extraction' || task.type === 'upload') &&
+      task.courseId === courseId &&
+      task.status === 'completed'
+    );
+
+    // Only process newly completed tasks (ones we haven't seen before)
+    const newlyCompletedTasks = tier2Tasks.filter(task => !processedTasksRef.current.has(task.id));
+
+    if (newlyCompletedTasks.length > 0) {
+      console.log('[courses] Tier 2 task(s) completed:', newlyCompletedTasks.map(t => t.id));
+
+      // Mark these tasks as processed
+      newlyCompletedTasks.forEach(task => processedTasksRef.current.add(task.id));
+
+      // Refresh data
+      refetchChapterSources();
+      fetchCourseData();
+    }
+  }, [tasks, courseId, refetchChapterSources]);
 
   // Calculate how many placeholder squares fit in one row dynamically
   useEffect(() => {
@@ -254,6 +329,24 @@ export default function CoursePage() {
               await fetchConceptsForCourse();
               console.log('[courses] Concepts refreshed, removing job from UI');
               removeProcessingJob(job.job_id);
+            } else if (job.type === 'upload') {
+              // Check if this is a tier 2 multi-chapter upload
+              if (jobData.result?.type === 'multi_chapter') {
+                console.log('[courses] Multi-chapter PDF detected:', jobData.result);
+                // Trigger chapter selection modal
+                setChapterSelectionData({
+                  documentId: jobData.result.document_id,
+                  documentName: jobData.result.title,
+                  storageKey: jobData.result.storage_key,
+                  chapters: jobData.result.chapters
+                });
+                setIsChapterSelectionOpen(true);
+                removeProcessingJob(job.job_id);
+              } else {
+                // Regular upload or single chapter - refresh page
+                removeProcessingJob(job.job_id);
+                fetchCourseData();
+              }
             } else {
               // For uploads, refresh everything
               removeProcessingJob(job.job_id);
@@ -366,8 +459,10 @@ export default function CoursePage() {
       const results = await Promise.all(dataPromises);
       const conceptsMap: Record<string, ConceptWithMastery[]> = {};
       const sectionsMap: Record<string, SectionWithMastery[]> = {};
+      const conceptsByDocMap: Record<string, ConceptWithMastery[]> = {};
+      const sectionsByDocMap: Record<string, SectionWithMastery[]> = {};
 
-      // Deduplicate concepts and sections by ID
+      // Deduplicate concepts and sections by ID (for chapter-based view)
       const seenConceptIds = new Set<string>();
       const seenSectionIds = new Set<string>();
 
@@ -381,7 +476,11 @@ export default function CoursePage() {
             sectionsMap[result.chapterKey] = [];
           }
 
-          // Add unique concepts
+          // Initialize document arrays
+          conceptsByDocMap[result.documentId] = result.concepts;
+          sectionsByDocMap[result.documentId] = result.sections;
+
+          // Add unique concepts (for chapter-based view)
           for (const concept of result.concepts) {
             if (!seenConceptIds.has(concept.id)) {
               seenConceptIds.add(concept.id);
@@ -389,7 +488,7 @@ export default function CoursePage() {
             }
           }
 
-          // Add unique sections
+          // Add unique sections (for chapter-based view)
           for (const section of result.sections) {
             if (!seenSectionIds.has(section.id)) {
               seenSectionIds.add(section.id);
@@ -399,8 +498,60 @@ export default function CoursePage() {
         }
       }
 
+      // Map concepts to their parent sections for chapter-based view
+      for (const chapterKey in sectionsMap) {
+        const chapterConcepts = conceptsMap[chapterKey] || [];
+
+        sectionsMap[chapterKey] = sectionsMap[chapterKey].map(section => {
+          // Find all concepts belonging to this section
+          const sectionConcepts = chapterConcepts
+            .filter(c => c.section_id === section.id)
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              concept_number: c.concept_number,
+              lesson_position: c.lesson_position ?? 0,
+              mastery_level: c.mastery_level,
+              accuracy: c.accuracy
+            }))
+            .sort((a, b) => a.lesson_position - b.lesson_position);
+
+          return {
+            ...section,
+            concepts: sectionConcepts
+          };
+        });
+      }
+
+      // Map concepts to their parent sections for document-based view
+      for (const docId in sectionsByDocMap) {
+        const docConcepts = conceptsByDocMap[docId] || [];
+
+        sectionsByDocMap[docId] = sectionsByDocMap[docId].map(section => {
+          // Find all concepts belonging to this section
+          const sectionConcepts = docConcepts
+            .filter(c => c.section_id === section.id)
+            .map(c => ({
+              id: c.id,
+              name: c.name,
+              concept_number: c.concept_number,
+              lesson_position: c.lesson_position ?? 0,
+              mastery_level: c.mastery_level,
+              accuracy: c.accuracy
+            }))
+            .sort((a, b) => a.lesson_position - b.lesson_position);
+
+          return {
+            ...section,
+            concepts: sectionConcepts
+          };
+        });
+      }
+
       setConceptsByChapter(conceptsMap);
       setSectionsByChapter(sectionsMap);
+      setConceptsByDocument(conceptsByDocMap);
+      setSectionsByDocument(sectionsByDocMap);
     } catch (error) {
       console.error('Failed to fetch concepts and sections:', error);
     }
@@ -456,60 +607,52 @@ export default function CoursePage() {
 
         // Check if it's a job (async generation) or existing lesson
         if (data.job_id) {
-          // Lesson is being generated - add to processing jobs
+          // Lesson is being generated - add to background tasks
           console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
 
-          // Store job in sessionStorage for persistence
-          if (typeof window !== 'undefined') {
-            const jobData = {
-              job_id: data.job_id,
-              document_id: documentId,
-              section_id: section.id,
-              section_name: section.name,
-              section_number: section.section_number,
-              chapter: chapter || null,
-              course_id: courseId
-            };
-            sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
-          }
-
-          // Add to processing jobs state
-          setProcessingJobs(prev => [...prev, {
-            job_id: data.job_id,
-            document_id: documentId,
-            section_id: section.id,
-            section_name: section.name,
-            section_number: section.section_number,
+          // Add to background tasks
+          addTask({
+            id: data.job_id,
             type: 'lesson',
+            title: `Generating lesson: ${section.name}`,
+            status: 'processing',
             progress: 0,
-            status: 'queued',
-            chapter: chapter || undefined
-          }]);
-
-          // Add to polling set to prevent duplicates
-          pollingJobsRef.current.add(data.job_id);
+            courseId,
+            documentId
+          });
 
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
-              updateJobProgress(data.job_id, job.progress, job.status);
+              updateTask(data.job_id, {
+                status: 'processing',
+                progress: job.progress || 0
+              });
             },
             onComplete: async (job: Job) => {
               console.log('[courses] Generation completed:', job);
 
+              // Update task status
+              updateTask(data.job_id, {
+                status: 'completed',
+                progress: 100,
+                completedAt: new Date().toISOString()
+              });
+
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
-
-              // Remove from processing jobs
-              pollingJobsRef.current.delete(data.job_id);
-              removeProcessingJob(data.job_id);
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
-              pollingJobsRef.current.delete(data.job_id);
-              removeProcessingJob(data.job_id);
+
+              // Update task as failed
+              updateTask(data.job_id, {
+                status: 'failed',
+                error: error,
+                completedAt: new Date().toISOString()
+              });
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');
@@ -589,6 +732,115 @@ export default function CoursePage() {
     setDeleteModalOpen(true);
   }
 
+  // Helper function to render a document's study session (mastery grid)
+  function renderDocumentSession(doc: Document, chapter: string) {
+    const documentConcepts = conceptsByDocument[doc.id] || [];
+    const documentSections = sectionsByDocument[doc.id] || [];
+
+    const orderedConcepts = [...documentConcepts].sort((a, b) => {
+      const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
+      const sectionB = b.section_number ?? Number.MAX_SAFE_INTEGER;
+      if (sectionA !== sectionB) {
+        return sectionA - sectionB;
+      }
+
+      const conceptA = a.concept_number ?? Number.MAX_SAFE_INTEGER;
+      const conceptB = b.concept_number ?? Number.MAX_SAFE_INTEGER;
+      if (conceptA !== conceptB) {
+        return conceptA - conceptB;
+      }
+
+      const lessonPosA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
+      const lessonPosB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
+      if (lessonPosA !== lessonPosB) {
+        return lessonPosA - lessonPosB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
+
+    const orderedSections = [...documentSections].sort((a, b) => a.section_number - b.section_number);
+
+    // Convert concepts to skills
+    const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => ({
+      id: concept.id,
+      name: concept.name,
+      masteryLevel: concept.mastery_level,
+      sectionNumber: concept.section_number || undefined,
+      sectionName: concept.section_name || undefined,
+      conceptNumber: concept.concept_number ?? undefined,
+      lessonPosition: typeof concept.lesson_position === 'number' ? concept.lesson_position : undefined,
+      description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
+      onClick: () => {
+        if (concept.section_id) {
+          router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
+        } else {
+          handleStartStudy(doc.id, doc.chapter);
+        }
+      }
+    }));
+
+    // Create section overview squares and add placeholders
+    const skillsWithOverviews: SkillSquare[] = [];
+
+    orderedSections.forEach((section) => {
+      const isGenerating = processingJobs.some(job =>
+        job.type === 'lesson' &&
+        job.section_id === section.id &&
+        (job.chapter || 'Uncategorized') === chapter &&
+        job.status !== 'completed'
+      );
+
+      skillsWithOverviews.push({
+        id: `overview-${section.id}`,
+        name: `${section.name} - Overview`,
+        masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
+        sectionNumber: section.section_number,
+        sectionName: section.name,
+        description: section.concepts_generated
+          ? (section.description || `Section ${section.section_number} Overview`)
+          : isGenerating
+          ? 'Generating concepts...'
+          : `Click to generate section ${section.section_number}`,
+        onClick: isGenerating ? undefined : () => {
+          if (section.concepts_generated) {
+            router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
+          } else {
+            generateLessonForSection(section, doc.id, doc.chapter);
+          }
+        },
+        isOverview: true
+      });
+
+      if (isGenerating) {
+        const job = processingJobs.find(j => j.section_id === section.id);
+        const progress = job?.progress || 0;
+
+        Array.from({ length: placeholdersPerRow }, (_, index) => {
+          skillsWithOverviews.push({
+            id: `loading-${section.id}-${index}`,
+            name: section.name || 'Generating...',
+            masteryLevel: 'loading' as MasteryLevel,
+            sectionNumber: section.section_number,
+            sectionName: section.name,
+            description: `${section.name || 'Section'} - Generating... ${progress}%`,
+            onClick: () => {}
+          });
+        });
+      }
+
+      const sectionConcepts = conceptSkills.filter(
+        skill => skill.sectionNumber === section.section_number
+      );
+      skillsWithOverviews.push(...sectionConcepts);
+    });
+
+    const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
+    skillsWithOverviews.push(...conceptsWithoutSection);
+
+    return skillsWithOverviews;
+  }
+
   async function handleDeleteDocument() {
     if (!documentToDelete) return;
 
@@ -613,6 +865,140 @@ export default function CoursePage() {
     } catch (error) {
       console.error('Failed to delete document:', error);
       setDeleteError(error instanceof Error ? error.message : 'Network error. Please check your connection.');
+    }
+  }
+
+  async function handleViewMarkdown(chapterSourceId: string, documentTitle: string, chapterTitle: string) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${chapterSourceId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch markdown');
+      }
+
+      const data = await response.json();
+      setMarkdownContent(data.markdown_content || '');
+      setMarkdownTitle(`${documentTitle} - ${chapterTitle}`);
+      setIsMarkdownViewerOpen(true);
+    } catch (error) {
+      console.error('[CoursePage] Error fetching markdown:', error);
+      alert('Failed to load markdown content. Please try again.');
+    }
+  }
+
+  async function handleReassignChapter(sourceId: string, newChapterNumber: number | null) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${sourceId}/reassign`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ chapterNumber: newChapterNumber })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reassign chapter');
+      }
+
+      console.log(`[CoursePage] Successfully reassigned source ${sourceId} to chapter ${newChapterNumber}`);
+
+      // Refetch chapter sources to update UI
+      await refetchChapterSources();
+    } catch (error) {
+      console.error('[CoursePage] Error reassigning chapter:', error);
+      alert('Failed to reassign chapter. Please try again.');
+    }
+  }
+
+  async function handleDeleteTier2Source() {
+    if (!deletingTier2SourceId) return;
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/tier2/chapter-markdown/${deletingTier2SourceId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete tier 2 source');
+      }
+
+      console.log(`[CoursePage] Successfully deleted tier 2 source ${deletingTier2SourceId}`);
+
+      // Refetch chapter sources to update UI
+      await refetchChapterSources();
+
+      // Close modal and reset state
+      setTier2DeleteModalOpen(false);
+      setDeletingTier2SourceId(null);
+    } catch (error) {
+      console.error('[CoursePage] Error deleting tier 2 source:', error);
+      alert('Failed to delete tier 2 source. Please try again.');
+    }
+  }
+
+  async function handleRenameDocument(documentId: string, newTitle: string) {
+    try {
+      const token = await getToken();
+      if (!token) {
+        alert('Authentication required');
+        return;
+      }
+
+      const response = await fetch(`${getBackendUrl()}/documents/${documentId}/rename`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ title: newTitle })
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to rename document');
+      }
+
+      console.log(`[CoursePage] Successfully renamed document ${documentId}`);
+
+      // Update local state
+      setDocuments(prevDocs =>
+        prevDocs.map(doc =>
+          doc.id === documentId ? { ...doc, title: newTitle } : doc
+        )
+      );
+
+      // Clear editing state
+      setEditingDocumentId(null);
+      setEditingDocumentTitle('');
+    } catch (error) {
+      console.error('[CoursePage] Error renaming document:', error);
+      alert(error instanceof Error ? error.message : 'Failed to rename document. Please try again.');
     }
   }
 
@@ -650,8 +1036,19 @@ export default function CoursePage() {
     );
   }
 
+  // Get document IDs that have tier 2 chapter sources (multi-chapter containers)
+  const documentIdsWithTier2Sources = new Set<string>();
+  Object.values(chapterSources).forEach(sources => {
+    sources.forEach(source => {
+      documentIdsWithTier2Sources.add(source.documentId);
+    });
+  });
+
+  // Filter out multi-chapter parent documents (only show their extracted chapters)
+  const filteredDocuments = documents.filter(doc => !documentIdsWithTier2Sources.has(doc.id));
+
   // Group documents by chapter
-  const documentsByChapter = documents.reduce((acc, doc) => {
+  const documentsByChapter = filteredDocuments.reduce((acc, doc) => {
     const chapter = doc.chapter || 'Uncategorized';
     if (!acc[chapter]) {
       acc[chapter] = [];
@@ -668,6 +1065,21 @@ export default function CoursePage() {
     }
   });
 
+  // Include chapters from tier 2 sources even if no tier 1 documents exist
+  Object.keys(chapterSources).forEach(chapterKey => {
+    // Convert tier 2 chapter key to chapter string format
+    let chapterStr: string;
+    if (chapterKey === 'uncategorized') {
+      chapterStr = 'Uncategorized';
+    } else {
+      chapterStr = String(chapterKey);
+    }
+
+    if (!documentsByChapter[chapterStr]) {
+      documentsByChapter[chapterStr] = [];
+    }
+  });
+
   const chapters = Object.keys(documentsByChapter).sort((a, b) => {
     if (a === 'Uncategorized') return 1;
     if (b === 'Uncategorized') return -1;
@@ -676,6 +1088,9 @@ export default function CoursePage() {
 
   return (
     <div className="space-y-8">
+      {/* Background Tasks Banner - Course Page Only */}
+      <BackgroundTasksBanner />
+
       <div className="flex items-start justify-between">
         <div>
           <div>
@@ -693,21 +1108,28 @@ export default function CoursePage() {
               )}
               {course.exam_date && (
                 <Badge variant="warning" size="md" dot>
-                  Exam: {new Date(course.exam_date).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
+                  Exam: {(() => {
+                    // Parse date string as local date to avoid timezone issues
+                    // Handle both "YYYY-MM-DD" and ISO timestamp formats
+                    const dateStr = course.exam_date.split('T')[0]; // Extract date part if ISO timestamp
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    const localDate = new Date(year, month - 1, day);
+                    return localDate.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    });
+                  })()}
                 </Badge>
               )}
             </div>
           </div>
         </div>
-        <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+        <Button variant="primary" size="lg" onClick={() => isTier('tier2') ? setIsTier2UploadModalOpen(true) : setIsUploadModalOpen(true)}>
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
-          Upload Materials
+          {isTier('tier2') ? 'Upload Textbook/Lecture Note' : 'Upload Materials'}
         </Button>
       </div>
 
@@ -732,7 +1154,22 @@ export default function CoursePage() {
         </div>
       )}
 
-      {documents.length === 0 ? (
+      {/* Check if there's any content to show */}
+      {(() => {
+        const hasAnyContent =
+          filteredDocuments.some(doc => {
+            const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+            return skills.length > 0;
+          }) ||
+          processingJobs.length > 0 ||
+          Object.keys(chapterSources).length > 0;
+
+        if (hasAnyContent) {
+          return null; // Content exists, will render chapters below
+        }
+
+        // No content - show empty state
+        return (
         <Card className="text-center py-16 animate-fade-in">
           <div className="max-w-md mx-auto space-y-4">
             <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/40 rounded-full flex items-center justify-center mx-auto">
@@ -744,142 +1181,67 @@ export default function CoursePage() {
             <p className="text-neutral-600 dark:text-neutral-300">
               Upload your textbooks, lecture notes, and practice problems to get started with AI-powered learning.
             </p>
-            <Button variant="primary" size="lg" onClick={() => setIsUploadModalOpen(true)}>
+            <Button variant="primary" size="lg" onClick={() => isTier('tier2') ? setIsTier2UploadModalOpen(true) : setIsUploadModalOpen(true)}>
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              Upload Your First Document
+              {isTier('tier2') ? 'Upload Your First Textbook/Lecture Note' : 'Upload Your First Document'}
             </Button>
           </div>
         </Card>
-      ) : (
+        );
+      })()}
+
+      {/* Render chapters if there's any content */}
+      {(() => {
+        const hasAnyContent =
+          filteredDocuments.some(doc => {
+            const skills = renderDocumentSession(doc, doc.chapter || 'Uncategorized');
+            return skills.length > 0;
+          }) ||
+          processingJobs.length > 0 ||
+          Object.keys(chapterSources).length > 0;
+
+        if (!hasAnyContent) {
+          return null; // Empty state already shown above
+        }
+
+        return (
         <div className="space-y-8">
           {chapters.map((chapter) => {
-            const chapterConcepts = conceptsByChapter[chapter] || [];
-            const chapterSections = sectionsByChapter[chapter] || [];
+            // Get all tier 1 documents in this chapter (already filtered to exclude multi-chapter parents)
+            const chapterDocs = documentsByChapter[chapter] || [];
 
-            const orderedConcepts = [...chapterConcepts].sort((a, b) => {
-              const sectionA = a.section_number ?? Number.MAX_SAFE_INTEGER;
-              const sectionB = b.section_number ?? Number.MAX_SAFE_INTEGER;
-              if (sectionA !== sectionB) {
-                return sectionA - sectionB;
-              }
-
-              const conceptA = a.concept_number ?? Number.MAX_SAFE_INTEGER;
-              const conceptB = b.concept_number ?? Number.MAX_SAFE_INTEGER;
-              if (conceptA !== conceptB) {
-                return conceptA - conceptB;
-              }
-
-              const lessonPosA = typeof a.lesson_position === 'number' ? a.lesson_position : Number.MAX_SAFE_INTEGER;
-              const lessonPosB = typeof b.lesson_position === 'number' ? b.lesson_position : Number.MAX_SAFE_INTEGER;
-              if (lessonPosA !== lessonPosB) {
-                return lessonPosA - lessonPosB;
-              }
-
-              return a.name.localeCompare(b.name);
+            // Check if any documents in this chapter have actual sections/concepts to display
+            const hasDocsWithContent = chapterDocs.some(doc => {
+              const skills = renderDocumentSession(doc, chapter);
+              return skills.length > 0;
             });
 
-            // Sort sections by section_number
-            const orderedSections = [...chapterSections].sort((a, b) => a.section_number - b.section_number);
+            // Check if this chapter has processing jobs
+            const hasProcessingJobs = processingJobs.some(job => (job.chapter || 'Uncategorized') === chapter);
 
-            // Convert concepts to skills for the mastery grid
-            const conceptSkills: SkillSquare[] = orderedConcepts.map((concept) => {
-              return {
-                id: concept.id,
-                name: concept.name,
-                masteryLevel: concept.mastery_level,
-                sectionNumber: concept.section_number || undefined,
-                sectionName: concept.section_name || undefined,
-                conceptNumber: concept.concept_number ?? undefined,
-                lessonPosition: typeof concept.lesson_position === 'number' ? concept.lesson_position : undefined,
-                description: `${concept.section_name || 'Section'} - ${concept.accuracy}% accuracy`,
-                onClick: () => {
-                  // Find the document for this chapter
-                  const doc = documentsByChapter[chapter]?.[0];
-                  if (doc) {
-                    // Navigate to the specific concept using concept name (more robust than index)
-                    if (concept.section_id) {
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${concept.section_id}&concept_name=${encodeURIComponent(concept.name)}`);
-                    } else {
-                      handleStartStudy(doc.id, doc.chapter);
-                    }
-                  }
+            // Get tier 2 sources for this chapter
+            let chapterKey: number | string | null = null;
+            if (chapter === 'Uncategorized') {
+              chapterKey = 'uncategorized';
+            } else {
+              const chapterMatch = chapter.match(/Chapter\s+(\d+)/i);
+              if (chapterMatch) {
+                chapterKey = parseInt(chapterMatch[1], 10);
+              } else {
+                const parsed = parseInt(chapter, 10);
+                if (!isNaN(parsed)) {
+                  chapterKey = parsed;
                 }
-              };
-            });
-
-            // Group concepts by section and create section overview squares
-            const skillsWithOverviews: SkillSquare[] = [];
-            const doc = documentsByChapter[chapter]?.[0];
-
-            // Add section overview squares before concepts, with loading placeholders if generating
-            orderedSections.forEach((section) => {
-              // Check if this section is currently generating
-              const isGenerating = processingJobs.some(job =>
-                job.type === 'lesson' &&
-                job.section_id === section.id &&
-                (job.chapter || 'Uncategorized') === chapter
-              );
-
-              // Add section overview square FIRST
-              skillsWithOverviews.push({
-                id: `overview-${section.id}`,
-                name: `${section.name} - Overview`,
-                masteryLevel: section.concepts_generated ? section.mastery_level : (isGenerating ? 'loading' : 'not_started'),
-                sectionNumber: section.section_number,
-                sectionName: section.name,
-                description: section.concepts_generated
-                  ? (section.description || `Section ${section.section_number} Overview`)
-                  : isGenerating
-                  ? 'Generating concepts...'
-                  : `Click to generate section ${section.section_number}`,
-                onClick: isGenerating ? undefined : () => {
-                  if (doc) {
-                    if (section.concepts_generated) {
-                      // Navigate to overview page
-                      router.push(`/learn?document_id=${doc.id}&chapter=${encodeURIComponent(doc.chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
-                    } else {
-                      // Generate lesson and stay on this page
-                      generateLessonForSection(section, doc.id, doc.chapter);
-                    }
-                  }
-                },
-                isOverview: true
-              });
-
-              // Add loading placeholders if generating (exactly one row dynamically calculated)
-              if (isGenerating) {
-                const job = processingJobs.find(j => j.section_id === section.id);
-                const progress = job?.progress || 0;
-
-                // Use dynamically calculated number of placeholders to fill exactly one row
-                Array.from({ length: placeholdersPerRow }, (_, index) => {
-                  skillsWithOverviews.push({
-                    id: `loading-${section.id}-${index}`,
-                    name: section.name || 'Generating...',
-                    masteryLevel: 'loading' as MasteryLevel,
-                    sectionNumber: section.section_number,
-                    sectionName: section.name,
-                    description: `${section.name || 'Section'} - Generating... ${progress}%`,
-                    onClick: () => {}
-                  });
-                });
               }
+            }
+            const tier2Sources = chapterKey ? (chapterSources[chapterKey] || []) : [];
 
-              // Add concepts for this section
-              const sectionConcepts = conceptSkills.filter(
-                skill => skill.sectionNumber === section.section_number
-              );
-              skillsWithOverviews.push(...sectionConcepts);
-            });
-
-            // Add any concepts without a section (fallback)
-            const conceptsWithoutSection = conceptSkills.filter(skill => !skill.sectionNumber);
-            skillsWithOverviews.push(...conceptsWithoutSection);
-
-            // Use skillsWithOverviews directly (loading placeholders are now integrated)
-            const skills: SkillSquare[] = skillsWithOverviews;
+            // Skip empty chapters: no docs with renderable content, no processing jobs, no tier 2 sources
+            if (!hasDocsWithContent && !hasProcessingJobs && tier2Sources.length === 0) {
+              return null;
+            }
 
             return (
               <div key={chapter} className="space-y-6">
@@ -889,115 +1251,210 @@ export default function CoursePage() {
                   </h2>
                 </div>
 
-                {/* Concept Mastery Grid */}
-                <div ref={gridContainerRef}>
-                  <Card hover={false}>
-                    <MasteryGrid
-                      title="Concept Progress"
-                      skills={skills}
-                      showSectionDividers={true}
-                    />
-                  </Card>
-                </div>
+                {/* Tier 1: Document-Based Study Sessions */}
+                {chapterDocs.map((doc) => {
+                  const skills = renderDocumentSession(doc, chapter);
 
-                {/* Documents List */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Course Materials</h3>
-                  <div className="grid gap-4">
-                    {/* Processing Jobs - Filter by chapter */}
-                    {processingJobs.filter(job => (job.chapter || 'Uncategorized') === chapter && job.type === 'upload').map((job) => (
-                      <Card key={job.job_id} padding="md" className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-3">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-500 dark:bg-primary-600 rounded-lg flex items-center justify-center animate-pulse">
-                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              </div>
-                              <div className="flex-1">
-                                <h4 className="font-semibold text-primary-900 dark:text-primary-300">
-                                  {job.title}
-                                </h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  <Badge variant="primary" size="sm">
-                                    Uploading...
-                                  </Badge>
-                                  <span className="text-xs text-primary-700 dark:text-primary-400">
-                                    {job.status === 'processing' ? `${job.progress}%` : job.status}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                            {/* Progress bar */}
-                            {job.status === 'processing' && (
-                              <div className="w-full bg-primary-200 dark:bg-primary-800 rounded-full h-2">
-                                <div
-                                  className="bg-primary-600 dark:bg-primary-500 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${job.progress}%` }}
+                  // Skip rendering if document has no sections/concepts yet
+                  if (skills.length === 0) return null;
+
+                  return (
+                    <div key={doc.id} ref={gridContainerRef} className="space-y-3">
+                      {/* Document Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="flex-shrink-0 w-8 h-8 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            {editingDocumentId === doc.id ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={editingDocumentTitle}
+                                  onChange={(e) => setEditingDocumentTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleRenameDocument(doc.id, editingDocumentTitle);
+                                    } else if (e.key === 'Escape') {
+                                      setEditingDocumentId(null);
+                                      setEditingDocumentTitle('');
+                                    }
+                                  }}
+                                  className="px-2 py-1 border border-primary-500 rounded text-lg font-semibold text-neutral-900 dark:text-neutral-100 bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                  autoFocus
                                 />
+                                <Button
+                                  onClick={() => handleRenameDocument(doc.id, editingDocumentTitle)}
+                                  variant="primary"
+                                  size="sm"
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setEditingDocumentId(null);
+                                    setEditingDocumentTitle('');
+                                  }}
+                                  variant="secondary"
+                                  size="sm"
+                                >
+                                  Cancel
+                                </Button>
                               </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+                                  {doc.title}
+                                </h3>
+                                <button
+                                  onClick={() => {
+                                    setEditingDocumentId(doc.id);
+                                    setEditingDocumentTitle(doc.title);
+                                  }}
+                                  className="p-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors flex-shrink-0"
+                                  title="Rename document"
+                                >
+                                  <svg className="w-4 h-4 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                            {doc.material_type && (
+                              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                                {doc.material_type} • {doc.pages} pages
+                              </p>
                             )}
                           </div>
                         </div>
-                      </Card>
-                    ))}
+                        <Button
+                          onClick={() => openDeleteModal(doc.id, doc.title)}
+                          variant="danger"
+                          size="sm"
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete
+                        </Button>
+                      </div>
 
-                    {documentsByChapter[chapter].map((doc) => (
-                      <Card key={doc.id} padding="md" hover className="group">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 space-y-2">
-                            <div className="flex items-center gap-3">
-                              <div className="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
-                                <svg className="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                </svg>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary-700 dark:group-hover:text-primary-400 transition-colors">
-                                  {doc.title}
-                                </h4>
-                                <div className="mt-1 flex flex-wrap items-center gap-2">
-                                  {doc.material_type && (
-                                    <Badge variant="neutral" size="sm">
-                                      {doc.material_type}
-                                    </Badge>
-                                  )}
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    {doc.pages} pages
-                                  </span>
-                                  <span className="text-xs text-neutral-400 dark:text-neutral-600">•</span>
-                                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    {new Date(doc.uploaded_at).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      year: 'numeric'
-                                    })}
-                                  </span>
+                      {/* Document Mastery Grid */}
+                      <Card hover={false}>
+                        <MasteryGrid
+                          title="Concept Progress"
+                          skills={skills}
+                          showSectionDividers={true}
+                        />
+                      </Card>
+                    </div>
+                  );
+                })}
+
+                {/* Tier 2 Chapter Sources */}
+                {tier2Sources.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">Tier 2 Sources</h3>
+                    <div className="grid gap-4">
+                      {tier2Sources.map((source) => (
+                        <Card key={source.id} padding="md" hover className="group border-2 border-purple-200 dark:border-purple-800/50">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-2">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-shrink-0 w-10 h-10 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-semibold text-neutral-900 dark:text-neutral-100">
+                                      {source.documentTitle}
+                                    </h4>
+                                    <Badge variant="primary" size="sm">Tier 2</Badge>
+                                  </div>
+                                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                                    {source.chapterTitle}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                                    {source.pageStart && source.pageEnd && (
+                                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                        Pages {source.pageStart}–{source.pageEnd}
+                                      </span>
+                                    )}
+                                    {source.pageStart && source.pageEnd && (
+                                      <span className="text-xs text-neutral-400 dark:text-neutral-600">•</span>
+                                    )}
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                                      {new Date(source.createdAt).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                      })}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
+                            <div className="flex items-center gap-3">
+                              {/* Chapter Reassignment Dropdown */}
+                              <div className="min-w-[160px]">
+                                <CustomSelect
+                                  label="Move to:"
+                                  value={String(source.chapterNumber ?? 'uncategorized')}
+                                  onChange={(value) => {
+                                    const newChapter = value === 'uncategorized' ? null : parseInt(value, 10);
+                                    handleReassignChapter(source.id, newChapter);
+                                  }}
+                                  options={[
+                                    { value: 'uncategorized', label: 'Uncategorized' },
+                                    ...Array.from({ length: 20 }, (_, i) => i + 1).map((num) => ({
+                                      value: String(num),
+                                      label: `Chapter ${num}`
+                                    }))
+                                  ]}
+                                  dropdownDirection="up"
+                                />
+                              </div>
+                              <Button
+                                onClick={() => handleViewMarkdown(source.id, source.documentTitle, source.chapterTitle)}
+                                variant="primary"
+                                size="sm"
+                              >
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                View Markdown
+                              </Button>
+                              <button
+                                onClick={() => {
+                                  setDeletingTier2SourceId(source.id);
+                                  setTier2DeleteModalOpen(true);
+                                }}
+                                className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Delete tier 2 source"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
-                          <Button
-                            onClick={() => openDeleteModal(doc.id, doc.title)}
-                            variant="danger"
-                            size="sm"
-                          >
-                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal
@@ -1014,11 +1471,57 @@ export default function CoursePage() {
         variant="danger"
       />
 
+      {/* Tier 2 Source Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={tier2DeleteModalOpen}
+        onClose={() => {
+          setTier2DeleteModalOpen(false);
+          setDeletingTier2SourceId(null);
+        }}
+        onConfirm={handleDeleteTier2Source}
+        title="Delete Tier 2 Source"
+        message="Are you sure you want to delete this tier 2 source? This will permanently delete the extracted markdown content. This action cannot be undone."
+        confirmText="Delete Source"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
       {/* Upload Modal */}
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         preselectedCourseId={courseId}
+      />
+
+      {/* Tier 2 Upload Modal */}
+      <Tier2UploadModal
+        isOpen={isTier2UploadModalOpen}
+        onClose={() => setIsTier2UploadModalOpen(false)}
+        preselectedCourseId={courseId}
+      />
+
+      {/* Chapter Selection Modal (Tier 2 Multi-Chapter) */}
+      {chapterSelectionData && (
+        <ChapterSelectionModal
+          isOpen={isChapterSelectionOpen}
+          onClose={() => {
+            setIsChapterSelectionOpen(false);
+            setChapterSelectionData(null);
+          }}
+          documentId={chapterSelectionData.documentId}
+          documentName={chapterSelectionData.documentName}
+          storageKey={chapterSelectionData.storageKey}
+          courseId={courseId}
+          chapters={chapterSelectionData.chapters}
+        />
+      )}
+
+      {/* Markdown Viewer Modal (Tier 2) */}
+      <MarkdownViewerModal
+        isOpen={isMarkdownViewerOpen}
+        onClose={() => setIsMarkdownViewerOpen(false)}
+        markdown={markdownContent}
+        title={markdownTitle}
       />
     </div>
   );

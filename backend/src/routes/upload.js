@@ -2,6 +2,8 @@ import express from 'express';
 import multer from 'multer';
 import { randomUUID } from 'node:crypto';
 import { StorageService } from '../lib/storage.js';
+import { checkUsageLimit, enforcePdfLimit } from '../middleware/tierCheck.js';
+import { trackPdfUpload } from '../services/usageTracking.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -14,7 +16,7 @@ export default function createUploadRouter(options = {}) {
   // LLM-based structured extraction (ASYNC)
   // This endpoint is used when PDF_UPLOAD_STRATEGY=vision in .env
   // Returns immediately with a job ID, processing happens in background
-  router.post('/pdf-structured', upload.single('file'), async (req, res) => {
+  router.post('/pdf-structured', upload.single('file'), checkUsageLimit, enforcePdfLimit, async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: 'Missing PDF file' });
     }
@@ -24,12 +26,19 @@ export default function createUploadRouter(options = {}) {
       const documentId = randomUUID();
       const storageKey = StorageService.generatePdfKey(ownerId, documentId);
 
+      // Get PDF page count for tracking (estimate from file size if needed)
+      // TODO: Extract actual page count - for now use 0 as placeholder
+      const estimatedPages = 0;
+
       // Extract metadata from form data
       const courseId = req.body.course_id || null;
       const chapter = req.body.chapter || null;
       const materialType = req.body.material_type || null;
       const title = req.body.title || null;
 
+      console.log('[upload/pdf-structured] Upload initiated');
+      console.log('[upload/pdf-structured] User ID:', ownerId);
+      console.log('[upload/pdf-structured] Document ID:', documentId);
       console.log('[upload/pdf-structured] Saving PDF to storage...');
       console.log('[upload/pdf-structured] Storage type:', storageService.getType());
       console.log('[upload/pdf-structured] Metadata:', { courseId, chapter, materialType, title });
@@ -77,6 +86,9 @@ export default function createUploadRouter(options = {}) {
       });
 
       console.log(`[upload/pdf-structured] ✅ Job ${jobId} queued for document ${documentId}`);
+
+      // Track PDF upload for usage limits
+      await trackPdfUpload(ownerId, estimatedPages);
 
       // Return immediately with job ID
       res.json({

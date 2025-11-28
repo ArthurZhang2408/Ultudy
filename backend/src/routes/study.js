@@ -518,6 +518,228 @@ export default function createStudyRouter(options = {}) {
     }
   });
 
+  // Get sections with mastery metrics for a document
+  router.get('/sections/mastery', async (req, res) => {
+    const { document_id, chapter } = req.query;
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const sections = await tenantHelpers.withTenant(ownerId, async (client) => {
+        let query;
+        let params;
+
+        if (chapter) {
+          query = `
+            SELECT
+              s.id,
+              s.section_number,
+              s.name,
+              s.description,
+              s.page_start,
+              s.page_end,
+              s.concepts_generated,
+              COALESCE(cm.total_concepts, 0) as total_concepts,
+              COALESCE(cm.completed_concepts, 0) as completed_concepts,
+              COALESCE(cm.total_attempts, 0) as total_attempts,
+              COALESCE(cm.correct_attempts, 0) as correct_attempts,
+              CASE
+                WHEN cm.total_attempts > 0 THEN ROUND((cm.correct_attempts::float / cm.total_attempts) * 100)
+                ELSE 0
+              END as accuracy,
+              CASE
+                WHEN cm.total_attempts = 0 THEN 'not_started'
+                WHEN cm.correct_attempts::float / cm.total_attempts >= 0.8 THEN 'completed'
+                WHEN cm.correct_attempts = 0 THEN 'incorrect'
+                ELSE 'in_progress'
+              END as mastery_level
+            FROM sections s
+            LEFT JOIN (
+              SELECT
+                c.section_id,
+                COUNT(DISTINCT c.id) as total_concepts,
+                COUNT(DISTINCT CASE WHEN ss.total_attempts > 0 AND ss.correct_attempts::float / ss.total_attempts >= 0.8 THEN c.id END) as completed_concepts,
+                COALESCE(SUM(ss.total_attempts), 0) as total_attempts,
+                COALESCE(SUM(ss.correct_attempts), 0) as correct_attempts
+              FROM concepts c
+              LEFT JOIN (
+                SELECT
+                  concept_id,
+                  COUNT(*) as total_attempts,
+                  SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct_attempts
+                FROM study_sessions
+                WHERE owner_id = $1
+                GROUP BY concept_id
+              ) ss ON c.id = ss.concept_id
+              WHERE c.owner_id = $1 AND c.chapter = $3
+              GROUP BY c.section_id
+            ) cm ON s.id = cm.section_id
+            WHERE s.document_id = $2 AND s.owner_id = $1
+            ORDER BY s.section_number ASC
+          `;
+          params = [ownerId, document_id, chapter];
+        } else {
+          query = `
+            SELECT
+              s.id,
+              s.section_number,
+              s.name,
+              s.description,
+              s.page_start,
+              s.page_end,
+              s.concepts_generated,
+              COALESCE(cm.total_concepts, 0) as total_concepts,
+              COALESCE(cm.completed_concepts, 0) as completed_concepts,
+              COALESCE(cm.total_attempts, 0) as total_attempts,
+              COALESCE(cm.correct_attempts, 0) as correct_attempts,
+              CASE
+                WHEN cm.total_attempts > 0 THEN ROUND((cm.correct_attempts::float / cm.total_attempts) * 100)
+                ELSE 0
+              END as accuracy,
+              CASE
+                WHEN cm.total_attempts = 0 THEN 'not_started'
+                WHEN cm.correct_attempts::float / cm.total_attempts >= 0.8 THEN 'completed'
+                WHEN cm.correct_attempts = 0 THEN 'incorrect'
+                ELSE 'in_progress'
+              END as mastery_level
+            FROM sections s
+            LEFT JOIN (
+              SELECT
+                c.section_id,
+                COUNT(DISTINCT c.id) as total_concepts,
+                COUNT(DISTINCT CASE WHEN ss.total_attempts > 0 AND ss.correct_attempts::float / ss.total_attempts >= 0.8 THEN c.id END) as completed_concepts,
+                COALESCE(SUM(ss.total_attempts), 0) as total_attempts,
+                COALESCE(SUM(ss.correct_attempts), 0) as correct_attempts
+              FROM concepts c
+              LEFT JOIN (
+                SELECT
+                  concept_id,
+                  COUNT(*) as total_attempts,
+                  SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct_attempts
+                FROM study_sessions
+                WHERE owner_id = $1
+                GROUP BY concept_id
+              ) ss ON c.id = ss.concept_id
+              WHERE c.owner_id = $1
+              GROUP BY c.section_id
+            ) cm ON s.id = cm.section_id
+            WHERE s.document_id = $2 AND s.owner_id = $1
+            ORDER BY s.section_number ASC
+          `;
+          params = [ownerId, document_id];
+        }
+
+        const { rows } = await client.query(query, params);
+        return rows;
+      });
+
+      res.json({ sections });
+    } catch (error) {
+      console.error('[sections/mastery] Error:', error);
+      res.status(500).json({ error: 'Failed to retrieve sections with mastery' });
+    }
+  });
+
+  // Get concepts with mastery status for a document
+  router.get('/concepts/mastery', async (req, res) => {
+    const { document_id, chapter } = req.query;
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const concepts = await tenantHelpers.withTenant(ownerId, async (client) => {
+        let query;
+        let params;
+
+        if (chapter) {
+          query = `
+            SELECT
+              c.id,
+              c.name,
+              c.concept_number,
+              c.section_id,
+              c.mastery_state,
+              COALESCE(s.total_attempts, 0) as total_attempts,
+              COALESCE(s.correct_attempts, 0) as correct_attempts,
+              CASE
+                WHEN s.total_attempts > 0 THEN ROUND((s.correct_attempts::float / s.total_attempts) * 100)
+                ELSE 0
+              END as accuracy,
+              CASE
+                WHEN s.total_attempts = 0 THEN 'not_started'
+                WHEN s.correct_attempts::float / s.total_attempts >= 0.8 THEN 'completed'
+                WHEN s.correct_attempts = 0 THEN 'incorrect'
+                ELSE 'in_progress'
+              END as mastery_level,
+              COALESCE(c.concept_number - 1, 0) as lesson_position
+            FROM concepts c
+            LEFT JOIN (
+              SELECT
+                concept_id,
+                COUNT(*) as total_attempts,
+                SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct_attempts
+              FROM study_sessions
+              WHERE owner_id = $1
+              GROUP BY concept_id
+            ) s ON c.id = s.concept_id
+            WHERE c.document_id = $2 AND c.chapter = $3 AND c.owner_id = $1
+            ORDER BY c.section_id, c.concept_number ASC
+          `;
+          params = [ownerId, document_id, chapter];
+        } else {
+          query = `
+            SELECT
+              c.id,
+              c.name,
+              c.concept_number,
+              c.section_id,
+              c.mastery_state,
+              COALESCE(s.total_attempts, 0) as total_attempts,
+              COALESCE(s.correct_attempts, 0) as correct_attempts,
+              CASE
+                WHEN s.total_attempts > 0 THEN ROUND((s.correct_attempts::float / s.total_attempts) * 100)
+                ELSE 0
+              END as accuracy,
+              CASE
+                WHEN s.total_attempts = 0 THEN 'not_started'
+                WHEN s.correct_attempts::float / s.total_attempts >= 0.8 THEN 'completed'
+                WHEN s.correct_attempts = 0 THEN 'incorrect'
+                ELSE 'in_progress'
+              END as mastery_level,
+              COALESCE(c.concept_number - 1, 0) as lesson_position
+            FROM concepts c
+            LEFT JOIN (
+              SELECT
+                concept_id,
+                COUNT(*) as total_attempts,
+                SUM(CASE WHEN was_correct THEN 1 ELSE 0 END) as correct_attempts
+              FROM study_sessions
+              WHERE owner_id = $1
+              GROUP BY concept_id
+            ) s ON c.id = s.concept_id
+            WHERE c.document_id = $2 AND c.owner_id = $1
+            ORDER BY c.section_id, c.concept_number ASC
+          `;
+          params = [ownerId, document_id];
+        }
+
+        const { rows } = await client.query(query, params);
+        return rows;
+      });
+
+      res.json({ concepts });
+    } catch (error) {
+      console.error('[concepts/mastery] Error:', error);
+      res.status(500).json({ error: 'Failed to retrieve concepts' });
+    }
+  });
+
   // Delete a cached lesson (useful for regenerating with new format)
   router.delete('/lessons/:lesson_id', async (req, res) => {
     const { lesson_id } = req.params;
@@ -543,6 +765,39 @@ export default function createStudyRouter(options = {}) {
     } catch (error) {
       console.error('Failed to delete lesson', error);
       res.status(500).json({ error: error.message || 'Failed to delete lesson' });
+    }
+  });
+
+  // Delete ALL lessons for a document (force regeneration)
+  router.delete('/documents/:document_id/lessons', async (req, res) => {
+    const { document_id } = req.params;
+    const ownerId = req.userId;
+
+    if (!document_id) {
+      return res.status(400).json({ error: 'document_id is required' });
+    }
+
+    try {
+      const deleted = await tenantHelpers.withTenant(ownerId, async (client) => {
+        const result = await client.query(
+          `DELETE FROM lessons WHERE document_id = $1 AND owner_id = $2`,
+          [document_id, ownerId]
+        );
+        return result.rowCount;
+      });
+
+      // Also invalidate cache
+      const { invalidateLessonCache } = await import('../jobs/cache.js');
+      await invalidateLessonCache(document_id);
+
+      res.json({
+        success: true,
+        message: `Deleted ${deleted} lessons for document ${document_id}`,
+        deleted_count: deleted
+      });
+    } catch (error) {
+      console.error('Failed to delete lessons for document', error);
+      res.status(500).json({ error: error.message || 'Failed to delete lessons' });
     }
   });
 

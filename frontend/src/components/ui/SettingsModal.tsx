@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useUser } from '@clerk/nextjs';
+import { useModal } from '@/contexts/ModalContext';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [mounted, setMounted] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Register this modal with the global modal context
+  useModal(isOpen, 'settings-modal');
 
   useEffect(() => {
     setMounted(true);
@@ -95,7 +99,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm -z-10"
+        className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
         onClick={onClose}
       />
 
