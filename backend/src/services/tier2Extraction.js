@@ -24,15 +24,26 @@ import { randomUUID } from 'node:crypto';
  * [2-3 paragraph summary]
  */
 function parseChapterWithSummary(response) {
-  // Split by --- marker
-  const parts = response.split(/^---$/gm).map(part => part.trim());
+  // Find the summary marker (look for --- followed by # SUMMARY)
+  // This is more robust than splitting on just --- (which could appear in markdown content)
+  const summaryPattern = /\n---+\s*\n#\s*SUMMARY/i;
+  const summaryMatch = response.search(summaryPattern);
 
-  if (parts.length !== 2) {
-    throw new Error(`Expected 2 parts (content, summary), got ${parts.length}`);
+  if (summaryMatch === -1) {
+    console.error('[parseChapterWithSummary] Could not find summary separator. Response preview:');
+    console.error(response.substring(0, 500) + '...');
+    console.error('[parseChapterWithSummary] Response end:');
+    console.error('...' + response.substring(response.length - 500));
+    throw new Error('Could not find summary separator (--- followed by # SUMMARY)');
   }
 
-  // Part 1: Markdown content
-  const contentPart = parts[0];
+  // Split at the summary marker
+  const contentPart = response.substring(0, summaryMatch).trim();
+  const summaryPart = response.substring(summaryMatch).trim();
+
+  console.log(`[parseChapterWithSummary] Split into content (${contentPart.length} chars) and summary (${summaryPart.length} chars)`);
+
+  // Part 1: Parse chapter content
   const lines = contentPart.split('\n');
 
   // Find the first # heading
@@ -58,6 +69,8 @@ function parseChapterWithSummary(response) {
   }
 
   if (!chapterNumber || !chapterTitle) {
+    console.error('[parseChapterWithSummary] Could not parse chapter heading. First 10 lines:');
+    console.error(lines.slice(0, 10).join('\n'));
     throw new Error('Could not parse chapter heading. Expected format: # Chapter_N: Title');
   }
 
@@ -65,13 +78,20 @@ function parseChapterWithSummary(response) {
   const contentLines = lines.slice(contentStartIndex);
   const markdown = contentLines.join('\n').trim();
 
-  // Part 2: Summary
-  const summaryPart = parts[1];
-  const summaryStart = summaryPart.indexOf('# SUMMARY');
-  if (summaryStart === -1) {
+  console.log(`[parseChapterWithSummary] Parsed Chapter ${chapterNumber}: ${chapterTitle}`);
+
+  // Part 2: Parse summary
+  const summaryStartMatch = summaryPart.match(/#\s*SUMMARY/i);
+  if (!summaryStartMatch) {
+    console.error('[parseChapterWithSummary] Could not find # SUMMARY marker in summary part:');
+    console.error(summaryPart.substring(0, 200));
     throw new Error('Could not find # SUMMARY marker');
   }
-  const summary = summaryPart.substring(summaryStart + '# SUMMARY'.length).trim();
+
+  const summaryStartIndex = summaryStartMatch.index + summaryStartMatch[0].length;
+  const summary = summaryPart.substring(summaryStartIndex).trim();
+
+  console.log(`[parseChapterWithSummary] Extracted summary (${summary.length} chars)`);
 
   return {
     chapterNumber,
