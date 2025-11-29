@@ -180,7 +180,12 @@ If MULTI-CHAPTER:
   console.log(`[tier2Detection] Received response (${response.length} chars)`);
 
   // Detect response type
-  const firstLine = response.split('\n')[0].trim();
+  const lines = response.split('\n');
+  const firstLine = lines[0].trim();
+
+  console.log('[tier2Detection] First line:', firstLine);
+  console.log('[tier2Detection] First 10 lines:');
+  console.log(lines.slice(0, 10).join('\n'));
 
   if (firstLine.startsWith('# Chapter')) {
     // Single chapter response
@@ -203,6 +208,30 @@ If MULTI-CHAPTER:
       chapters
     };
   } else {
+    // Try to find table format in subsequent lines (LLM might add preamble)
+    // Look for lines with pipe-separated format: number|title|pageStart|pageEnd
+    const tableLineIndex = lines.findIndex(line => {
+      const trimmed = line.trim();
+      if (!trimmed.includes('|')) return false;
+
+      const parts = trimmed.split('|');
+      // Valid table line: 4 parts, first is a number
+      return parts.length === 4 && !isNaN(parseInt(parts[0].trim(), 10));
+    });
+
+    if (tableLineIndex !== -1) {
+      console.log(`[tier2Detection] Found table at line ${tableLineIndex}, trimming preamble...`);
+      const trimmedResponse = lines.slice(tableLineIndex).join('\n');
+      const chapters = parseMultiChapterResponse(trimmedResponse);
+
+      return {
+        type: 'multi',
+        chapters
+      };
+    }
+
+    console.error('[tier2Detection] Could not determine format. Full response:');
+    console.error(response);
     throw new Error('Could not determine response format. Expected either "# Chapter_N: Title" or "number|title|pageStart|pageEnd"');
   }
 }

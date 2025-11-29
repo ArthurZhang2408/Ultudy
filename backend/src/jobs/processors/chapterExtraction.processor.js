@@ -117,13 +117,13 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
 
     await jobTracker.updateProgress(ownerId, jobId, 70);
 
-    // Save to database
+    // Save to database (chapter_markdown with summary)
     console.log(`[ChapterExtractionProcessor] Saving Chapter ${chapter.number} to database`);
 
     const result = await queryWrite(
       `INSERT INTO chapter_markdown
-       (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, page_start, page_end)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, chapter_summary, page_start, page_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
         ownerId,
@@ -132,12 +132,14 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
         extraction.chapterNumber,
         extraction.chapterTitle,
         extraction.markdown,
+        extraction.summary,
         chapter.pageStart,
         chapter.pageEnd
       ]
     );
 
-    console.log(`[ChapterExtractionProcessor] ✅ Chapter ${chapter.number} saved (id: ${result.rows[0].id})`);
+    const chapterMarkdownId = result.rows[0].id;
+    console.log(`[ChapterExtractionProcessor] ✅ Chapter ${chapter.number} saved (id: ${chapterMarkdownId})`);
 
     await jobTracker.updateProgress(ownerId, jobId, 100);
 
@@ -145,7 +147,7 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
     await jobTracker.completeJob(ownerId, jobId, {
       chapter_number: extraction.chapterNumber,
       chapter_title: extraction.chapterTitle,
-      chapter_markdown_id: result.rows[0].id,
+      chapter_markdown_id: chapterMarkdownId,
       document_id: documentId,
       course_id: courseId
     });
@@ -153,7 +155,7 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
     return {
       chapter_number: extraction.chapterNumber,
       chapter_title: extraction.chapterTitle,
-      id: result.rows[0].id,
+      id: chapterMarkdownId,
       success: true
     };
   } catch (error) {
