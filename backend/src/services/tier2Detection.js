@@ -209,7 +209,16 @@ If MULTI-CHAPTER:
     };
   } else {
     // Try to find table format in subsequent lines (LLM might add preamble)
-    const tableLineIndex = lines.findIndex(line => line.trim().includes('|') && line.includes('Chapter'));
+    // Look for lines with pipe-separated format: number|title|pageStart|pageEnd
+    const tableLineIndex = lines.findIndex(line => {
+      const trimmed = line.trim();
+      if (!trimmed.includes('|')) return false;
+
+      const parts = trimmed.split('|');
+      // Valid table line: 4 parts, first is a number
+      return parts.length === 4 && !isNaN(parseInt(parts[0].trim(), 10));
+    });
+
     if (tableLineIndex !== -1) {
       console.log(`[tier2Detection] Found table at line ${tableLineIndex}, trimming preamble...`);
       const trimmedResponse = lines.slice(tableLineIndex).join('\n');
