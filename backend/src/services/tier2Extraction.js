@@ -13,89 +13,71 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 /**
- * Parse one-pass extraction response
+ * Parse extraction response with summary
  * Expected format:
- * # CHAPTER_CONTENT
- *
  * # Chapter_5: Introduction to Algorithms
- * # SECTION: Introduction
- * [Content...]
- * # SECTION: Core Concepts
- * [Content...]
+ *
+ * [Full chapter content in markdown]
  *
  * ---
- * # CHAPTER_SUMMARY
+ * # SUMMARY
  * [2-3 paragraph summary]
- *
- * ---
- * # SECTION_LIST
- * 1. Introduction - Basic introduction to algorithms
- * 2. Core Concepts - Key algorithmic concepts
  */
-function parseOnePassExtraction(response) {
-  // Split by --- markers
+function parseChapterWithSummary(response) {
+  // Split by --- marker
   const parts = response.split(/^---$/gm).map(part => part.trim());
 
-  if (parts.length !== 3) {
-    throw new Error(`Expected 3 parts (content, summary, sections), got ${parts.length}`);
+  if (parts.length !== 2) {
+    throw new Error(`Expected 2 parts (content, summary), got ${parts.length}`);
   }
 
-  // Part 1: Markdown content with sections
+  // Part 1: Markdown content
   const contentPart = parts[0];
+  const lines = contentPart.split('\n');
 
-  // Extract chapter heading (# Chapter_N: Title)
-  const headingMatch = contentPart.match(/^#\s+Chapter[_\s]*(\d+):\s*(.+)$/m);
-  if (!headingMatch) {
+  // Find the first # heading
+  let chapterNumber = null;
+  let chapterTitle = null;
+  let contentStartIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
+      const heading = line.substring(2).trim();
+
+      // Parse format: Chapter_5: Title or just Chapter 5: Title
+      const match = heading.match(/Chapter[_\s]*(\d+):\s*(.+)/i);
+
+      if (match) {
+        chapterNumber = parseInt(match[1], 10);
+        chapterTitle = match[2].trim();
+        contentStartIndex = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (!chapterNumber || !chapterTitle) {
     throw new Error('Could not parse chapter heading. Expected format: # Chapter_N: Title');
   }
 
-  const chapterNumber = parseInt(headingMatch[1], 10);
-  const chapterTitle = headingMatch[2].trim();
-
-  // Extract markdown content (everything after # CHAPTER_CONTENT)
-  const contentStart = contentPart.indexOf('# CHAPTER_CONTENT');
-  if (contentStart === -1) {
-    throw new Error('Could not find # CHAPTER_CONTENT marker');
-  }
-  const markdown = contentPart.substring(contentStart + '# CHAPTER_CONTENT'.length).trim();
+  // Get content after the heading
+  const contentLines = lines.slice(contentStartIndex);
+  const markdown = contentLines.join('\n').trim();
 
   // Part 2: Summary
   const summaryPart = parts[1];
-  const summaryStart = summaryPart.indexOf('# CHAPTER_SUMMARY');
+  const summaryStart = summaryPart.indexOf('# SUMMARY');
   if (summaryStart === -1) {
-    throw new Error('Could not find # CHAPTER_SUMMARY marker');
+    throw new Error('Could not find # SUMMARY marker');
   }
-  const summary = summaryPart.substring(summaryStart + '# CHAPTER_SUMMARY'.length).trim();
-
-  // Part 3: Section list
-  const sectionsPart = parts[2];
-  const sectionsStart = sectionsPart.indexOf('# SECTION_LIST');
-  if (sectionsStart === -1) {
-    throw new Error('Could not find # SECTION_LIST marker');
-  }
-  const sectionListText = sectionsPart.substring(sectionsStart + '# SECTION_LIST'.length).trim();
-
-  // Parse section list: "1. Name - Description"
-  const sections = [];
-  const sectionLines = sectionListText.split('\n').filter(line => line.trim());
-
-  for (const line of sectionLines) {
-    const match = line.match(/^(\d+)\.\s+([^-]+)\s*-\s*(.+)$/);
-    if (match) {
-      sections.push({
-        sectionNumber: parseInt(match[1], 10),
-        sectionName: match[2].trim(),
-        sectionDescription: match[3].trim()
-      });
-    }
-  }
+  const summary = summaryPart.substring(summaryStart + '# SUMMARY'.length).trim();
 
   return {
     chapterNumber,
     chapterTitle,
     markdown,
-    summary,
-    sections
+    summary
   };
 }
 
@@ -163,43 +145,25 @@ export async function extractSingleChapter(pdfPath, chapterNumber, chapterTitle,
     const systemPrompt = `You are an expert at extracting educational content from textbook chapters and lecture notes.
 
 **YOUR TASK:**
-Extract this chapter as clean, faithful markdown WITH clear section markers, plus generate a summary and section list.
+Extract this chapter as clean, faithful markdown and generate a summary.
 
 **CRITICAL OUTPUT FORMAT:**
-You must output THREE parts separated by --- (three dashes on a line by themselves):
+You must output TWO parts separated by --- (three dashes on a line by themselves):
 
-Part 1: MARKDOWN CONTENT WITH SECTION MARKERS
+Part 1: MARKDOWN CONTENT
 Part 2: CHAPTER SUMMARY
-Part 3: SECTION LIST
 
 **EXACT FORMAT:**
 
-# CHAPTER_CONTENT
-
 # Chapter_${chapterNumber}: ${chapterTitle}
 
-# SECTION: Introduction
-[Introduction content with all details, equations, tables, etc.]
-
-# SECTION: Core Concepts
-[Core concepts content with all details...]
-
-# SECTION: Advanced Topics
-[Advanced topics content...]
+[Full chapter content in markdown with proper formatting...]
 
 ---
 
-# CHAPTER_SUMMARY
+# SUMMARY
 
 [Write a comprehensive 2-3 paragraph summary of this chapter. This summary will be used when this chapter is a supplemental source for lesson generation, so it should capture the key concepts, main topics covered, and important learning points. Make it detailed enough to provide valuable context.]
-
----
-
-# SECTION_LIST
-
-1. Introduction - Brief description of introduction content
-2. Core Concepts - Brief description of core concepts
-3. Advanced Topics - Brief description of advanced topics
 
 **EXTRACTION RULES:**
 
@@ -231,18 +195,10 @@ For diagrams, charts, graphs:
 - **Navigation:** Table of contents sections
 - **Anything not directly educational content**
 
-**Section Markers (# SECTION:):**
-- Use # SECTION: for major logical sections in the chapter
-- Each section should be substantial (multiple paragraphs/pages)
-- Section names should be clear and descriptive
-- These sections will be used to organize lesson generation
-- Aim for 3-8 sections per chapter (not too granular, not too broad)
-
 **Formatting:**
 - Use # for chapter title (already provided above)
-- Use # SECTION: for major sections
-- Use ## for subsections WITHIN each section
-- Use ### for sub-subsections
+- Use ## for major sections within the chapter
+- Use ### for subsections
 - Use **bold** for key terms and definitions
 - Use *italic* for emphasis
 - Preserve lists, numbering, bullet points
@@ -253,24 +209,16 @@ For diagrams, charts, graphs:
 - Preserve technical accuracy
 - Don't summarize or skip content in the markdown
 - Extract everything valuable for learning
-- Make the summary comprehensive but concise
-- Ensure section list matches the # SECTION: markers in content`;
+- Make the summary comprehensive but concise`;
 
-    const userPrompt = `Extract this chapter with THREE parts separated by ---:
+    const userPrompt = `Extract this chapter with TWO parts separated by ---:
 
 **Part 1: MARKDOWN CONTENT**
-Start with:
-# CHAPTER_CONTENT
-# Chapter_${chapterNumber}: ${chapterTitle}
+Start with: # Chapter_${chapterNumber}: ${chapterTitle}
+Then extract all content with proper formatting, replacing images with descriptions.
 
-Then add # SECTION: markers for each major section.
-Extract all content with proper formatting, replacing images with descriptions.
-
-**Part 2: CHAPTER SUMMARY** (after first ---)
-Write a comprehensive 2-3 paragraph summary.
-
-**Part 3: SECTION LIST** (after second ---)
-List all sections with brief descriptions.
+**Part 2: SUMMARY** (after ---)
+Write a comprehensive 2-3 paragraph summary capturing key concepts and learning points.
 
 **IMPORTANT - EXCLUDE:**
 - Course metadata (course codes, instructor names, dates like "Fall 2025" or "2023-09-12")
@@ -278,7 +226,7 @@ List all sections with brief descriptions.
 - Page numbers, headers, footers
 - Any non-educational administrative content
 
-Remember: THREE parts separated by --- markers!`;
+Remember: TWO parts separated by --- marker!`;
 
     console.log('[tier2Extraction] Calling Gemini Vision API...');
 
@@ -286,19 +234,18 @@ Remember: THREE parts separated by --- markers!`;
 
     console.log(`[tier2Extraction] Received response (${response.length} chars)`);
 
-    // Parse one-pass extraction response
-    const parsed = parseOnePassExtraction(response);
+    // Parse extraction response (markdown + summary)
+    const parsed = parseChapterWithSummary(response);
 
     console.log(`[tier2Extraction] Parsed chapter ${parsed.chapterNumber}: ${parsed.chapterTitle}`);
+    console.log(`[tier2Extraction] Markdown length: ${parsed.markdown.length} chars`);
     console.log(`[tier2Extraction] Summary length: ${parsed.summary.length} chars`);
-    console.log(`[tier2Extraction] Sections found: ${parsed.sections.length}`);
 
     return {
       chapterNumber: parsed.chapterNumber,
       chapterTitle: parsed.chapterTitle,
       markdown: parsed.markdown,
-      summary: parsed.summary,
-      sections: parsed.sections
+      summary: parsed.summary
     };
   } finally {
     // Cleanup temp file

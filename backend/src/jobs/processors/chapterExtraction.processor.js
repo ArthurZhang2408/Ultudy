@@ -141,29 +141,6 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
     const chapterMarkdownId = result.rows[0].id;
     console.log(`[ChapterExtractionProcessor] ✅ Chapter ${chapter.number} saved (id: ${chapterMarkdownId})`);
 
-    // Save sections to tier2_sections table
-    if (extraction.sections && extraction.sections.length > 0) {
-      console.log(`[ChapterExtractionProcessor] Saving ${extraction.sections.length} sections for Chapter ${chapter.number}`);
-
-      for (const section of extraction.sections) {
-        await queryWrite(
-          `INSERT INTO tier2_sections
-           (chapter_markdown_id, section_number, section_name, section_description)
-           VALUES ($1, $2, $3, $4)`,
-          [
-            chapterMarkdownId,
-            section.sectionNumber,
-            section.sectionName,
-            section.sectionDescription
-          ]
-        );
-      }
-
-      console.log(`[ChapterExtractionProcessor] ✅ ${extraction.sections.length} sections saved`);
-    } else {
-      console.warn(`[ChapterExtractionProcessor] ⚠️ No sections extracted for Chapter ${chapter.number}`);
-    }
-
     await jobTracker.updateProgress(ownerId, jobId, 100);
 
     // Mark job as completed
@@ -172,15 +149,13 @@ export async function processChapterExtractionJob(job, { tenantHelpers, jobTrack
       chapter_title: extraction.chapterTitle,
       chapter_markdown_id: chapterMarkdownId,
       document_id: documentId,
-      course_id: courseId,
-      sections_count: extraction.sections?.length || 0
+      course_id: courseId
     });
 
     return {
       chapter_number: extraction.chapterNumber,
       chapter_title: extraction.chapterTitle,
       id: chapterMarkdownId,
-      sections_count: extraction.sections?.length || 0,
       success: true
     };
   } catch (error) {

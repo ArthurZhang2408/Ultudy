@@ -27,7 +27,7 @@ async function main() {
   });
 
   try {
-    console.log('=== Tier 2 One-Pass Extraction Migration ===');
+    console.log('=== Tier 2 Summary Extraction Migration ===');
     console.log('Connecting to database...');
     await client.connect();
     console.log('✓ Connected to database');
@@ -57,8 +57,6 @@ async function main() {
     await client.query(migrationSql);
 
     console.log('✓ Added chapter_summary column to chapter_markdown');
-    console.log('✓ Created tier2_sections table');
-    console.log('✓ Created indexes for efficient section retrieval');
     console.log('✓ Migration completed successfully');
 
     await client.end();
