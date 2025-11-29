@@ -28,24 +28,34 @@ let sharedSubscriber = null;
 let sharedBClient = null;
 
 // Create shared Redis connection settings
-const createRedisOptions = () => {
+const createRedisOptions = (isSubscriberOrBClient = false) => {
   if (!REDIS_URL) return null;
 
   // Parse Redis URL
   const url = new URL(REDIS_URL);
 
-  return {
+  const baseOpts = {
     port: parseInt(url.port) || 6379,
     host: url.hostname,
     password: url.password,
     db: 0,
-    maxRetriesPerRequest: 3,
     connectTimeout: 10000,
-    enableReadyCheck: false,
     lazyConnect: false,
-    // Connection pool settings for efficiency
     enableOfflineQueue: true,
     keepAlive: 30000
+  };
+
+  // Bull doesn't allow enableReadyCheck or maxRetriesPerRequest for subscriber/bclient
+  // See: https://github.com/OptimalBits/bull/issues/1873
+  if (isSubscriberOrBClient) {
+    return baseOpts;
+  }
+
+  // Only the main client can have these options
+  return {
+    ...baseOpts,
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: false
   };
 };
 
@@ -53,12 +63,10 @@ const createRedisOptions = () => {
 const initializeSharedRedisClients = () => {
   if (!REDIS_URL || sharedClient) return; // Already initialized
 
-  const opts = createRedisOptions();
-
-  // Create 3 shared clients for all Bull queues to use
-  sharedClient = new Redis(opts);
-  sharedSubscriber = new Redis(opts);
-  sharedBClient = new Redis(opts);
+  // Create 3 shared clients with appropriate options for each type
+  sharedClient = new Redis(createRedisOptions(false)); // Main client
+  sharedSubscriber = new Redis(createRedisOptions(true)); // Subscriber (no maxRetries/readyCheck)
+  sharedBClient = new Redis(createRedisOptions(true)); // Blocking client (no maxRetries/readyCheck)
 
   console.log('[Queue] Initialized shared Redis clients (3 total for all queues)');
 
