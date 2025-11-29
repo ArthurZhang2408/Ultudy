@@ -9,38 +9,59 @@ import { spawn } from 'child_process';
 console.log('=== Starting Ultudy Backend ===');
 console.log('Step 1: Running database migrations...\n');
 
-// Run migration
-const migrate = spawn('node', ['scripts/add-archived-columns.js'], {
-  stdio: 'inherit',
-  env: process.env,
-});
+// Run migrations sequentially
+const migrations = [
+  'scripts/add-archived-columns.js',
+  'scripts/run-tier2-one-pass-migration.js'
+];
 
-migrate.on('close', (code) => {
-  if (code !== 0) {
-    console.error(`Migration failed with code ${code}`);
-    process.exit(1);
+let currentMigration = 0;
+
+function runNextMigration() {
+  if (currentMigration >= migrations.length) {
+    console.log('\nStep 2: Starting server...\n');
+
+    // All migrations done, start the server
+    const server = spawn('node', ['src/server.js'], {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    server.on('close', (serverCode) => {
+      process.exit(serverCode);
+    });
+
+    // Handle shutdown signals
+    process.on('SIGTERM', () => {
+      console.log('Received SIGTERM, shutting down gracefully');
+      server.kill('SIGTERM');
+    });
+
+    process.on('SIGINT', () => {
+      console.log('Received SIGINT, shutting down gracefully');
+      server.kill('SIGINT');
+    });
+    return;
   }
 
-  console.log('\nStep 2: Starting server...\n');
+  const migrationScript = migrations[currentMigration];
+  console.log(`Running migration: ${migrationScript}`);
 
-  // Start the server
-  const server = spawn('node', ['src/server.js'], {
+  const migrate = spawn('node', [migrationScript], {
     stdio: 'inherit',
     env: process.env,
   });
 
-  server.on('close', (serverCode) => {
-    process.exit(serverCode);
-  });
+  migrate.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`Migration ${migrationScript} failed with code ${code}`);
+      process.exit(1);
+    }
 
-  // Handle shutdown signals
-  process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down gracefully');
-    server.kill('SIGTERM');
+    currentMigration++;
+    runNextMigration();
   });
+}
 
-  process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down gracefully');
-    server.kill('SIGINT');
-  });
-});
+// Start running migrations
+runNextMigration();
