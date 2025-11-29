@@ -47,8 +47,14 @@ const createRedisOptions = (isSubscriberOrBClient = false) => {
 
   // Bull doesn't allow enableReadyCheck or maxRetriesPerRequest for subscriber/bclient
   // See: https://github.com/OptimalBits/bull/issues/1873
+  // CRITICAL: Must explicitly set these to null/false to override ioredis defaults!
+  // ioredis defaults: maxRetriesPerRequest=20, enableReadyCheck=true
   if (isSubscriberOrBClient) {
-    return baseOpts;
+    return {
+      ...baseOpts,
+      maxRetriesPerRequest: null,  // Explicitly disable (ioredis default is 20)
+      enableReadyCheck: false        // Explicitly disable (ioredis default is true)
+    };
   }
 
   // Only the main client can have these options
