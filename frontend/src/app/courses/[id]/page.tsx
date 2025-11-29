@@ -109,6 +109,7 @@ export default function CoursePage() {
   } | null>(null);
   const [isMarkdownViewerOpen, setIsMarkdownViewerOpen] = useState(false);
   const [markdownContent, setMarkdownContent] = useState('');
+  const [markdownSummary, setMarkdownSummary] = useState<string | null>(null);
   const [markdownTitle, setMarkdownTitle] = useState('');
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const [editingDocumentTitle, setEditingDocumentTitle] = useState('');
@@ -888,6 +889,7 @@ export default function CoursePage() {
 
       const data = await response.json();
       setMarkdownContent(data.markdown_content || '');
+      setMarkdownSummary(data.chapter_summary || null);
       setMarkdownTitle(`${documentTitle} - ${chapterTitle}`);
       setIsMarkdownViewerOpen(true);
     } catch (error) {
@@ -1521,6 +1523,7 @@ export default function CoursePage() {
         isOpen={isMarkdownViewerOpen}
         onClose={() => setIsMarkdownViewerOpen(false)}
         markdown={markdownContent}
+        summary={markdownSummary}
         title={markdownTitle}
       />
     </div>

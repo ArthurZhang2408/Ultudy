@@ -10,12 +10,13 @@ import 'katex/dist/katex.min.css';
 
 interface MarkdownViewerProps {
   markdown: string;
+  summary?: string | null;
   title?: string;
   onClose?: () => void;
 }
 
-export default function MarkdownViewer({ markdown, title, onClose }: MarkdownViewerProps) {
-  const [viewMode, setViewMode] = useState<'raw' | 'rendered'>('rendered');
+export default function MarkdownViewer({ markdown, summary, title, onClose }: MarkdownViewerProps) {
+  const [viewMode, setViewMode] = useState<'raw' | 'rendered' | 'summary'>('rendered');
 
   return (
     <div className="flex flex-col h-full max-h-full overflow-hidden">
@@ -50,6 +51,18 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
             >
               Raw
             </button>
+            {summary && (
+              <button
+                onClick={() => setViewMode('summary')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                  viewMode === 'summary'
+                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
+                    : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                }`}
+              >
+                Summary
+              </button>
+            )}
           </div>
         </div>
 
@@ -74,6 +87,15 @@ export default function MarkdownViewer({ markdown, title, onClose }: MarkdownVie
               {markdown}
             </code>
           </pre>
+        ) : viewMode === 'summary' ? (
+          <div className="prose prose-neutral dark:prose-invert max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[rehypeKatex, rehypeSanitize]}
+            >
+              {summary || '*No summary available*'}
+            </ReactMarkdown>
+          </div>
         ) : (
           <div className="prose prose-neutral dark:prose-invert max-w-none">
             <ReactMarkdown
