@@ -325,15 +325,24 @@ export default function ChapterSelectionModal({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                {initialChapters.length} chapters detected. Select the chapters you want to extract.
+                {chapters.length} chapters detected. Select the chapters you want to extract.
               </p>
-              <button
-                onClick={toggleAll}
-                disabled={isExtracting}
-                className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 disabled:no-underline"
-              >
-                {selectedIndices.size === initialChapters.length ? 'Deselect All' : 'Select All'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditMode(!editMode)}
+                  disabled={isExtracting}
+                  className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-50 disabled:no-underline font-medium"
+                >
+                  {editMode ? '✓ Done Editing' : '✏️ Edit'}
+                </button>
+                <button
+                  onClick={toggleAll}
+                  disabled={isExtracting}
+                  className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {selectedIndices.size === chapters.length ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -364,31 +373,96 @@ export default function ChapterSelectionModal({
 
             {/* Chapter List */}
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {initialChapters.map((chapter, index) => (
-                <label
-                  key={index}
-                  className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all cursor-pointer ${
+              {chapters.map((chapter, index) => (
+                <div
+                  key={chapter.id}
+                  className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all ${
                     selectedIndices.has(index)
                       ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
-                  } ${isExtracting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      : 'border-neutral-200 dark:border-neutral-700'
+                  } ${isExtracting ? 'opacity-50' : ''}`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedIndices.has(index)}
-                    onChange={() => toggleChapter(index)}
-                    disabled={isExtracting}
-                    className="mt-0.5 w-5 h-5 text-primary-600 rounded border-neutral-300 focus:ring-primary-500 disabled:cursor-not-allowed"
-                  />
-                  <div className="flex-1">
-                    <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                      Chapter {chapter.number}: {chapter.title}
-                    </div>
-                    <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                      Pages {chapter.pageStart}–{chapter.pageEnd}
-                    </div>
+                  {!editMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIndices.has(index)}
+                      onChange={() => toggleChapter(index)}
+                      disabled={isExtracting}
+                      className="mt-0.5 w-5 h-5 text-primary-600 rounded border-neutral-300 focus:ring-primary-500 disabled:cursor-not-allowed"
+                    />
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    {editMode ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            value={chapter.number}
+                            onChange={(e) => updateChapter(index, { number: parseInt(e.target.value) || 0 })}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Ch #"
+                          />
+                          <input
+                            type="text"
+                            value={chapter.title}
+                            onChange={(e) => updateChapter(index, { title: e.target.value })}
+                            className="flex-1 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Title"
+                          />
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-neutral-600 dark:text-neutral-400">Pages:</span>
+                          <input
+                            type="number"
+                            value={chapter.pageStart}
+                            onChange={(e) => updateChapter(index, { pageStart: parseInt(e.target.value) || 0 })}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Start"
+                          />
+                          <span className="text-neutral-400">–</span>
+                          <input
+                            type="number"
+                            value={chapter.pageEnd}
+                            onChange={(e) => updateChapter(index, { pageEnd: parseInt(e.target.value) || 0 })}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="End"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-semibold text-neutral-900 dark:text-neutral-100">
+                          Chapter {chapter.number}: {chapter.title}
+                        </div>
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                          Pages {chapter.pageStart}–{chapter.pageEnd}
+                        </div>
+                      </>
+                    )}
                   </div>
-                </label>
+
+                  {editMode && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      {index < chapters.length - 1 && (
+                        <button
+                          onClick={() => mergeWithNext(index)}
+                          className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                          title="Merge with next chapter"
+                        >
+                          Merge ↓
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteChapter(index)}
+                        className="px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50"
+                        title="Delete this chapter"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
