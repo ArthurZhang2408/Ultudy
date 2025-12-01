@@ -38,7 +38,8 @@ export default function ChapterSelectionModal({
   const { getToken } = useAuth();
   const router = useRouter();
   const { addTask, updateTask } = useBackgroundTasks();
-  const [selectedChapters, setSelectedChapters] = useState<Set<number>>(new Set());
+  // Track selection by index instead of chapter number to handle duplicates
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,8 @@ export default function ChapterSelectionModal({
   // Initialize all chapters as selected
   useEffect(() => {
     if (isOpen && initialChapters.length > 0) {
-      setSelectedChapters(new Set(initialChapters.map(c => c.number)));
+      // Select all by index
+      setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
       setError(null);
       setProgress(null);
     }
@@ -79,23 +81,23 @@ export default function ChapterSelectionModal({
     }
   }, [isOpen, isExtracting]);
 
-  const toggleChapter = (chapterNumber: number) => {
-    const newSelected = new Set(selectedChapters);
-    if (newSelected.has(chapterNumber)) {
-      newSelected.delete(chapterNumber);
+  const toggleChapter = (index: number) => {
+    const newSelected = new Set(selectedIndices);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
     } else {
-      newSelected.add(chapterNumber);
+      newSelected.add(index);
     }
-    setSelectedChapters(newSelected);
+    setSelectedIndices(newSelected);
   };
 
   const toggleAll = () => {
-    if (selectedChapters.size === initialChapters.length) {
+    if (selectedIndices.size === initialChapters.length) {
       // Deselect all
-      setSelectedChapters(new Set());
+      setSelectedIndices(new Set());
     } else {
       // Select all
-      setSelectedChapters(new Set(initialChapters.map(c => c.number)));
+      setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
     }
   };
 
@@ -125,8 +127,8 @@ export default function ChapterSelectionModal({
         throw new Error('Authentication required');
       }
 
-      // Filter chapters to extract
-      const chaptersToExtract = initialChapters.filter(c => selectedChapters.has(c.number));
+      // Filter chapters to extract by selected indices
+      const chaptersToExtract = initialChapters.filter((_, idx) => selectedIndices.has(idx));
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
 
@@ -259,7 +261,7 @@ export default function ChapterSelectionModal({
                 disabled={isExtracting}
                 className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 disabled:no-underline"
               >
-                {selectedChapters.size === initialChapters.length ? 'Deselect All' : 'Select All'}
+                {selectedIndices.size === initialChapters.length ? 'Deselect All' : 'Select All'}
               </button>
             </div>
 
@@ -291,19 +293,19 @@ export default function ChapterSelectionModal({
 
             {/* Chapter List */}
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {initialChapters.map((chapter) => (
+              {initialChapters.map((chapter, index) => (
                 <label
-                  key={chapter.number}
+                  key={index}
                   className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                    selectedChapters.has(chapter.number)
+                    selectedIndices.has(index)
                       ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
                       : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
                   } ${isExtracting ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <input
                     type="checkbox"
-                    checked={selectedChapters.has(chapter.number)}
-                    onChange={() => toggleChapter(chapter.number)}
+                    checked={selectedIndices.has(index)}
+                    onChange={() => toggleChapter(index)}
                     disabled={isExtracting}
                     className="mt-0.5 w-5 h-5 text-primary-600 rounded border-neutral-300 focus:ring-primary-500 disabled:cursor-not-allowed"
                   />
@@ -330,14 +332,14 @@ export default function ChapterSelectionModal({
           >
             Cancel
           </Button>
-          {selectedChapters.size > 0 && (
+          {selectedIndices.size > 0 && (
             <Button
               onClick={handleExtract}
               variant="primary"
               disabled={isExtracting}
               loading={isExtracting}
             >
-              {isExtracting ? 'Extracting...' : `Extract ${selectedChapters.size} Chapter${selectedChapters.size !== 1 ? 's' : ''}`}
+              {isExtracting ? 'Extracting...' : `Extract ${selectedIndices.size} Chapter${selectedIndices.size !== 1 ? 's' : ''}`}
             </Button>
           )}
         </div>

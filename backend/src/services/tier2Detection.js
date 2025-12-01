@@ -51,6 +51,68 @@ function parseSingleChapterMarkdown(markdown) {
 }
 
 /**
+ * Consolidate duplicate chapter numbers into single entries
+ * Handles cases where LLM returns page-by-page or interleaved chapters
+ *
+ * Example input:
+ * [{number: 4, title: "Network Layer", pages: 1-2}, {number: 4, title: "Routing", pages: 3-4}]
+ *
+ * Example output:
+ * [{number: 4, title: "Network Layer", pageStart: 1, pageEnd: 4}]
+ *
+ * @param {Array} chapters
+ * @returns {Array}
+ */
+function consolidateChapters(chapters) {
+  console.log(`[tier2Detection] Consolidating ${chapters.length} raw entries...`);
+
+  // Group by chapter number
+  const grouped = {};
+
+  for (const chapter of chapters) {
+    const num = chapter.number;
+
+    if (!grouped[num]) {
+      grouped[num] = {
+        number: num,
+        title: chapter.title, // Use first occurrence's title (usually the main chapter title)
+        pages: []
+      };
+    }
+
+    // Collect all page numbers for this chapter
+    for (let p = chapter.pageStart; p <= chapter.pageEnd; p++) {
+      if (!grouped[num].pages.includes(p)) {
+        grouped[num].pages.push(p);
+      }
+    }
+  }
+
+  // Convert back to consolidated chapter entries
+  const consolidated = Object.values(grouped).map(ch => {
+    ch.pages.sort((a, b) => a - b); // Sort pages
+    return {
+      number: ch.number,
+      title: ch.title,
+      pageStart: Math.min(...ch.pages),
+      pageEnd: Math.max(...ch.pages)
+    };
+  }).sort((a, b) => a.number - b.number); // Sort by chapter number
+
+  console.log(`[tier2Detection] Consolidated to ${consolidated.length} chapters`);
+
+  // Log what changed
+  if (chapters.length !== consolidated.length) {
+    console.log(`[tier2Detection] Merged ${chapters.length - consolidated.length} duplicate chapter entries`);
+    for (const ch of consolidated) {
+      console.log(`[tier2Detection]   Chapter ${ch.number}: "${ch.title}" pages ${ch.pageStart}-${ch.pageEnd}`);
+    }
+  }
+
+  return consolidated;
+}
+
+/**
  * Parse multi-chapter detection response
  * Expected format (pipe-separated):
  * 1|Introduction to Algorithms|1|25
@@ -82,8 +144,10 @@ function parseMultiChapterResponse(text) {
     throw new Error('No chapters parsed from multi-chapter response');
   }
 
-  console.log(`[tier2Detection] Parsed ${chapters.length} chapters`);
-  return chapters;
+  console.log(`[tier2Detection] Parsed ${chapters.length} raw entries`);
+
+  // Consolidate duplicate chapter numbers
+  return consolidateChapters(chapters);
 }
 
 /**
@@ -152,10 +216,15 @@ Example:
 2|Variables and Data Types|29|52
 3|Control Flow|53|89
 
-**IMPORTANT:**
+**CRITICAL RULES FOR MULTI-CHAPTER:**
+- **ONE entry per chapter** - Do NOT create separate entries for subsections, slides, or individual pages
+- **Consolidate page ranges** - If Chapter 4 spans pages 1-50, use ONE line: 4|Chapter 4 Title|1|50
+- **Do NOT list individual pages/slides** - WRONG: "4|Slide 1|1|1" then "4|Slide 2|2|2"
+- **Look for major chapter boundaries** - Ignore subsection headings within chapters
+- **Use the main chapter title** - Not subsection or slide titles
+- **Handle non-contiguous pages** - If Chapter 4 appears on pages 1-10 and 20-30, use: 4|Chapter 4 Title|1|30
 - Use ONLY pipe separators |, NO JSON
 - Include ALL chapters found in the PDF
-- Page numbers should cover the full chapter range
 - Do not include any other text or formatting`;
 
   const userPrompt = `Analyze this PDF and determine if it's a single chapter or multiple chapters.
