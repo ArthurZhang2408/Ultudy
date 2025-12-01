@@ -103,35 +103,55 @@ function consolidateChapters(chapters) {
     if (!grouped[num]) {
       grouped[num] = {
         number: num,
-        title: chapter.title, // Use first occurrence's title (usually the main chapter title)
-        pages: []
+        title: chapter.title,
+        ranges: [] // Store multiple ranges instead of collecting all pages
       };
     }
 
-    // Collect all page numbers for this chapter
-    for (let p = chapter.pageStart; p <= chapter.pageEnd; p++) {
-      if (!grouped[num].pages.includes(p)) {
-        grouped[num].pages.push(p);
-      }
-    }
+    grouped[num].ranges.push({ start: chapter.pageStart, end: chapter.pageEnd });
   }
 
   // Convert back to consolidated chapter entries
   const consolidated = Object.values(grouped).map(ch => {
-    ch.pages.sort((a, b) => a - b); // Sort pages
-    return {
-      number: ch.number,
-      title: ch.title,
-      pageStart: Math.min(...ch.pages),
-      pageEnd: Math.max(...ch.pages)
-    };
-  }).sort((a, b) => a.number - b.number); // Sort by chapter number
+    // Sort ranges by start page
+    ch.ranges.sort((a, b) => a.start - b.start);
 
-  console.log(`[tier2Detection] Consolidated to ${consolidated.length} chapters`);
+    // Check if ranges are contiguous (can be merged into single range)
+    let isContiguous = true;
+    for (let i = 1; i < ch.ranges.length; i++) {
+      // If there's a gap between ranges, they're not contiguous
+      if (ch.ranges[i].start > ch.ranges[i - 1].end + 1) {
+        isContiguous = false;
+        break;
+      }
+    }
+
+    // If contiguous, merge into single range
+    if (isContiguous || ch.ranges.length === 1) {
+      return {
+        number: ch.number,
+        title: ch.title,
+        pageStart: ch.ranges[0].start,
+        pageEnd: ch.ranges[ch.ranges.length - 1].end
+      };
+    } else {
+      // Interleaved/non-contiguous - return all ranges separately
+      // This prevents incorrect range consolidation like Ch4: 1-124 when it should be 1-48, 73-124
+      console.log(`[tier2Detection] ⚠️  Chapter ${ch.number} has non-contiguous ranges - keeping separate`);
+      return ch.ranges.map(range => ({
+        number: ch.number,
+        title: ch.title,
+        pageStart: range.start,
+        pageEnd: range.end
+      }));
+    }
+  }).flat().sort((a, b) => a.pageStart - b.pageStart); // Sort by page start
+
+  console.log(`[tier2Detection] Consolidated to ${consolidated.length} chapter entries`);
 
   // Log what changed
   if (chapters.length !== consolidated.length) {
-    console.log(`[tier2Detection] Merged ${chapters.length - consolidated.length} duplicate chapter entries`);
+    console.log(`[tier2Detection] Merged/split ${Math.abs(chapters.length - consolidated.length)} entries`);
     for (const ch of consolidated) {
       console.log(`[tier2Detection]   Chapter ${ch.number}: "${ch.title}" pages ${ch.pageStart}-${ch.pageEnd}`);
     }

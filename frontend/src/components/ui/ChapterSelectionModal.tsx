@@ -16,6 +16,10 @@ interface Chapter {
   pageEnd: number;
 }
 
+interface EditableChapter extends Chapter {
+  id: string; // Unique ID for React keys
+}
+
 interface ChapterSelectionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -38,6 +42,10 @@ export default function ChapterSelectionModal({
   const { getToken } = useAuth();
   const router = useRouter();
   const { addTask, updateTask } = useBackgroundTasks();
+
+  // Convert chapters to editable format with unique IDs
+  const [chapters, setChapters] = useState<EditableChapter[]>([]);
+  const [editMode, setEditMode] = useState(false);
   // Track selection by index instead of chapter number to handle duplicates
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isExtracting, setIsExtracting] = useState(false);
@@ -49,13 +57,18 @@ export default function ChapterSelectionModal({
     setMounted(true);
   }, []);
 
-  // Initialize all chapters as selected
+  // Initialize chapters with unique IDs
   useEffect(() => {
     if (isOpen && initialChapters.length > 0) {
+      setChapters(initialChapters.map((ch, idx) => ({
+        ...ch,
+        id: `${ch.number}-${ch.pageStart}-${ch.pageEnd}-${idx}`
+      })));
       // Select all by index
       setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
       setError(null);
       setProgress(null);
+      setEditMode(false);
     }
   }, [isOpen, initialChapters]);
 
@@ -92,13 +105,71 @@ export default function ChapterSelectionModal({
   };
 
   const toggleAll = () => {
-    if (selectedIndices.size === initialChapters.length) {
+    if (selectedIndices.size === chapters.length) {
       // Deselect all
       setSelectedIndices(new Set());
     } else {
       // Select all
-      setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
+      setSelectedIndices(new Set(chapters.map((_, idx) => idx)));
     }
+  };
+
+  const updateChapter = (index: number, updates: Partial<EditableChapter>) => {
+    setChapters(prev => prev.map((ch, idx) =>
+      idx === index ? { ...ch, ...updates } : ch
+    ));
+  };
+
+  const deleteChapter = (index: number) => {
+    setChapters(prev => prev.filter((_, idx) => idx !== index));
+    setSelectedIndices(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(index);
+      // Adjust indices after deletion
+      const adjusted = new Set<number>();
+      newSet.forEach(i => {
+        if (i > index) adjusted.add(i - 1);
+        else adjusted.add(i);
+      });
+      return adjusted;
+    });
+  };
+
+  const mergeWithNext = (index: number) => {
+    if (index >= chapters.length - 1) return;
+
+    const current = chapters[index];
+    const next = chapters[index + 1];
+
+    setChapters(prev => {
+      const merged = {
+        ...current,
+        title: current.title, // Keep first chapter's title
+        pageStart: Math.min(current.pageStart, next.pageStart),
+        pageEnd: Math.max(current.pageEnd, next.pageEnd)
+      };
+      return [
+        ...prev.slice(0, index),
+        merged,
+        ...prev.slice(index + 2)
+      ];
+    });
+
+    // Update selection
+    setSelectedIndices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index) || newSet.has(index + 1)) {
+        newSet.add(index);
+      }
+      newSet.delete(index + 1);
+      // Adjust indices after merge
+      const adjusted = new Set<number>();
+      newSet.forEach(i => {
+        if (i > index + 1) adjusted.add(i - 1);
+        else adjusted.add(i);
+      });
+      return adjusted;
+    });
   };
 
   const handleClose = async () => {
@@ -127,8 +198,8 @@ export default function ChapterSelectionModal({
         throw new Error('Authentication required');
       }
 
-      // Filter chapters to extract by selected indices
-      const chaptersToExtract = initialChapters.filter((_, idx) => selectedIndices.has(idx));
+      // Filter chapters to extract by selected indices (use edited chapters)
+      const chaptersToExtract = chapters.filter((_, idx) => selectedIndices.has(idx));
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
 
