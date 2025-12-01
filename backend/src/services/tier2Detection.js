@@ -231,7 +231,7 @@ Return markdown with this EXACT format:
 - Include image descriptions where images appear: ![Tree structure with 5 nodes: root(A) connects to B and C, B connects to D and E]
 - Preserve equations, tables, code examples
 - Use LaTeX for math: inline $x^2$ and display $$E=mc^2$$
-- **CRITICAL:** Always include the summary section after `---` separator
+- **CRITICAL:** Always include the summary section after --- separator
 
 **CONTENT TO EXCLUDE:**
 - **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names, semester/term (e.g., "Fall 2025"), lecture dates/times, university names
@@ -301,7 +301,8 @@ If MULTI-CHAPTER:
       type: 'single',
       chapterNumber: parsed.chapterNumber,
       chapterTitle: parsed.chapterTitle,
-      markdown: parsed.markdown
+      markdown: parsed.markdown,
+      summary: parsed.summary
     };
   } else if (firstLine.includes('|')) {
     // Multi-chapter response
