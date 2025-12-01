@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
@@ -53,6 +53,9 @@ export default function ChapterSelectionModal({
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // Track whether extraction was started or user explicitly canceled (to prevent auto-cleanup)
+  const shouldCleanupRef = useRef(true);
+
   // Calculate max page from initial chapters (inferred PDF page count)
   const maxPage = initialChapters.length > 0
     ? Math.max(...initialChapters.map(ch => ch.pageEnd))
@@ -74,6 +77,8 @@ export default function ChapterSelectionModal({
       setError(null);
       setProgress(null);
       setEditMode(false);
+      // Reset cleanup flag when modal opens
+      shouldCleanupRef.current = true;
     }
   }, [isOpen, initialChapters]);
 
@@ -104,6 +109,36 @@ export default function ChapterSelectionModal({
       };
     }
   }, [isOpen, isExtracting, editMode]);
+
+  // Auto-cleanup when modal closes without extraction or explicit cancel
+  useEffect(() => {
+    if (!isOpen || !documentId) return;
+
+    return () => {
+      // Cleanup runs when modal closes or component unmounts
+      if (shouldCleanupRef.current && documentId) {
+        console.log('[ChapterSelectionModal] Auto-cleanup: User closed page without action, deleting abandoned document');
+
+        // Use async IIFE for cleanup
+        (async () => {
+          try {
+            const token = await getToken();
+            if (token) {
+              await fetch(`${getBackendUrl()}/documents/${documentId}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              console.log('[ChapterSelectionModal] Auto-cleanup successful');
+            }
+          } catch (error) {
+            console.error('[ChapterSelectionModal] Auto-cleanup failed:', error);
+          }
+        })();
+      }
+    };
+  }, [isOpen, documentId, getToken]);
 
   const toggleChapter = (index: number) => {
     const newSelected = new Set(selectedIndices);
@@ -213,11 +248,14 @@ export default function ChapterSelectionModal({
       return;
     }
 
+    // User explicitly canceled - prevent auto-cleanup and do manual cleanup
+    shouldCleanupRef.current = false;
+
     // Delete the multi-chapter parent document when user cancels
     try {
       const token = await getToken();
       if (token && documentId) {
-        console.log('[ChapterSelectionModal] Deleting multi-chapter parent document:', documentId);
+        console.log('[ChapterSelectionModal] User canceled - deleting multi-chapter parent document:', documentId);
         await fetch(`${getBackendUrl()}/documents/${documentId}`, {
           method: 'DELETE',
           headers: {
@@ -242,6 +280,9 @@ export default function ChapterSelectionModal({
       const chaptersToExtract = chapters.filter((_, idx) => selectedIndices.has(idx));
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
+
+      // User started extraction - prevent auto-cleanup
+      shouldCleanupRef.current = false;
 
       // Close modal immediately
       onClose();
