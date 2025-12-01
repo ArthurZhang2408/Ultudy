@@ -81,11 +81,11 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
         // Update progress: 70% - Document created
         await jobTracker.updateProgress(ownerId, jobId, 70);
 
-        // Insert chapter markdown
+        // Insert chapter markdown with summary
         await client.query(
           `INSERT INTO chapter_markdown
-           (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, page_start, page_end)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+           (owner_id, document_id, course_id, chapter_number, chapter_title, markdown_content, chapter_summary, page_start, page_end)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [
             ownerId,
             documentId,
@@ -93,6 +93,7 @@ export async function processTier2UploadJob(job, { tenantHelpers, jobTracker, st
             detection.chapterNumber,
             detection.chapterTitle,
             detection.markdown,
+            detection.summary || null, // Summary extracted during detection
             null, // page_start unknown for single chapter
             null  // page_end unknown for single chapter
           ]

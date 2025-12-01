@@ -15,11 +15,38 @@ import { createGeminiVisionProvider } from '../providers/llm/gemini_vision.js';
  *
  * Content here...
  *
- * @param {string} markdown
- * @returns {{ chapterNumber: number, chapterTitle: string, markdown: string }}
+ * ---
+ * # SUMMARY
+ * Summary here...
+ *
+ * @param {string} response
+ * @returns {{ chapterNumber: number, chapterTitle: string, markdown: string, summary: string }}
  */
-function parseSingleChapterMarkdown(markdown) {
-  const lines = markdown.split('\n');
+function parseSingleChapterMarkdown(response) {
+  // Find the summary marker (same format as multi-chapter extraction)
+  const summaryPattern = /\n---+\s*\n#\s*SUMMARY/i;
+  const summaryMatch = response.search(summaryPattern);
+
+  let summary = '';
+  let contentPart = response;
+
+  if (summaryMatch !== -1) {
+    // Split at the summary marker
+    contentPart = response.substring(0, summaryMatch).trim();
+    const summaryPart = response.substring(summaryMatch).trim();
+
+    // Extract summary text
+    const summaryStartMatch = summaryPart.match(/#\s*SUMMARY/i);
+    if (summaryStartMatch) {
+      const summaryStartIndex = summaryStartMatch.index + summaryStartMatch[0].length;
+      summary = summaryPart.substring(summaryStartIndex).trim();
+      console.log(`[tier2Detection] Extracted summary (${summary.length} chars)`);
+    }
+  } else {
+    console.log('[tier2Detection] No summary found in single chapter response');
+  }
+
+  const lines = contentPart.split('\n');
 
   // Find the first # heading
   for (let i = 0; i < lines.length; i++) {
@@ -36,12 +63,13 @@ function parseSingleChapterMarkdown(markdown) {
 
         // Get content after the heading
         const contentLines = lines.slice(i + 1);
-        const content = contentLines.join('\n').trim();
+        const markdown = contentLines.join('\n').trim();
 
         return {
           chapterNumber,
           chapterTitle,
-          markdown: content
+          markdown,
+          summary
         };
       }
     }
@@ -190,12 +218,20 @@ Return markdown with this EXACT format:
 
 [Full faithful markdown extraction of the chapter content]
 
+---
+
+# SUMMARY
+
+[Write a comprehensive 2-3 paragraph summary of this chapter]
+
+**FORMATTING RULES:**
 - Replace N with the chapter number (extract from PDF or use 1 if unclear)
 - Replace Title with the chapter title
 - Extract full content as clean markdown
 - Include image descriptions where images appear: ![Tree structure with 5 nodes: root(A) connects to B and C, B connects to D and E]
 - Preserve equations, tables, code examples
 - Use LaTeX for math: inline $x^2$ and display $$E=mc^2$$
+- **CRITICAL:** Always include the summary section after `---` separator
 
 **CONTENT TO EXCLUDE:**
 - **Metadata:** Course codes (e.g., "ECE356", "CS101"), instructor names, semester/term (e.g., "Fall 2025"), lecture dates/times, university names
