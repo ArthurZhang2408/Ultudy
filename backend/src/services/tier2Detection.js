@@ -163,9 +163,10 @@ function consolidateChapters(chapters) {
 /**
  * Parse multi-chapter detection response
  * Expected format (pipe-separated):
- * 1|Introduction to Algorithms|1|25
- * 2|Data Structures|26|58
- * 3|Graph Theory|59|102
+ * 1|Introduction to Algorithms|5
+ * 2|Data Structures|29
+ * 3|Graph Theory|58
+ * LASTPAGE|102
  *
  * @param {string} text
  * @returns {Array<{number: number, title: string, pageStart: number, pageEnd: number}>}
@@ -173,17 +174,25 @@ function consolidateChapters(chapters) {
 function parseMultiChapterResponse(text) {
   const lines = text.trim().split('\n').filter(line => line.trim());
   const chapters = [];
+  let lastPage = null;
 
   for (const line of lines) {
     const parts = line.split('|').map(p => p.trim());
 
-    if (parts.length === 4) {
-      const [number, title, pageStart, pageEnd] = parts;
+    // Check for LASTPAGE marker
+    if (parts[0].toUpperCase() === 'LASTPAGE' && parts.length === 2) {
+      lastPage = parseInt(parts[1], 10);
+      continue;
+    }
+
+    // Parse chapter line: number|title|startPage
+    if (parts.length === 3) {
+      const [number, title, startPage] = parts;
       chapters.push({
         number: parseInt(number, 10),
         title,
-        pageStart: parseInt(pageStart, 10),
-        pageEnd: parseInt(pageEnd, 10)
+        pageStart: parseInt(startPage, 10),
+        pageEnd: -1 // Will be calculated
       });
     }
   }
@@ -192,7 +201,27 @@ function parseMultiChapterResponse(text) {
     throw new Error('No chapters parsed from multi-chapter response');
   }
 
-  console.log(`[tier2Detection] Parsed ${chapters.length} raw entries`);
+  console.log(`[tier2Detection] Parsed ${chapters.length} raw entries with starting pages`);
+
+  // Calculate page ranges: each chapter ends where the next one starts (minus 1)
+  for (let i = 0; i < chapters.length - 1; i++) {
+    chapters[i].pageEnd = chapters[i + 1].pageStart - 1;
+  }
+
+  // Handle last chapter
+  if (lastPage) {
+    chapters[chapters.length - 1].pageEnd = lastPage;
+    console.log(`[tier2Detection] Using explicit last page: ${lastPage}`);
+  } else {
+    // Fallback: assume last chapter is at least 10 pages
+    chapters[chapters.length - 1].pageEnd = chapters[chapters.length - 1].pageStart + 10;
+    console.log(`[tier2Detection] ⚠️  No LASTPAGE provided, using fallback for last chapter`);
+  }
+
+  console.log('[tier2Detection] Calculated page ranges:');
+  for (const ch of chapters) {
+    console.log(`[tier2Detection]   Chapter ${ch.number}: "${ch.title}" pages ${ch.pageStart}-${ch.pageEnd}`);
+  }
 
   // Consolidate duplicate chapter numbers
   return consolidateChapters(chapters);
@@ -262,44 +291,55 @@ Return markdown with this EXACT format:
 - **Anything not directly educational content**
 
 **For MULTI-CHAPTER:**
-Return ONLY a list of chapters (pipe-separated), one per line:
+Return ONLY a list of chapters with STARTING PAGES (pipe-separated), one per line:
 
-number|title|pageStart|pageEnd
-number|title|pageStart|pageEnd
+number|title|startPage
+number|title|startPage
+...
+LASTPAGE|pageNumber
 
 Example:
-1|Introduction to Programming|1|28
-2|Variables and Data Types|29|52
-3|Control Flow|53|89
+1|Introduction to Programming|5
+2|Variables and Data Types|29
+3|Control Flow|58
+LASTPAGE|102
 
 **CRITICAL RULES FOR MULTI-CHAPTER:**
-- **ABSOLUTELY NO OVERLAPPING PAGES** - Each page belongs to EXACTLY ONE chapter
-  - WRONG: Ch19: 103-114, Ch20: 108-114 (overlaps!)
-  - RIGHT: Ch19: 103-107, Ch20: 108-114
 
-- **PRECISE PAGE BOUNDARIES** - Find the EXACT last page of each chapter
-  - Look for where the next chapter heading starts
-  - The previous chapter ends on the page BEFORE the next chapter starts
-  - Example: If Chapter 20 starts on page 108, Chapter 19 ends on page 107
+**STEP 1: Find chapter starting pages**
+- Report ONLY the page number where each chapter BEGINS
+- Look for chapter headings like "Chapter N:", "Lecture N:", etc.
+- Use actual PDF page numbers (visible in PDF), NOT table of contents page numbers
 
-- **ONE entry per chapter** - Do NOT create separate entries for subsections or slides
-  - Use the main chapter heading only (e.g., "Chapter 9: Database Design")
+**⚠️ TABLE OF CONTENTS WARNING:**
+- ToC page numbers may be OFFSET from actual PDF pages
+- Example: ToC says "Chapter 1 ... 3" but it's actually on PDF page 5
+- ALWAYS verify against the ACTUAL PDF pages where chapters appear
+- When in doubt, scan the PDF to find where chapter headings actually are
+
+**STEP 2: Find the last page**
+- Add a final line: LASTPAGE|XXX where XXX is the last content page of the PDF
+- This should be the last page with actual chapter content
+- DO NOT include: bibliography, references, appendices (unless they're part of the last chapter)
+
+**FORMATTING RULES:**
+- ONE entry per chapter - Do NOT create separate entries for subsections
+  - Use main chapter heading only (e.g., "Chapter 9: Database Design")
   - Ignore subsections like "9.1", "9.2", etc.
-
-- **Verify your ranges** - Before outputting:
-  1. Check no two chapters share the same page
-  2. Check chapters are sequential with no gaps (unless intentional)
-  3. Check each chapter has reasonable length (usually 5+ pages)
-
-- **Common mistakes to avoid:**
-  - ❌ Including page numbers from other chapters
-  - ❌ Overlapping ranges like 103-114 and 108-114
-  - ❌ Using subsection titles instead of main chapter titles
-  - ❌ Creating one entry per slide/page instead of per chapter
-
+- Do NOT include: preface pages, title pages, ToC pages in your chapter list
 - Use ONLY pipe separators |, NO JSON
 - Include ALL chapters found in the PDF
-- Do not include any other text or formatting`;
+- Do not include any other text or formatting
+
+**Example with offset:**
+If ToC shows:
+- Chapter 1 ... page 1
+- Chapter 2 ... page 15
+
+But the PDF has 2 cover pages, then:
+1|Chapter 1 Title|3
+2|Chapter 2 Title|17
+LASTPAGE|50`;
 
   const userPrompt = `Analyze this PDF and determine if it's a single chapter or multiple chapters.
 
@@ -312,8 +352,11 @@ If SINGLE CHAPTER:
 - **EXCLUDE:** course metadata (codes, instructors, dates), references/bibliographies, page numbers, headers/footers
 
 If MULTI-CHAPTER:
-- List all chapters as: number|title|pageStart|pageEnd
+- List all chapters with STARTING PAGES ONLY: number|title|startPage
 - One chapter per line
+- End with: LASTPAGE|pageNumber
+- Use actual PDF page numbers (NOT table of contents numbers)
+- Verify ToC page numbers against actual PDF pages (may have offset)
 - Use pipe separator |`;
 
   console.log('[tier2Detection] Calling Gemini Vision API...');
