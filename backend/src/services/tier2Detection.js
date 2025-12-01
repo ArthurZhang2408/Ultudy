@@ -273,12 +273,30 @@ Example:
 3|Control Flow|53|89
 
 **CRITICAL RULES FOR MULTI-CHAPTER:**
-- **ONE entry per chapter** - Do NOT create separate entries for subsections, slides, or individual pages
-- **Consolidate page ranges** - If Chapter 4 spans pages 1-50, use ONE line: 4|Chapter 4 Title|1|50
-- **Do NOT list individual pages/slides** - WRONG: "4|Slide 1|1|1" then "4|Slide 2|2|2"
-- **Look for major chapter boundaries** - Ignore subsection headings within chapters
-- **Use the main chapter title** - Not subsection or slide titles
-- **Handle non-contiguous pages** - If Chapter 4 appears on pages 1-10 and 20-30, use: 4|Chapter 4 Title|1|30
+- **ABSOLUTELY NO OVERLAPPING PAGES** - Each page belongs to EXACTLY ONE chapter
+  - WRONG: Ch19: 103-114, Ch20: 108-114 (overlaps!)
+  - RIGHT: Ch19: 103-107, Ch20: 108-114
+
+- **PRECISE PAGE BOUNDARIES** - Find the EXACT last page of each chapter
+  - Look for where the next chapter heading starts
+  - The previous chapter ends on the page BEFORE the next chapter starts
+  - Example: If Chapter 20 starts on page 108, Chapter 19 ends on page 107
+
+- **ONE entry per chapter** - Do NOT create separate entries for subsections or slides
+  - Use the main chapter heading only (e.g., "Chapter 9: Database Design")
+  - Ignore subsections like "9.1", "9.2", etc.
+
+- **Verify your ranges** - Before outputting:
+  1. Check no two chapters share the same page
+  2. Check chapters are sequential with no gaps (unless intentional)
+  3. Check each chapter has reasonable length (usually 5+ pages)
+
+- **Common mistakes to avoid:**
+  - ❌ Including page numbers from other chapters
+  - ❌ Overlapping ranges like 103-114 and 108-114
+  - ❌ Using subsection titles instead of main chapter titles
+  - ❌ Creating one entry per slide/page instead of per chapter
+
 - Use ONLY pipe separators |, NO JSON
 - Include ALL chapters found in the PDF
 - Do not include any other text or formatting`;

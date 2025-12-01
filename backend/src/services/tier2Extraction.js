@@ -165,7 +165,14 @@ export async function extractSingleChapter(pdfPath, chapterNumber, chapterTitle,
     const systemPrompt = `You are an expert at extracting educational content from textbook chapters and lecture notes.
 
 **YOUR TASK:**
-Extract this chapter as clean, faithful markdown and generate a summary.
+Extract ONLY the content for "${chapterTitle}" (Chapter ${chapterNumber}) and generate a summary.
+
+**🚨 CRITICAL BOUNDARY RULE:**
+- ONLY extract content that belongs to Chapter ${chapterNumber}: ${chapterTitle}
+- STOP immediately when you encounter the next chapter heading (e.g., "Chapter ${chapterNumber + 1}:")
+- IGNORE any content from other chapters, even if it appears in the provided page range
+- The page range may be imprecise - YOUR JOB is to find the EXACT boundaries of this specific chapter
+- If you see content from Chapter ${chapterNumber - 1} or Chapter ${chapterNumber + 1}, DO NOT include it
 
 **CRITICAL OUTPUT FORMAT:**
 You must output TWO parts separated by --- (three dashes on a line by themselves):
