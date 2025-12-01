@@ -317,10 +317,39 @@ LASTPAGE|102
 - ALWAYS verify against the ACTUAL PDF pages where chapters appear
 - When in doubt, scan the PDF to find where chapter headings actually are
 
-**STEP 2: Find the last page**
-- Add a final line: LASTPAGE|XXX where XXX is the last content page of the PDF
-- This should be the last page with actual chapter content
-- DO NOT include: bibliography, references, appendices (unless they're part of the last chapter)
+**STEP 2: Find where the LAST CHAPTER ends (CRITICAL!)**
+- Add a final line: LASTPAGE|XXX where XXX is where the last chapter's content ENDS
+- **This is NOT the PDF's total page count!** You must find where content actually stops.
+
+**How to find the correct LASTPAGE:**
+
+1. **Scan the end of the PDF backwards** to identify:
+   - Where the last chapter's actual content ends
+   - What comes AFTER the last chapter
+
+2. **Common items that appear AFTER the last chapter (exclude these from LASTPAGE):**
+   - ❌ References, Bibliography, Works Cited
+   - ❌ Appendices (unless they're part of the last chapter)
+   - ❌ Index pages
+   - ❌ Glossary (if at the end)
+   - ❌ Answer keys to exercises
+   - ❌ Blank pages at the end
+   - ❌ "About the author" pages
+   - ❌ Back cover material
+
+3. **Identify the boundary:**
+   - ✅ LASTPAGE should be the last page that contains the final chapter's actual content
+   - Look for clear section breaks like "References" or "Appendix A" headings
+   - If the last chapter ends on page 87 and page 88 starts "References", then LASTPAGE is 87
+
+4. **Examples:**
+   - ❌ BAD: PDF has 150 pages, you write LASTPAGE|150 (but pages 130-150 are references/index)
+   - ✅ GOOD: Last chapter ends on page 129, references start on 130, you write LASTPAGE|129
+
+   - ❌ BAD: Last chapter is on pages 200-250, you write LASTPAGE|250 without checking what's there
+   - ✅ GOOD: You verify page 250 has chapter content, not appendix material
+
+**This is critical for accurate extraction - take time to get it right!**
 
 **FORMATTING RULES:**
 - ONE entry per chapter - Do NOT create separate entries for subsections
@@ -357,6 +386,7 @@ If MULTI-CHAPTER:
 - End with: LASTPAGE|pageNumber
 - Use actual PDF page numbers (NOT table of contents numbers)
 - Verify ToC page numbers against actual PDF pages (may have offset)
+- **CRITICAL for LASTPAGE:** Scan the end of the PDF to find where the last chapter actually ends (exclude references, appendices, index, blank pages)
 - Use pipe separator |`;
 
   console.log('[tier2Detection] Calling Gemini Vision API...');
