@@ -53,6 +53,11 @@ export default function ChapterSelectionModal({
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // Calculate max page from initial chapters (inferred PDF page count)
+  const maxPage = initialChapters.length > 0
+    ? Math.max(...initialChapters.map(ch => ch.pageEnd))
+    : 1000; // fallback if no chapters
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -385,26 +390,12 @@ export default function ChapterSelectionModal({
                   </>
                 )}
                 {editMode && (
-                  <>
-                    <button
-                      onClick={addNewChapter}
-                      className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/50 font-medium"
-                    >
-                      + Add Chapter
-                    </button>
-                    <button
-                      onClick={discardEdits}
-                      className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-                    >
-                      Discard Changes
-                    </button>
-                    <button
-                      onClick={() => setEditMode(false)}
-                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
-                    >
-                      ✓ Save Changes
-                    </button>
-                  </>
+                  <button
+                    onClick={addNewChapter}
+                    className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/50 font-medium"
+                  >
+                    + Add Chapter
+                  </button>
                 )}
               </div>
             </div>
@@ -480,10 +471,11 @@ export default function ChapterSelectionModal({
                           <input
                             type="number"
                             min="1"
+                            max={maxPage}
                             value={chapter.pageStart}
                             onChange={(e) => {
                               const val = parseInt(e.target.value) || 1;
-                              updateChapter(index, { pageStart: Math.max(1, val) });
+                              updateChapter(index, { pageStart: Math.max(1, Math.min(maxPage, val)) });
                             }}
                             className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
                             placeholder="Start"
@@ -492,18 +484,27 @@ export default function ChapterSelectionModal({
                           <input
                             type="number"
                             min="1"
+                            max={maxPage}
                             value={chapter.pageEnd}
                             onChange={(e) => {
                               const val = parseInt(e.target.value) || 1;
-                              updateChapter(index, { pageEnd: Math.max(1, val) });
+                              updateChapter(index, { pageEnd: Math.max(1, Math.min(maxPage, val)) });
                             }}
                             className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
                             placeholder="End"
                           />
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                            (max: {maxPage})
+                          </span>
                         </div>
                         {chapter.pageStart > chapter.pageEnd && (
                           <p className="text-xs text-red-600 dark:text-red-400">
                             ⚠️ Start page must be ≤ end page
+                          </p>
+                        )}
+                        {(chapter.pageStart > maxPage || chapter.pageEnd > maxPage) && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            ⚠️ Page numbers exceed PDF length ({maxPage} pages)
                           </p>
                         )}
                       </div>
