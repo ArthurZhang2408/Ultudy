@@ -81,10 +81,16 @@ export default function ChapterSelectionModal({
     }
   }, [isOpen]);
 
-  // Close on Escape key
+  // Close on Escape key (or exit edit mode if in edit mode)
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isExtracting) handleClose();
+      if (e.key === 'Escape' && !isExtracting) {
+        if (editMode) {
+          setEditMode(false);
+        } else {
+          handleClose();
+        }
+      }
     };
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
@@ -92,7 +98,7 @@ export default function ChapterSelectionModal({
         document.removeEventListener('keydown', handleEscape);
       };
     }
-  }, [isOpen, isExtracting]);
+  }, [isOpen, isExtracting, editMode]);
 
   const toggleChapter = (index: number) => {
     const newSelected = new Set(selectedIndices);
@@ -118,6 +124,29 @@ export default function ChapterSelectionModal({
     setChapters(prev => prev.map((ch, idx) =>
       idx === index ? { ...ch, ...updates } : ch
     ));
+  };
+
+  const addNewChapter = () => {
+    const newChapter: EditableChapter = {
+      id: `new-${Date.now()}`,
+      number: chapters.length > 0 ? Math.max(...chapters.map(c => c.number)) + 1 : 1,
+      title: 'New Chapter',
+      pageStart: chapters.length > 0 ? chapters[chapters.length - 1].pageEnd + 1 : 1,
+      pageEnd: chapters.length > 0 ? chapters[chapters.length - 1].pageEnd + 10 : 10
+    };
+    setChapters(prev => [...prev, newChapter]);
+    // Auto-select the new chapter
+    setSelectedIndices(prev => new Set([...prev, chapters.length]));
+  };
+
+  const discardEdits = () => {
+    // Reset to original chapters
+    setChapters(initialChapters.map((ch, idx) => ({
+      ...ch,
+      id: `${ch.number}-${ch.pageStart}-${ch.pageEnd}-${idx}`
+    })));
+    setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
+    setEditMode(false);
   };
 
   const deleteChapter = (index: number) => {
@@ -173,6 +202,12 @@ export default function ChapterSelectionModal({
   };
 
   const handleClose = async () => {
+    // If in edit mode, just exit edit mode instead of closing modal
+    if (editMode) {
+      setEditMode(false);
+      return;
+    }
+
     // Delete the multi-chapter parent document when user cancels
     try {
       const token = await getToken();
@@ -296,7 +331,7 @@ export default function ChapterSelectionModal({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
-        onClick={!isExtracting ? handleClose : undefined}
+        onClick={!isExtracting && !editMode ? handleClose : editMode ? () => setEditMode(false) : undefined}
       />
 
       {/* Modal */}
@@ -309,9 +344,10 @@ export default function ChapterSelectionModal({
           </div>
           {!isExtracting && (
             <button
-              onClick={handleClose}
+              onClick={editMode ? () => setEditMode(false) : handleClose}
               className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-              aria-label="Close"
+              aria-label={editMode ? "Exit edit mode" : "Close"}
+              title={editMode ? "Exit edit mode" : "Close"}
             >
               <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -325,23 +361,51 @@ export default function ChapterSelectionModal({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                {chapters.length} chapters detected. Select the chapters you want to extract.
+                {chapters.length} chapter{chapters.length !== 1 ? 's' : ''} detected.
+                {!editMode && ' Select the chapters you want to extract.'}
+                {editMode && ' Edit chapter details below.'}
               </p>
               <div className="flex gap-2">
-                <button
-                  onClick={() => setEditMode(!editMode)}
-                  disabled={isExtracting}
-                  className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-50 disabled:no-underline font-medium"
-                >
-                  {editMode ? '✓ Done Editing' : '✏️ Edit'}
-                </button>
-                <button
-                  onClick={toggleAll}
-                  disabled={isExtracting}
-                  className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 disabled:no-underline"
-                >
-                  {selectedIndices.size === chapters.length ? 'Deselect All' : 'Select All'}
-                </button>
+                {!editMode && (
+                  <>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      disabled={isExtracting}
+                      className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-50 font-medium"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={toggleAll}
+                      disabled={isExtracting}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50"
+                    >
+                      {selectedIndices.size === chapters.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </>
+                )}
+                {editMode && (
+                  <>
+                    <button
+                      onClick={addNewChapter}
+                      className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/50 font-medium"
+                    >
+                      + Add Chapter
+                    </button>
+                    <button
+                      onClick={discardEdits}
+                      className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+                    >
+                      Discard Changes
+                    </button>
+                    <button
+                      onClick={() => setEditMode(false)}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                    >
+                      ✓ Save Changes
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -415,20 +479,33 @@ export default function ChapterSelectionModal({
                           <span className="text-xs text-neutral-600 dark:text-neutral-400">Pages:</span>
                           <input
                             type="number"
+                            min="1"
                             value={chapter.pageStart}
-                            onChange={(e) => updateChapter(index, { pageStart: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              updateChapter(index, { pageStart: Math.max(1, val) });
+                            }}
                             className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
                             placeholder="Start"
                           />
                           <span className="text-neutral-400">–</span>
                           <input
                             type="number"
+                            min="1"
                             value={chapter.pageEnd}
-                            onChange={(e) => updateChapter(index, { pageEnd: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              updateChapter(index, { pageEnd: Math.max(1, val) });
+                            }}
                             className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
                             placeholder="End"
                           />
                         </div>
+                        {chapter.pageStart > chapter.pageEnd && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            ⚠️ Start page must be ≤ end page
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <>
@@ -470,22 +547,41 @@ export default function ChapterSelectionModal({
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-700 shrink-0">
-          <Button
-            onClick={handleClose}
-            variant="secondary"
-            disabled={isExtracting}
-          >
-            Cancel
-          </Button>
-          {selectedIndices.size > 0 && (
-            <Button
-              onClick={handleExtract}
-              variant="primary"
-              disabled={isExtracting}
-              loading={isExtracting}
-            >
-              {isExtracting ? 'Extracting...' : `Extract ${selectedIndices.size} Chapter${selectedIndices.size !== 1 ? 's' : ''}`}
-            </Button>
+          {!editMode ? (
+            <>
+              <Button
+                onClick={handleClose}
+                variant="secondary"
+                disabled={isExtracting}
+              >
+                Cancel
+              </Button>
+              {selectedIndices.size > 0 && (
+                <Button
+                  onClick={handleExtract}
+                  variant="primary"
+                  disabled={isExtracting}
+                  loading={isExtracting}
+                >
+                  {isExtracting ? 'Extracting...' : `Extract ${selectedIndices.size} Chapter${selectedIndices.size !== 1 ? 's' : ''}`}
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={discardEdits}
+                variant="secondary"
+              >
+                Discard Changes
+              </Button>
+              <Button
+                onClick={() => setEditMode(false)}
+                variant="primary"
+              >
+                Save Changes
+              </Button>
+            </>
           )}
         </div>
       </div>
