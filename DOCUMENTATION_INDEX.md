@@ -55,6 +55,7 @@ When you open this repository:
 | **ASYNC_OPERATIONS.md** | Job queue and async processing | Current |
 | **PRICING_TIERS.md** | Tier structure, cost analysis, feature matrix | Current |
 | **TIER_2_ARCHITECTURE.md** | Multi-chapter PDF processing (document extraction complete) | Current |
+| **TIER_2_LESSON_GENERATION_PLAN.md** | Tier 2 multi-source lesson generation architecture and implementation plan | Planning |
 | **SUBSCRIPTION_ARCHITECTURE.md** | Stripe integration, payment flow, tier enforcement | Planning |
 | **MARKDOWN_MIGRATION_CHANGELOG.md** | JSON to Markdown migration & UI/UX fixes | Current |
 
@@ -82,6 +83,7 @@ Files that represent the current state of the system:
 - `ASYNC_OPERATIONS.md` - Async job processing
 - `PRICING_TIERS.md` - Pricing strategy and cost analysis
 - `TIER_2_ARCHITECTURE.md` - Tier 2 multi-chapter technical design
+- `TIER_2_LESSON_GENERATION_PLAN.md` - Tier 2 lesson generation planning
 - `SUBSCRIPTION_ARCHITECTURE.md` - Stripe payment integration
 - `MARKDOWN_MIGRATION_CHANGELOG.md` - Recent migration documentation
 
@@ -322,6 +324,9 @@ cat SCALABILITY_GUIDE.md    # Scaling guide
 
 ### "How does Tier 2 multi-chapter work?"
 → See `TIER_2_ARCHITECTURE.md`
+
+### "How will Tier 2 lesson generation work?"
+→ See `TIER_2_LESSON_GENERATION_PLAN.md`
 
 ### "What changed in the recent PR?"
 → See `MARKDOWN_MIGRATION_CHANGELOG.md`

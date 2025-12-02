@@ -8,6 +8,7 @@ interface MarkdownViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
   markdown: string;
+  summary?: string | null;
   title?: string;
 }
 
@@ -15,6 +16,7 @@ export default function MarkdownViewerModal({
   isOpen,
   onClose,
   markdown,
+  summary,
   title
 }: MarkdownViewerModalProps) {
   const [mounted, setMounted] = useState(false);
@@ -57,7 +59,7 @@ export default function MarkdownViewerModal({
 
       {/* Modal */}
       <div className="relative w-full max-w-5xl max-h-[90vh] bg-white dark:bg-neutral-900 rounded-xl shadow-2xl overflow-hidden flex flex-col">
-        <MarkdownViewer markdown={markdown} title={title} onClose={onClose} />
+        <MarkdownViewer markdown={markdown} summary={summary} title={title} onClose={onClose} />
       </div>
     </div>
   );

@@ -13,16 +13,44 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 /**
- * Parse single chapter markdown response
+ * Parse extraction response with summary
  * Expected format:
  * # Chapter_5: Introduction to Algorithms
  *
- * Content here...
+ * [Full chapter content in markdown]
+ *
+ * ---
+ * # SUMMARY
+ * [2-3 paragraph summary]
  */
-function parseChapterMarkdown(markdown) {
-  const lines = markdown.split('\n');
+function parseChapterWithSummary(response) {
+  // Find the summary marker (look for --- followed by # SUMMARY)
+  // This is more robust than splitting on just --- (which could appear in markdown content)
+  const summaryPattern = /\n---+\s*\n#\s*SUMMARY/i;
+  const summaryMatch = response.search(summaryPattern);
+
+  if (summaryMatch === -1) {
+    console.error('[parseChapterWithSummary] Could not find summary separator. Response preview:');
+    console.error(response.substring(0, 500) + '...');
+    console.error('[parseChapterWithSummary] Response end:');
+    console.error('...' + response.substring(response.length - 500));
+    throw new Error('Could not find summary separator (--- followed by # SUMMARY)');
+  }
+
+  // Split at the summary marker
+  const contentPart = response.substring(0, summaryMatch).trim();
+  const summaryPart = response.substring(summaryMatch).trim();
+
+  console.log(`[parseChapterWithSummary] Split into content (${contentPart.length} chars) and summary (${summaryPart.length} chars)`);
+
+  // Part 1: Parse chapter content
+  const lines = contentPart.split('\n');
 
   // Find the first # heading
+  let chapterNumber = null;
+  let chapterTitle = null;
+  let contentStartIndex = -1;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (line.startsWith('# ') && !line.startsWith('## ')) {
@@ -32,23 +60,45 @@ function parseChapterMarkdown(markdown) {
       const match = heading.match(/Chapter[_\s]*(\d+):\s*(.+)/i);
 
       if (match) {
-        const chapterNumber = parseInt(match[1], 10);
-        const chapterTitle = match[2].trim();
-
-        // Get content after the heading
-        const contentLines = lines.slice(i + 1);
-        const content = contentLines.join('\n').trim();
-
-        return {
-          chapterNumber,
-          chapterTitle,
-          markdown: content
-        };
+        chapterNumber = parseInt(match[1], 10);
+        chapterTitle = match[2].trim();
+        contentStartIndex = i + 1;
+        break;
       }
     }
   }
 
-  throw new Error('Could not parse chapter heading. Expected format: # Chapter_N: Title');
+  if (!chapterNumber || !chapterTitle) {
+    console.error('[parseChapterWithSummary] Could not parse chapter heading. First 10 lines:');
+    console.error(lines.slice(0, 10).join('\n'));
+    throw new Error('Could not parse chapter heading. Expected format: # Chapter_N: Title');
+  }
+
+  // Get content after the heading
+  const contentLines = lines.slice(contentStartIndex);
+  const markdown = contentLines.join('\n').trim();
+
+  console.log(`[parseChapterWithSummary] Parsed Chapter ${chapterNumber}: ${chapterTitle}`);
+
+  // Part 2: Parse summary
+  const summaryStartMatch = summaryPart.match(/#\s*SUMMARY/i);
+  if (!summaryStartMatch) {
+    console.error('[parseChapterWithSummary] Could not find # SUMMARY marker in summary part:');
+    console.error(summaryPart.substring(0, 200));
+    throw new Error('Could not find # SUMMARY marker');
+  }
+
+  const summaryStartIndex = summaryStartMatch.index + summaryStartMatch[0].length;
+  const summary = summaryPart.substring(summaryStartIndex).trim();
+
+  console.log(`[parseChapterWithSummary] Extracted summary (${summary.length} chars)`);
+
+  return {
+    chapterNumber,
+    chapterTitle,
+    markdown,
+    summary
+  };
 }
 
 /**
@@ -115,14 +165,32 @@ export async function extractSingleChapter(pdfPath, chapterNumber, chapterTitle,
     const systemPrompt = `You are an expert at extracting educational content from textbook chapters and lecture notes.
 
 **YOUR TASK:**
-Extract this chapter as clean, faithful markdown.
+Extract ONLY the content for "${chapterTitle}" (Chapter ${chapterNumber}) and generate a summary.
 
-**OUTPUT FORMAT:**
-Start with this EXACT format:
+**🚨 CRITICAL BOUNDARY RULE:**
+- ONLY extract content that belongs to Chapter ${chapterNumber}: ${chapterTitle}
+- STOP immediately when you encounter the next chapter heading (e.g., "Chapter ${chapterNumber + 1}:")
+- IGNORE any content from other chapters, even if it appears in the provided page range
+- The page range may be imprecise - YOUR JOB is to find the EXACT boundaries of this specific chapter
+- If you see content from Chapter ${chapterNumber - 1} or Chapter ${chapterNumber + 1}, DO NOT include it
+
+**CRITICAL OUTPUT FORMAT:**
+You must output TWO parts separated by --- (three dashes on a line by themselves):
+
+Part 1: MARKDOWN CONTENT
+Part 2: CHAPTER SUMMARY
+
+**EXACT FORMAT:**
 
 # Chapter_${chapterNumber}: ${chapterTitle}
 
-[Full chapter content in markdown]
+[Full chapter content in markdown with proper formatting...]
+
+---
+
+# SUMMARY
+
+[Write a comprehensive 2-3 paragraph summary of this chapter. This summary will be used when this chapter is a supplemental source for lesson generation, so it should capture the key concepts, main topics covered, and important learning points. Make it detailed enough to provide valuable context.]
 
 **EXTRACTION RULES:**
 
@@ -166,20 +234,26 @@ For diagrams, charts, graphs:
 **Quality Standards:**
 - Be faithful to the original text
 - Preserve technical accuracy
-- Don't summarize or skip content
-- Extract everything valuable for learning`;
+- Don't summarize or skip content in the markdown
+- Extract everything valuable for learning
+- Make the summary comprehensive but concise`;
 
-    const userPrompt = `Extract this chapter as markdown.
+    const userPrompt = `Extract this chapter with TWO parts separated by ---:
 
+**Part 1: MARKDOWN CONTENT**
 Start with: # Chapter_${chapterNumber}: ${chapterTitle}
-
 Then extract all content with proper formatting, replacing images with descriptions.
+
+**Part 2: SUMMARY** (after ---)
+Write a comprehensive 2-3 paragraph summary capturing key concepts and learning points.
 
 **IMPORTANT - EXCLUDE:**
 - Course metadata (course codes, instructor names, dates like "Fall 2025" or "2023-09-12")
 - References/bibliographies sections at the end
 - Page numbers, headers, footers
-- Any non-educational administrative content`;
+- Any non-educational administrative content
+
+Remember: TWO parts separated by --- marker!`;
 
     console.log('[tier2Extraction] Calling Gemini Vision API...');
 
@@ -187,13 +261,18 @@ Then extract all content with proper formatting, replacing images with descripti
 
     console.log(`[tier2Extraction] Received response (${response.length} chars)`);
 
-    // Parse response
-    const parsed = parseChapterMarkdown(response);
+    // Parse extraction response (markdown + summary)
+    const parsed = parseChapterWithSummary(response);
+
+    console.log(`[tier2Extraction] Parsed chapter ${parsed.chapterNumber}: ${parsed.chapterTitle}`);
+    console.log(`[tier2Extraction] Markdown length: ${parsed.markdown.length} chars`);
+    console.log(`[tier2Extraction] Summary length: ${parsed.summary.length} chars`);
 
     return {
       chapterNumber: parsed.chapterNumber,
       chapterTitle: parsed.chapterTitle,
-      markdown: parsed.markdown
+      markdown: parsed.markdown,
+      summary: parsed.summary
     };
   } finally {
     // Cleanup temp file

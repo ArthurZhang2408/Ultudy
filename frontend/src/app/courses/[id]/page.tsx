@@ -109,6 +109,7 @@ export default function CoursePage() {
   } | null>(null);
   const [isMarkdownViewerOpen, setIsMarkdownViewerOpen] = useState(false);
   const [markdownContent, setMarkdownContent] = useState('');
+  const [markdownSummary, setMarkdownSummary] = useState<string | null>(null);
   const [markdownTitle, setMarkdownTitle] = useState('');
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const [editingDocumentTitle, setEditingDocumentTitle] = useState('');
@@ -621,6 +622,31 @@ export default function CoursePage() {
             documentId
           });
 
+          // Save to sessionStorage so it persists across navigation and shows in UI
+          const jobData = {
+            job_id: data.job_id,
+            document_id: documentId,
+            section_id: section.id,
+            section_name: section.name,
+            section_number: section.section_number,
+            chapter: chapter || undefined,
+            course_id: courseId
+          };
+          sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
+
+          // Also update processingJobs state immediately for UI to show generation status
+          setProcessingJobs(prev => [...prev, {
+            job_id: data.job_id,
+            document_id: documentId,
+            section_name: section.name,
+            section_id: section.id,
+            section_number: section.section_number,
+            type: 'lesson' as const,
+            progress: 0,
+            status: 'queued',
+            chapter: chapter || undefined
+          }]);
+
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
@@ -643,6 +669,10 @@ export default function CoursePage() {
 
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
+
+              // Clean up sessionStorage and processingJobs state
+              sessionStorage.removeItem(`lesson-job-${data.job_id}`);
+              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
@@ -653,6 +683,10 @@ export default function CoursePage() {
                 error: error,
                 completedAt: new Date().toISOString()
               });
+
+              // Clean up sessionStorage and processingJobs state
+              sessionStorage.removeItem(`lesson-job-${data.job_id}`);
+              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');
@@ -888,6 +922,7 @@ export default function CoursePage() {
 
       const data = await response.json();
       setMarkdownContent(data.markdown_content || '');
+      setMarkdownSummary(data.chapter_summary || null);
       setMarkdownTitle(`${documentTitle} - ${chapterTitle}`);
       setIsMarkdownViewerOpen(true);
     } catch (error) {
@@ -1521,6 +1556,7 @@ export default function CoursePage() {
         isOpen={isMarkdownViewerOpen}
         onClose={() => setIsMarkdownViewerOpen(false)}
         markdown={markdownContent}
+        summary={markdownSummary}
         title={markdownTitle}
       />
     </div>

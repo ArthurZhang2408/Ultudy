@@ -110,6 +110,7 @@ function LearnPageContent() {
   const [storedProgress, setStoredProgress] = useState<StoredProgress | null>(null);
   const storageKeyRef = useRef<string | null>(null);
   const activeConceptRef = useRef<HTMLDivElement | null>(null);
+  const loadedProgressKeyRef = useRef<string | null>(null); // Track which lesson+section we've loaded
 
   // Concept navigation sidebar state
   const [isConceptNavCollapsed, setIsConceptNavCollapsed] = useState(false);
@@ -889,7 +890,14 @@ function LearnPageContent() {
       setAnswerHistory({});
       setCurrentConceptIndex(0);
       setCurrentMCQIndex(0);
+      loadedProgressKeyRef.current = null;
       return;
+    }
+
+    // Only reload from localStorage if we're looking at a different lesson/section
+    // This prevents resetting answerHistory when sections array updates (mastery changes, polling, etc.)
+    if (loadedProgressKeyRef.current === storageKey) {
+      return; // Already loaded this lesson's progress, don't reload
     }
 
     try {
@@ -909,6 +917,8 @@ function LearnPageContent() {
         setCurrentConceptIndex(0);
         setCurrentMCQIndex(0);
       }
+
+      loadedProgressKeyRef.current = storageKey; // Mark as loaded
 
       // If localStorage is empty or incomplete, restore conceptProgress from backend mastery data
       // This ensures mastery line segments persist through deployments

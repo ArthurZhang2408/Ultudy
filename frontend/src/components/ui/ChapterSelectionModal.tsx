@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
@@ -14,6 +14,10 @@ interface Chapter {
   title: string;
   pageStart: number;
   pageEnd: number;
+}
+
+interface EditableChapter extends Chapter {
+  id: string; // Unique ID for React keys
 }
 
 interface ChapterSelectionModalProps {
@@ -38,22 +42,43 @@ export default function ChapterSelectionModal({
   const { getToken } = useAuth();
   const router = useRouter();
   const { addTask, updateTask } = useBackgroundTasks();
-  const [selectedChapters, setSelectedChapters] = useState<Set<number>>(new Set());
+
+  // Convert chapters to editable format with unique IDs
+  const [chapters, setChapters] = useState<EditableChapter[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  // Track selection by index instead of chapter number to handle duplicates
+  const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  // Track whether extraction was started or user explicitly canceled (to prevent auto-cleanup)
+  const shouldCleanupRef = useRef(true);
+
+  // Calculate max page from initial chapters (inferred PDF page count)
+  const maxPage = initialChapters.length > 0
+    ? Math.max(...initialChapters.map(ch => ch.pageEnd))
+    : 1000; // fallback if no chapters
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Initialize all chapters as selected
+  // Initialize chapters with unique IDs
   useEffect(() => {
     if (isOpen && initialChapters.length > 0) {
-      setSelectedChapters(new Set(initialChapters.map(c => c.number)));
+      setChapters(initialChapters.map((ch, idx) => ({
+        ...ch,
+        id: `${ch.number}-${ch.pageStart}-${ch.pageEnd}-${idx}`
+      })));
+      // Select all by index
+      setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
       setError(null);
       setProgress(null);
+      setEditMode(false);
+      // Reset cleanup flag when modal opens
+      shouldCleanupRef.current = true;
     }
   }, [isOpen, initialChapters]);
 
@@ -66,10 +91,16 @@ export default function ChapterSelectionModal({
     }
   }, [isOpen]);
 
-  // Close on Escape key
+  // Close on Escape key (or exit edit mode if in edit mode)
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isExtracting) handleClose();
+      if (e.key === 'Escape' && !isExtracting) {
+        if (editMode) {
+          setEditMode(false);
+        } else {
+          handleClose();
+        }
+      }
     };
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
@@ -77,34 +108,154 @@ export default function ChapterSelectionModal({
         document.removeEventListener('keydown', handleEscape);
       };
     }
-  }, [isOpen, isExtracting]);
+  }, [isOpen, isExtracting, editMode]);
 
-  const toggleChapter = (chapterNumber: number) => {
-    const newSelected = new Set(selectedChapters);
-    if (newSelected.has(chapterNumber)) {
-      newSelected.delete(chapterNumber);
+  // Auto-cleanup when modal closes without extraction or explicit cancel
+  useEffect(() => {
+    if (!isOpen || !documentId) return;
+
+    return () => {
+      // Cleanup runs when modal closes or component unmounts
+      if (shouldCleanupRef.current && documentId) {
+        console.log('[ChapterSelectionModal] Auto-cleanup: User closed page without action, deleting abandoned document');
+
+        // Use async IIFE for cleanup
+        (async () => {
+          try {
+            const token = await getToken();
+            if (token) {
+              await fetch(`${getBackendUrl()}/documents/${documentId}`, {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              console.log('[ChapterSelectionModal] Auto-cleanup successful');
+            }
+          } catch (error) {
+            console.error('[ChapterSelectionModal] Auto-cleanup failed:', error);
+          }
+        })();
+      }
+    };
+  }, [isOpen, documentId, getToken]);
+
+  const toggleChapter = (index: number) => {
+    const newSelected = new Set(selectedIndices);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
     } else {
-      newSelected.add(chapterNumber);
+      newSelected.add(index);
     }
-    setSelectedChapters(newSelected);
+    setSelectedIndices(newSelected);
   };
 
   const toggleAll = () => {
-    if (selectedChapters.size === initialChapters.length) {
+    if (selectedIndices.size === chapters.length) {
       // Deselect all
-      setSelectedChapters(new Set());
+      setSelectedIndices(new Set());
     } else {
       // Select all
-      setSelectedChapters(new Set(initialChapters.map(c => c.number)));
+      setSelectedIndices(new Set(chapters.map((_, idx) => idx)));
     }
   };
 
+  const updateChapter = (index: number, updates: Partial<EditableChapter>) => {
+    setChapters(prev => prev.map((ch, idx) =>
+      idx === index ? { ...ch, ...updates } : ch
+    ));
+  };
+
+  const addNewChapter = () => {
+    const newChapter: EditableChapter = {
+      id: `new-${Date.now()}`,
+      number: chapters.length > 0 ? Math.max(...chapters.map(c => c.number)) + 1 : 1,
+      title: 'New Chapter',
+      pageStart: chapters.length > 0 ? chapters[chapters.length - 1].pageEnd + 1 : 1,
+      pageEnd: chapters.length > 0 ? chapters[chapters.length - 1].pageEnd + 10 : 10
+    };
+    setChapters(prev => [...prev, newChapter]);
+    // Auto-select the new chapter
+    setSelectedIndices(prev => new Set([...prev, chapters.length]));
+  };
+
+  const discardEdits = () => {
+    // Reset to original chapters
+    setChapters(initialChapters.map((ch, idx) => ({
+      ...ch,
+      id: `${ch.number}-${ch.pageStart}-${ch.pageEnd}-${idx}`
+    })));
+    setSelectedIndices(new Set(initialChapters.map((_, idx) => idx)));
+    setEditMode(false);
+  };
+
+  const deleteChapter = (index: number) => {
+    setChapters(prev => prev.filter((_, idx) => idx !== index));
+    setSelectedIndices(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(index);
+      // Adjust indices after deletion
+      const adjusted = new Set<number>();
+      newSet.forEach(i => {
+        if (i > index) adjusted.add(i - 1);
+        else adjusted.add(i);
+      });
+      return adjusted;
+    });
+  };
+
+  const mergeWithNext = (index: number) => {
+    if (index >= chapters.length - 1) return;
+
+    const current = chapters[index];
+    const next = chapters[index + 1];
+
+    setChapters(prev => {
+      const merged = {
+        ...current,
+        title: current.title, // Keep first chapter's title
+        pageStart: Math.min(current.pageStart, next.pageStart),
+        pageEnd: Math.max(current.pageEnd, next.pageEnd)
+      };
+      return [
+        ...prev.slice(0, index),
+        merged,
+        ...prev.slice(index + 2)
+      ];
+    });
+
+    // Update selection
+    setSelectedIndices(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index) || newSet.has(index + 1)) {
+        newSet.add(index);
+      }
+      newSet.delete(index + 1);
+      // Adjust indices after merge
+      const adjusted = new Set<number>();
+      newSet.forEach(i => {
+        if (i > index + 1) adjusted.add(i - 1);
+        else adjusted.add(i);
+      });
+      return adjusted;
+    });
+  };
+
   const handleClose = async () => {
+    // If in edit mode, just exit edit mode instead of closing modal
+    if (editMode) {
+      setEditMode(false);
+      return;
+    }
+
+    // User explicitly canceled - prevent auto-cleanup and do manual cleanup
+    shouldCleanupRef.current = false;
+
     // Delete the multi-chapter parent document when user cancels
     try {
       const token = await getToken();
       if (token && documentId) {
-        console.log('[ChapterSelectionModal] Deleting multi-chapter parent document:', documentId);
+        console.log('[ChapterSelectionModal] User canceled - deleting multi-chapter parent document:', documentId);
         await fetch(`${getBackendUrl()}/documents/${documentId}`, {
           method: 'DELETE',
           headers: {
@@ -125,10 +276,13 @@ export default function ChapterSelectionModal({
         throw new Error('Authentication required');
       }
 
-      // Filter chapters to extract
-      const chaptersToExtract = initialChapters.filter(c => selectedChapters.has(c.number));
+      // Filter chapters to extract by selected indices (use edited chapters)
+      const chaptersToExtract = chapters.filter((_, idx) => selectedIndices.has(idx));
 
       console.log(`[ChapterSelectionModal] Extracting ${chaptersToExtract.length} chapters`);
+
+      // User started extraction - prevent auto-cleanup
+      shouldCleanupRef.current = false;
 
       // Close modal immediately
       onClose();
@@ -223,7 +377,7 @@ export default function ChapterSelectionModal({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-safari -z-10"
-        onClick={!isExtracting ? handleClose : undefined}
+        onClick={!isExtracting && !editMode ? handleClose : editMode ? () => setEditMode(false) : undefined}
       />
 
       {/* Modal */}
@@ -236,9 +390,10 @@ export default function ChapterSelectionModal({
           </div>
           {!isExtracting && (
             <button
-              onClick={handleClose}
+              onClick={editMode ? () => setEditMode(false) : handleClose}
               className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
-              aria-label="Close"
+              aria-label={editMode ? "Exit edit mode" : "Close"}
+              title={editMode ? "Exit edit mode" : "Close"}
             >
               <svg className="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -252,15 +407,38 @@ export default function ChapterSelectionModal({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                {initialChapters.length} chapters detected. Select the chapters you want to extract.
+                {chapters.length} chapter{chapters.length !== 1 ? 's' : ''} detected.
+                {!editMode && ' Select the chapters you want to extract.'}
+                {editMode && ' Edit chapter details below.'}
               </p>
-              <button
-                onClick={toggleAll}
-                disabled={isExtracting}
-                className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50 disabled:no-underline"
-              >
-                {selectedChapters.size === initialChapters.length ? 'Deselect All' : 'Select All'}
-              </button>
+              <div className="flex gap-2">
+                {!editMode && (
+                  <>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      disabled={isExtracting}
+                      className="text-sm text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 disabled:opacity-50 font-medium"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={toggleAll}
+                      disabled={isExtracting}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline disabled:opacity-50"
+                    >
+                      {selectedIndices.size === chapters.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </>
+                )}
+                {editMode && (
+                  <button
+                    onClick={addNewChapter}
+                    className="text-sm px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded hover:bg-green-200 dark:hover:bg-green-900/50 font-medium"
+                  >
+                    + Add Chapter
+                  </button>
+                )}
+              </div>
             </div>
 
             {error && (
@@ -291,31 +469,119 @@ export default function ChapterSelectionModal({
 
             {/* Chapter List */}
             <div className="space-y-2 max-h-96 overflow-y-auto">
-              {initialChapters.map((chapter) => (
-                <label
-                  key={chapter.number}
-                  className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                    selectedChapters.has(chapter.number)
+              {chapters.map((chapter, index) => (
+                <div
+                  key={chapter.id}
+                  className={`flex items-start gap-3 p-4 rounded-lg border-2 transition-all ${
+                    selectedIndices.has(index)
                       ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                      : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
-                  } ${isExtracting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      : 'border-neutral-200 dark:border-neutral-700'
+                  } ${isExtracting ? 'opacity-50' : ''}`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedChapters.has(chapter.number)}
-                    onChange={() => toggleChapter(chapter.number)}
-                    disabled={isExtracting}
-                    className="mt-0.5 w-5 h-5 text-primary-600 rounded border-neutral-300 focus:ring-primary-500 disabled:cursor-not-allowed"
-                  />
-                  <div className="flex-1">
-                    <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                      Chapter {chapter.number}: {chapter.title}
-                    </div>
-                    <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-                      Pages {chapter.pageStart}–{chapter.pageEnd}
-                    </div>
+                  {!editMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIndices.has(index)}
+                      onChange={() => toggleChapter(index)}
+                      disabled={isExtracting}
+                      className="mt-0.5 w-5 h-5 text-primary-600 rounded border-neutral-300 focus:ring-primary-500 disabled:cursor-not-allowed"
+                    />
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    {editMode ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            value={chapter.number}
+                            onChange={(e) => updateChapter(index, { number: parseInt(e.target.value) || 0 })}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Ch #"
+                          />
+                          <input
+                            type="text"
+                            value={chapter.title}
+                            onChange={(e) => updateChapter(index, { title: e.target.value })}
+                            className="flex-1 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Title"
+                          />
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-neutral-600 dark:text-neutral-400">Pages:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxPage}
+                            value={chapter.pageStart}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              updateChapter(index, { pageStart: Math.max(1, Math.min(maxPage, val)) });
+                            }}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="Start"
+                          />
+                          <span className="text-neutral-400">–</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxPage}
+                            value={chapter.pageEnd}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value) || 1;
+                              updateChapter(index, { pageEnd: Math.max(1, Math.min(maxPage, val)) });
+                            }}
+                            className="w-20 px-2 py-1 text-sm border rounded dark:bg-neutral-800 dark:border-neutral-600"
+                            placeholder="End"
+                          />
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                            (max: {maxPage})
+                          </span>
+                        </div>
+                        {chapter.pageStart > chapter.pageEnd && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            ⚠️ Start page must be ≤ end page
+                          </p>
+                        )}
+                        {(chapter.pageStart > maxPage || chapter.pageEnd > maxPage) && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            ⚠️ Page numbers exceed PDF length ({maxPage} pages)
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-semibold text-neutral-900 dark:text-neutral-100">
+                          Chapter {chapter.number}: {chapter.title}
+                        </div>
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                          Pages {chapter.pageStart}–{chapter.pageEnd}
+                        </div>
+                      </>
+                    )}
                   </div>
-                </label>
+
+                  {editMode && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      {index < chapters.length - 1 && (
+                        <button
+                          onClick={() => mergeWithNext(index)}
+                          className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50"
+                          title="Merge with next chapter"
+                        >
+                          Merge ↓
+                        </button>
+                      )}
+                      <button
+                        onClick={() => deleteChapter(index)}
+                        className="px-2 py-1 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50"
+                        title="Delete this chapter"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -323,22 +589,41 @@ export default function ChapterSelectionModal({
 
         {/* Footer */}
         <div className="flex justify-end gap-3 px-6 py-4 border-t border-neutral-200 dark:border-neutral-700 shrink-0">
-          <Button
-            onClick={handleClose}
-            variant="secondary"
-            disabled={isExtracting}
-          >
-            Cancel
-          </Button>
-          {selectedChapters.size > 0 && (
-            <Button
-              onClick={handleExtract}
-              variant="primary"
-              disabled={isExtracting}
-              loading={isExtracting}
-            >
-              {isExtracting ? 'Extracting...' : `Extract ${selectedChapters.size} Chapter${selectedChapters.size !== 1 ? 's' : ''}`}
-            </Button>
+          {!editMode ? (
+            <>
+              <Button
+                onClick={handleClose}
+                variant="secondary"
+                disabled={isExtracting}
+              >
+                Cancel
+              </Button>
+              {selectedIndices.size > 0 && (
+                <Button
+                  onClick={handleExtract}
+                  variant="primary"
+                  disabled={isExtracting}
+                  loading={isExtracting}
+                >
+                  {isExtracting ? 'Extracting...' : `Extract ${selectedIndices.size} Chapter${selectedIndices.size !== 1 ? 's' : ''}`}
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button
+                onClick={discardEdits}
+                variant="secondary"
+              >
+                Discard Changes
+              </Button>
+              <Button
+                onClick={() => setEditMode(false)}
+                variant="primary"
+              >
+                Save Changes
+              </Button>
+            </>
           )}
         </div>
       </div>
