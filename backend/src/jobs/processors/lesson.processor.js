@@ -81,20 +81,35 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
       }
 
       if (existingLessons.length > 0) {
-        console.log(`[LessonProcessor] Returning cached lesson for ${section_id ? `section ${section_id}` : `document ${document_id}`}`);
+        const cachedLesson = existingLessons[0];
+        console.log(`[LessonProcessor] ⚠️  Returning CACHED lesson for ${section_id ? `section ${section_id}` : `document ${document_id}`}`);
+        console.log(`[LessonProcessor] Lesson created at: ${cachedLesson.created_at}`);
+
+        // Check if MCQs have options array (new format)
+        const hasMCQOptions = cachedLesson.concepts?.some(c =>
+          c.check_ins?.some(mcq => Array.isArray(mcq.options))
+        );
+        console.log(`[LessonProcessor] Cached lesson has MCQ options (new format): ${hasMCQOptions}`);
+
+        if (!hasMCQOptions) {
+          console.log(`[LessonProcessor] ⚠️  WARNING: Cached lesson is in OLD FORMAT (no MCQ options)`);
+          console.log(`[LessonProcessor] User will see "Lesson Format Update Available" warning`);
+          console.log(`[LessonProcessor] To fix: Delete this lesson and regenerate`);
+        }
 
         await jobTracker.completeJob(ownerId, jobId, {
-          lesson_id: existingLessons[0].id,
-          cached: true
+          lesson_id: cachedLesson.id,
+          cached: true,
+          has_new_format: hasMCQOptions
         });
 
         return {
-          id: existingLessons[0].id,
-          summary: existingLessons[0].summary,
-          explanation: existingLessons[0].explanation,
-          examples: existingLessons[0].examples,
-          analogies: existingLessons[0].analogies,
-          concepts: existingLessons[0].concepts
+          id: cachedLesson.id,
+          summary: cachedLesson.summary,
+          explanation: cachedLesson.explanation,
+          examples: cachedLesson.examples,
+          analogies: cachedLesson.analogies,
+          concepts: cachedLesson.concepts
         };
       }
 
@@ -295,6 +310,18 @@ export async function processLessonJob(job, { tenantHelpers, jobTracker, studySe
       await jobTracker.updateProgress(ownerId, jobId, 100);
 
       console.log(`[LessonProcessor] ✅ Job ${jobId} complete`);
+
+      // Verify new lesson has MCQ options (new format)
+      const hasMCQOptions = conceptsForStorage?.some(c =>
+        c.check_ins?.some(mcq => Array.isArray(mcq.options))
+      );
+      console.log(`[LessonProcessor] ✅ NEW lesson has MCQ options (new format): ${hasMCQOptions}`);
+
+      if (!hasMCQOptions) {
+        console.error(`[LessonProcessor] ❌ ERROR: Newly generated lesson missing MCQ options!`);
+        console.error(`[LessonProcessor] This is a BUG - new lessons should have options array`);
+        console.error(`[LessonProcessor] First concept check_ins sample:`, JSON.stringify(conceptsForStorage[0]?.check_ins?.[0], null, 2));
+      }
 
       const lessonData = {
         id: lessonId,
