@@ -622,6 +622,18 @@ export default function CoursePage() {
             documentId
           });
 
+          // Save to sessionStorage so it persists across navigation and shows in UI
+          const jobData = {
+            job_id: data.job_id,
+            document_id: documentId,
+            section_id: section.id,
+            section_name: section.name,
+            section_number: section.section_number,
+            chapter: chapter || undefined,
+            course_id: courseId
+          };
+          sessionStorage.setItem(`lesson-job-${data.job_id}`, JSON.stringify(jobData));
+
           // Start polling for job completion
           createJobPoller(data.job_id, {
             interval: 2000,
@@ -644,6 +656,9 @@ export default function CoursePage() {
 
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
+
+              // Clean up sessionStorage
+              sessionStorage.removeItem(`lesson-job-${data.job_id}`);
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
@@ -654,6 +669,9 @@ export default function CoursePage() {
                 error: error,
                 completedAt: new Date().toISOString()
               });
+
+              // Clean up sessionStorage
+              sessionStorage.removeItem(`lesson-job-${data.job_id}`);
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');
