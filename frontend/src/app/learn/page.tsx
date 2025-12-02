@@ -6,6 +6,7 @@ import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 import { getCachedLesson, setCachedLesson, clearCachedLesson } from '@/lib/lessonCache';
+import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 import type {
   MCQ,
   MCQOption,
@@ -69,6 +70,7 @@ function LearnPageContent() {
   const urlSectionId = searchParams.get('section_id');
   const targetConceptName = searchParams.get('concept_name') || null;
   const isOverviewMode = targetConceptName === '__section_overview__';
+  const { tasks } = useBackgroundTasks();
 
   const clearConceptNavigation = () => {
     const conceptParam = searchParams.get('concept_name');
@@ -182,6 +184,39 @@ function LearnPageContent() {
       loadDocumentAndSections();
     }
   }, [documentId]);
+
+  // Sync section generating status with background tasks
+  useEffect(() => {
+    setSections(prev => prev.map(section => {
+      const generatingTask = tasks.find(task =>
+        task.type === 'lesson' &&
+        task.status === 'processing' &&
+        task.sectionId === section.id
+      );
+
+      // Only update if status changed to avoid unnecessary re-renders
+      if (generatingTask && !section.generating) {
+        return {
+          ...section,
+          generating: true,
+          generation_progress: generatingTask.progress || 0
+        };
+      } else if (!generatingTask && section.generating) {
+        return {
+          ...section,
+          generating: false,
+          generation_progress: 0
+        };
+      } else if (generatingTask && section.generation_progress !== generatingTask.progress) {
+        return {
+          ...section,
+          generation_progress: generatingTask.progress || 0
+        };
+      }
+
+      return section;
+    }));
+  }, [tasks]);
 
   // Skip straight to concept learning if concept_name is in URL (but not overview mode)
   useEffect(() => {
@@ -425,11 +460,22 @@ function LearnPageContent() {
             }
           }
 
-          // Attach concepts to their respective sections
-          const sectionsWithConcepts = sections.map((section: Section) => ({
-            ...section,
-            concepts: conceptsBySectionId[section.id] || []
-          }));
+          // Attach concepts to their respective sections and check for generating status
+          const sectionsWithConcepts = sections.map((section: Section) => {
+            // Check if there's an active lesson generation task for this section
+            const generatingTask = tasks.find(task =>
+              task.type === 'lesson' &&
+              task.status === 'processing' &&
+              task.sectionId === section.id
+            );
+
+            return {
+              ...section,
+              concepts: conceptsBySectionId[section.id] || [],
+              generating: generatingTask ? true : false,
+              generation_progress: generatingTask?.progress || 0
+            };
+          });
 
           console.log(`[learn] Initial load - ${sectionsWithConcepts.length} sections loaded`);
 
@@ -1266,14 +1312,12 @@ function LearnPageContent() {
     const wasCorrect = Boolean(correctOption && correctOption.letter === letter);
     const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
 
+    // If already answered, just show the previous answer (effect will handle UI state)
     if (answerHistory[key]) {
-      setSelectedOption(letter);
-      setShowingExplanations(true);
       return;
     }
 
-    setSelectedOption(letter);
-    setShowingExplanations(true);
+    // Only update answer history - the effect will handle setting selectedOption and showingExplanations
     setAnswerHistory((prev) => ({
       ...prev,
       [key]: {
