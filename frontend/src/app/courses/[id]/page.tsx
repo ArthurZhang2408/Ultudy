@@ -590,20 +590,6 @@ export default function CoursePage() {
   async function generateLessonForSection(section: SectionWithMastery, documentId: string, chapter: string | null) {
     console.log(`[courses] Generating lesson for section ${section.name}`);
 
-    // Add immediate loading state before API call for instant visual feedback
-    const placeholderJobId = `temp-${section.id}-${Date.now()}`;
-    setProcessingJobs(prev => [...prev, {
-      job_id: placeholderJobId,
-      document_id: documentId,
-      section_name: section.name,
-      section_id: section.id,
-      section_number: section.section_number,
-      type: 'lesson' as const,
-      progress: 0,
-      status: 'queued',
-      chapter: chapter || undefined
-    }]);
-
     try {
       const res = await fetch('/api/lessons/generate', {
         method: 'POST',
@@ -625,22 +611,6 @@ export default function CoursePage() {
           // Lesson is being generated - add to background tasks
           console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
 
-          // Replace placeholder with real job in processingJobs
-          setProcessingJobs(prev => [
-            ...prev.filter(j => j.job_id !== placeholderJobId),
-            {
-              job_id: data.job_id,
-              document_id: documentId,
-              section_name: section.name,
-              section_id: section.id,
-              section_number: section.section_number,
-              type: 'lesson' as const,
-              progress: 0,
-              status: 'active',
-              chapter: chapter || undefined
-            }
-          ]);
-
           // Add to background tasks
           addTask({
             id: data.job_id,
@@ -649,8 +619,7 @@ export default function CoursePage() {
             status: 'processing',
             progress: 0,
             courseId,
-            documentId,
-            sectionId: section.id
+            documentId
           });
 
           // Start polling for job completion
@@ -658,8 +627,6 @@ export default function CoursePage() {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
-              // Update both processingJobs and background tasks
-              updateJobProgress(data.job_id, job.progress || 0, 'active');
               updateTask(data.job_id, {
                 status: 'processing',
                 progress: job.progress || 0
@@ -677,9 +644,6 @@ export default function CoursePage() {
 
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
-
-              // Remove from processingJobs after concepts are refreshed
-              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
@@ -690,9 +654,6 @@ export default function CoursePage() {
                 error: error,
                 completedAt: new Date().toISOString()
               });
-
-              // Remove from processingJobs on error
-              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');
@@ -717,16 +678,11 @@ export default function CoursePage() {
         } else if (data.lesson_id) {
           // Lesson already exists - navigate to it
           console.log(`[courses] Lesson already exists: lesson_id=${data.lesson_id}`);
-          // Remove placeholder since we're not generating
-          setProcessingJobs(prev => prev.filter(j => j.job_id !== placeholderJobId));
           router.push(`/learn?document_id=${documentId}&chapter=${encodeURIComponent(chapter || '')}&section_id=${section.id}&concept_name=__section_overview__`);
         }
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Failed to generate lesson' }));
         const errorMessage = errorData.error || 'Failed to generate lesson';
-
-        // Remove placeholder on error
-        setProcessingJobs(prev => prev.filter(j => j.job_id !== placeholderJobId));
 
         // Check if it's a retryable error
         const isOverloaded = errorMessage.includes('overloaded') || errorMessage.includes('503');
@@ -751,9 +707,6 @@ export default function CoursePage() {
     } catch (error) {
       console.error('[courses] Error generating lesson:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-
-      // Remove placeholder on error
-      setProcessingJobs(prev => prev.filter(j => j.job_id !== placeholderJobId));
 
       // Check if it's a network error
       const isNetworkError = errorMsg.includes('network') || errorMsg.includes('fetch');

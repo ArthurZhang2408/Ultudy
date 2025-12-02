@@ -13,7 +13,6 @@ export type BackgroundTask = {
   progress: number; // 0-100
   courseId?: string;
   documentId?: string;
-  sectionId?: string; // Section ID for lesson generation tasks
   error?: string;
   startedAt: string;
   completedAt?: string;

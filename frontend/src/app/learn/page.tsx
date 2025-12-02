@@ -6,7 +6,6 @@ import { FormattedText } from '../../components/FormattedText';
 import { createJobPoller, type Job } from '@/lib/jobs';
 import ConceptNavigationSidebar from '../../components/ConceptNavigationSidebar';
 import { getCachedLesson, setCachedLesson, clearCachedLesson } from '@/lib/lessonCache';
-import { useBackgroundTasks } from '@/contexts/BackgroundTasksContext';
 import type {
   MCQ,
   MCQOption,
@@ -70,7 +69,6 @@ function LearnPageContent() {
   const urlSectionId = searchParams.get('section_id');
   const targetConceptName = searchParams.get('concept_name') || null;
   const isOverviewMode = targetConceptName === '__section_overview__';
-  const { tasks } = useBackgroundTasks();
 
   const clearConceptNavigation = () => {
     const conceptParam = searchParams.get('concept_name');
@@ -184,44 +182,6 @@ function LearnPageContent() {
       loadDocumentAndSections();
     }
   }, [documentId]);
-
-  // Sync section generating status with background tasks
-  useEffect(() => {
-    setSections(prev => prev.map(section => {
-      const generatingTask = tasks.find(task =>
-        task.type === 'lesson' &&
-        task.status === 'processing' &&
-        task.sectionId === section.id
-      );
-
-      // Check if task just completed (was generating but now no active task)
-      const taskCompleted = !generatingTask && section.generating;
-
-      // Only update if status changed to avoid unnecessary re-renders
-      if (generatingTask && !section.generating) {
-        return {
-          ...section,
-          generating: true,
-          generation_progress: generatingTask.progress || 0
-        };
-      } else if (taskCompleted) {
-        // Task completed - mark as generated to avoid "Not Generated" flash
-        return {
-          ...section,
-          generating: false,
-          generation_progress: 0,
-          concepts_generated: true  // Mark as generated when task completes
-        };
-      } else if (generatingTask && section.generation_progress !== generatingTask.progress) {
-        return {
-          ...section,
-          generation_progress: generatingTask.progress || 0
-        };
-      }
-
-      return section;
-    }));
-  }, [tasks]);
 
   // Skip straight to concept learning if concept_name is in URL (but not overview mode)
   useEffect(() => {
@@ -465,22 +425,11 @@ function LearnPageContent() {
             }
           }
 
-          // Attach concepts to their respective sections and check for generating status
-          const sectionsWithConcepts = sections.map((section: Section) => {
-            // Check if there's an active lesson generation task for this section
-            const generatingTask = tasks.find(task =>
-              task.type === 'lesson' &&
-              task.status === 'processing' &&
-              task.sectionId === section.id
-            );
-
-            return {
-              ...section,
-              concepts: conceptsBySectionId[section.id] || [],
-              generating: generatingTask ? true : false,
-              generation_progress: generatingTask?.progress || 0
-            };
-          });
+          // Attach concepts to their respective sections
+          const sectionsWithConcepts = sections.map((section: Section) => ({
+            ...section,
+            concepts: conceptsBySectionId[section.id] || []
+          }));
 
           console.log(`[learn] Initial load - ${sectionsWithConcepts.length} sections loaded`);
 
@@ -1080,7 +1029,7 @@ function LearnPageContent() {
       setShowingExplanations(false);
     }
     setHoveredOption(null);
-  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
+  }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
 
   // Helper function to scroll to top of page
   function scrollToTop() {
