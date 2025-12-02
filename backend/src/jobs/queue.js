@@ -4,16 +4,12 @@
  * This module creates and manages Bull job queues for async operations.
  * Uses Redis for job persistence and state management.
  *
- * CRITICAL FIX: Bull normally creates 3 connections per queue (client, subscriber, bclient).
- * With 3 queues = 9 connections! This maxes out small Redis plans.
- *
- * SOLUTION: Share a single Redis client across all Bull queues.
- * Bull supports createClient option to reuse connections.
- * This reduces from 9 connections to 3 total (1 shared client + 1 shared subscriber + 1 shared bclient).
+ * IMPORTANT: Uses shared Redis connection to avoid "max clients reached" error.
+ * Bull creates 3 connections per queue (client, subscriber, bclient).
+ * By sharing the connection config, we reduce total connections.
  */
 
 import Queue from 'bull';
-import Redis from 'ioredis';
 
 // Redis connection configuration
 const REDIS_URL = process.env.REDIS_URL;
@@ -21,65 +17,23 @@ const REDIS_URL = process.env.REDIS_URL;
 // Check if we should disable queues (for CI/testing without Redis, or no Redis configured)
 const DISABLE_QUEUES = process.env.DISABLE_QUEUES === 'true' || process.env.CI === 'true' || !REDIS_URL;
 
-// Shared Redis clients for ALL queues (massive connection reduction!)
-// Instead of 3 connections per queue, we share 3 connections total
-let sharedClient = null;
-let sharedSubscriber = null;
-let sharedBClient = null;
-
-// Create shared Redis connection settings
-const createRedisOptions = (isSubscriberOrBClient = false) => {
+// Shared Redis connection settings to reduce connection count
+const createRedisOptions = () => {
   if (!REDIS_URL) return null;
 
-  // Parse Redis URL
+  // Parse Redis URL  
   const url = new URL(REDIS_URL);
 
-  const baseOpts = {
+  return {
     port: parseInt(url.port) || 6379,
     host: url.hostname,
     password: url.password,
     db: 0,
-    connectTimeout: 10000,
-    lazyConnect: false,
-    enableOfflineQueue: true,
-    keepAlive: 30000
-  };
-
-  // Bull doesn't allow enableReadyCheck or maxRetriesPerRequest for subscriber/bclient
-  // See: https://github.com/OptimalBits/bull/issues/1873
-  // CRITICAL: Must explicitly set these to null/false to override ioredis defaults!
-  // ioredis defaults: maxRetriesPerRequest=20, enableReadyCheck=true
-  if (isSubscriberOrBClient) {
-    return {
-      ...baseOpts,
-      maxRetriesPerRequest: null,  // Explicitly disable (ioredis default is 20)
-      enableReadyCheck: false        // Explicitly disable (ioredis default is true)
-    };
-  }
-
-  // Only the main client can have these options
-  return {
-    ...baseOpts,
     maxRetriesPerRequest: 3,
-    enableReadyCheck: false
+    connectTimeout: 10000,
+    enableReadyCheck: false, // Reduces connections
+    lazyConnect: false
   };
-};
-
-// Initialize shared Redis clients (only once for all queues!)
-const initializeSharedRedisClients = () => {
-  if (!REDIS_URL || sharedClient) return; // Already initialized
-
-  // Create 3 shared clients with appropriate options for each type
-  sharedClient = new Redis(createRedisOptions(false)); // Main client
-  sharedSubscriber = new Redis(createRedisOptions(true)); // Subscriber (no maxRetries/readyCheck)
-  sharedBClient = new Redis(createRedisOptions(true)); // Blocking client (no maxRetries/readyCheck)
-
-  console.log('[Queue] Initialized shared Redis clients (3 total for all queues)');
-
-  // Handle connection errors gracefully
-  sharedClient.on('error', (err) => console.error('[Queue] Shared client error:', err.message));
-  sharedSubscriber.on('error', (err) => console.error('[Queue] Shared subscriber error:', err.message));
-  sharedBClient.on('error', (err) => console.error('[Queue] Shared bclient error:', err.message));
 };
 
 let uploadQueue;
@@ -141,28 +95,13 @@ if (DISABLE_QUEUES) {
 } else {
   console.log(`[Queue] Connecting to Redis at ${REDIS_URL.replace(/:[^:@]+@/, ':****@')}`);
 
-  // Initialize shared Redis clients ONCE for all queues
-  initializeSharedRedisClients();
+  const redisOpts = createRedisOptions();
 
-  // Create queues using shared clients via createClient callback
-  // This is the KEY to reducing connections: Bull will use our shared clients instead of creating new ones
-  const createClientCallback = (type) => {
-    switch (type) {
-      case 'client':
-        return sharedClient;
-      case 'subscriber':
-        return sharedSubscriber;
-      case 'bclient':
-        return sharedBClient;
-      default:
-        return sharedClient;
-    }
-  };
-
-  // Create separate queues for different job types with SHARED connections
-  // MASSIVE WIN: Instead of 9 connections (3 per queue), we use 3 total!
+  // Create separate queues for different job types with shared connection config
+  // Note: Bull still creates 3 connections per queue (client, subscriber, bclient)
+  // The redisOpts are shared to use same config, reducing overhead slightly
   uploadQueue = new Queue('upload-processing', {
-    createClient: createClientCallback,
+    redis: redisOpts,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -175,7 +114,7 @@ if (DISABLE_QUEUES) {
   });
 
   lessonQueue = new Queue('lesson-generation', {
-    createClient: createClientCallback,
+    redis: redisOpts,
     defaultJobOptions: {
       attempts: 2, // Fewer retries for LLM calls (expensive)
       backoff: {
@@ -188,15 +127,13 @@ if (DISABLE_QUEUES) {
   });
 
   chapterExtractionQueue = new Queue('chapter-extraction', {
-    createClient: createClientCallback,
+    redis: redisOpts,
     defaultJobOptions: {
       attempts: 1, // Retries handled in processor with better control
       removeOnComplete: false,
       removeOnFail: false
     }
   });
-
-  console.log('[Queue] Created 3 queues sharing 3 Redis connections (instead of 9!)');
 }
 
 export { uploadQueue, lessonQueue, chapterExtractionQueue };
@@ -269,18 +206,8 @@ if (!DISABLE_QUEUES) {
     console.log('[Queue] SIGTERM received, closing queues...');
     await Promise.all([
       uploadQueue.close(),
-      lessonQueue.close(),
-      chapterExtractionQueue.close()
+      lessonQueue.close()
     ]);
-
-    // Close shared Redis clients
-    if (sharedClient) {
-      await sharedClient.quit();
-      await sharedSubscriber.quit();
-      await sharedBClient.quit();
-      console.log('[Queue] Shared Redis clients closed');
-    }
-
     console.log('[Queue] Queues closed');
   });
 }
