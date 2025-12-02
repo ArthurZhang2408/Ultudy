@@ -194,6 +194,9 @@ function LearnPageContent() {
         task.sectionId === section.id
       );
 
+      // Check if task just completed (was generating but now no active task)
+      const taskCompleted = !generatingTask && section.generating;
+
       // Only update if status changed to avoid unnecessary re-renders
       if (generatingTask && !section.generating) {
         return {
@@ -201,11 +204,13 @@ function LearnPageContent() {
           generating: true,
           generation_progress: generatingTask.progress || 0
         };
-      } else if (!generatingTask && section.generating) {
+      } else if (taskCompleted) {
+        // Task completed - mark as generated to avoid "Not Generated" flash
         return {
           ...section,
           generating: false,
-          generation_progress: 0
+          generation_progress: 0,
+          concepts_generated: true  // Mark as generated when task completes
         };
       } else if (generatingTask && section.generation_progress !== generatingTask.progress) {
         return {
@@ -1075,7 +1080,7 @@ function LearnPageContent() {
       setShowingExplanations(false);
     }
     setHoveredOption(null);
-  }, [showingSummary, currentConceptIndex, currentMCQIndex, answerHistory]);
+  }, [showingSummary, currentConceptIndex, currentMCQIndex]);
 
   // Helper function to scroll to top of page
   function scrollToTop() {
