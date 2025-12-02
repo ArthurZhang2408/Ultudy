@@ -625,8 +625,21 @@ export default function CoursePage() {
           // Lesson is being generated - add to background tasks
           console.log(`[courses] Lesson generation queued: job_id=${data.job_id}`);
 
-          // Remove placeholder and add real job
-          setProcessingJobs(prev => prev.filter(j => j.job_id !== placeholderJobId));
+          // Replace placeholder with real job in processingJobs
+          setProcessingJobs(prev => [
+            ...prev.filter(j => j.job_id !== placeholderJobId),
+            {
+              job_id: data.job_id,
+              document_id: documentId,
+              section_name: section.name,
+              section_id: section.id,
+              section_number: section.section_number,
+              type: 'lesson' as const,
+              progress: 0,
+              status: 'active',
+              chapter: chapter || undefined
+            }
+          ]);
 
           // Add to background tasks
           addTask({
@@ -645,6 +658,8 @@ export default function CoursePage() {
             interval: 2000,
             onProgress: (job: Job) => {
               console.log('[courses] Generation progress:', job.progress);
+              // Update both processingJobs and background tasks
+              updateJobProgress(data.job_id, job.progress || 0, 'active');
               updateTask(data.job_id, {
                 status: 'processing',
                 progress: job.progress || 0
@@ -662,6 +677,9 @@ export default function CoursePage() {
 
               // Refresh concepts to show the new ones
               await fetchConceptsForCourse();
+
+              // Remove from processingJobs after concepts are refreshed
+              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
             },
             onError: (error: string) => {
               console.error('[courses] Generation error:', error);
@@ -672,6 +690,9 @@ export default function CoursePage() {
                 error: error,
                 completedAt: new Date().toISOString()
               });
+
+              // Remove from processingJobs on error
+              setProcessingJobs(prev => prev.filter(j => j.job_id !== data.job_id));
 
               // Check if it's a retryable error
               const isOverloaded = error.includes('overloaded') || error.includes('503');

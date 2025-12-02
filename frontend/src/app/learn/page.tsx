@@ -1312,12 +1312,14 @@ function LearnPageContent() {
     const wasCorrect = Boolean(correctOption && correctOption.letter === letter);
     const key = makeQuestionKey(currentConceptIndex, currentMCQIndex);
 
-    // If already answered, just show the previous answer (effect will handle UI state)
     if (answerHistory[key]) {
+      setSelectedOption(letter);
+      setShowingExplanations(true);
       return;
     }
 
-    // Only update answer history - the effect will handle setting selectedOption and showingExplanations
+    setSelectedOption(letter);
+    setShowingExplanations(true);
     setAnswerHistory((prev) => ({
       ...prev,
       [key]: {
